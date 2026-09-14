@@ -1,4 +1,11 @@
 import { z } from 'zod';
+import {
+  jsonAssertionSchema,
+  headerAssertionSchema,
+  responseSchema,
+  type AssertionResult,
+} from './assertion-config';
+export type { JsonAssertion, HeaderAssertion, AssertionResult } from './assertion-config';
 
 export const checkSchema = z
   .object({
@@ -27,17 +34,9 @@ export const checkSchema = z
     timeoutMs: z.number().int().min(100).max(30000).default(10000),
     expectedStatus: z.number().int().min(100).max(599).default(200),
     maxResponseMs: z.number().int().min(1).max(30000).nullable().default(null),
-    jsonAssertions: z
-      .array(
-        z.object({
-          path: z
-            .string()
-            .regex(/^\$(\.[A-Za-z0-9_-]+)*$/, 'Use a path such as $.status or $.items.0.id'),
-          equals: z.union([z.string(), z.number(), z.boolean(), z.null()]),
-        }),
-      )
-      .max(20)
-      .default([]),
+    jsonAssertions: z.array(jsonAssertionSchema).max(20).default([]),
+    headerAssertions: z.array(headerAssertionSchema).max(20).optional(),
+    responseSchema: responseSchema.optional(),
     failureThreshold: z.number().int().min(1).max(10).default(2),
     recoveryThreshold: z.number().int().min(1).max(10).default(1),
     public: z.boolean().default(false),
@@ -57,12 +56,13 @@ export const checkSchema = z
       });
   });
 export type CheckConfig = z.infer<typeof checkSchema>;
-export type Health = 'up' | 'down' | 'unknown' | 'paused';
+export type Health = 'up' | 'down' | 'unknown' | 'paused' | 'archived';
 export type CheckResult = {
   outcome: 'pass' | 'fail' | 'error';
   statusCode: number | null;
   durationMs: number;
   failures: string[];
+  assertions?: AssertionResult[];
   checkedAt: string;
 };
 export type HealthState = {
@@ -101,6 +101,8 @@ export function visibleHealth(
 export type Monitor = {
   id: string;
   config: CheckConfig;
+  configRevision: number;
+  archivedAt: string | null;
   enabled: boolean;
   health: Health;
   lastRunAt: string | null;
@@ -109,7 +111,16 @@ export type Monitor = {
   lastOutcome: CheckResult['outcome'] | null;
   createdAt: string;
 };
-export type Run = CheckResult & { id: string; monitorId: string };
+export type Run = CheckResult & { id: string; monitorId: string; configRevision: number };
+export type CheckRevision = {
+  monitorId: string;
+  revision: number;
+  config: CheckConfig;
+  createdAt: string;
+};
+export type RevisionPage = { revisions: CheckRevision[]; nextBefore: number | null };
+export const revisionGuardSchema = z.object({ expectedRevision: z.number().int().positive() });
+export const editCheckSchema = revisionGuardSchema.extend({ config: checkSchema });
 export type Incident = {
   id: string;
   monitorId: string;

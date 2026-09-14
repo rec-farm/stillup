@@ -2,7 +2,8 @@ import { lookup } from 'node:dns';
 import { performance } from 'node:perf_hooks';
 import { Agent, request } from 'undici';
 import ipaddr from 'ipaddr.js';
-import type { CheckConfig, CheckResult } from './index';
+import { checkSchema, type CheckConfig, type CheckResult } from './index';
+import { evaluateAssertions, schemaValidator } from './assertions';
 
 class PolicyError extends Error {}
 export function isPublicAddress(address: string): boolean {
@@ -45,6 +46,16 @@ export async function executeCheck(
   });
   let statusCode: number | null = null;
   try {
+    const parsed = checkSchema.safeParse(config);
+    if (!parsed.success) throw new PolicyError('Invalid check configuration');
+    config = parsed.data;
+    if (config.responseSchema !== undefined) {
+      try {
+        schemaValidator(config.responseSchema as object | boolean);
+      } catch {
+        throw new PolicyError('Invalid response schema');
+      }
+    }
     const url = new URL(config.url);
     const literal = url.hostname.replace(/^\[|\]$/g, '');
     if (!options.allowPrivateNetworks && ipaddr.isValid(literal) && !isPublicAddress(literal))
@@ -76,34 +87,20 @@ export async function executeCheck(
       chunks.push(Buffer.from(chunk));
     }
     const durationMs = Math.round(performance.now() - started);
-    const failures: string[] = [];
-    if (statusCode !== config.expectedStatus)
-      failures.push(`Expected HTTP ${config.expectedStatus}, received ${statusCode}`);
-    if (config.maxResponseMs !== null && durationMs > config.maxResponseMs)
-      failures.push(`Response exceeded ${config.maxResponseMs} ms`);
-    if (config.jsonAssertions.length) {
-      try {
-        const json: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-        for (const assertion of config.jsonAssertions) {
-          let value = json;
-          for (const key of assertion.path.split('.').slice(1))
-            value =
-              value !== null && typeof value === 'object' && Object.hasOwn(value, key)
-                ? (value as Record<string, unknown>)[key]
-                : undefined;
-          // Do not persist actual values: responses may contain credentials or personal data.
-          if (value !== assertion.equals)
-            failures.push(`JSON assertion failed at ${assertion.path}`);
-        }
-      } catch {
-        failures.push('Response is not valid JSON');
-      }
-    }
+    const assertions = evaluateAssertions(
+      config,
+      statusCode,
+      durationMs,
+      response.headers,
+      Buffer.concat(chunks).toString('utf8'),
+    );
+    const failures = assertions.filter((a) => !a.passed).map((a) => a.message);
     return {
       outcome: failures.length ? 'fail' : 'pass',
       statusCode,
       durationMs,
       failures,
+      assertions,
       checkedAt,
     };
   } catch (error) {

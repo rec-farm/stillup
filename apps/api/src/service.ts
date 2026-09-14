@@ -1,5 +1,16 @@
+import { isDeepStrictEqual } from 'node:util';
 import { PgBoss, type Db } from 'pg-boss';
-import { connectDatabase, monitors, runs, incidents, eq, desc, sql } from '@stillup/db';
+import {
+  connectDatabase,
+  monitors,
+  runs,
+  incidents,
+  checkRevisions,
+  eq,
+  desc,
+  sql,
+  and,
+} from '@stillup/db';
 import {
   evaluateHealth,
   visibleHealth,
@@ -7,10 +18,30 @@ import {
   type Monitor,
   type Dashboard,
   type PublicStatus,
+  type RevisionPage,
 } from '@stillup/core';
 import { executeCheck } from '@stillup/core/executor';
 import { env } from './env';
 import { migrate } from './migrate';
+
+export class CheckError extends Error {
+  constructor(
+    public statusCode: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+type CheckJob = {
+  monitorId: string;
+  scheduledAt: number;
+  configRevision?: number;
+  executionEpoch?: number;
+};
+type CheckChange =
+  | { kind: 'edit'; config: CheckConfig }
+  | { kind: 'enabled'; enabled: boolean }
+  | { kind: 'archive' | 'restore' };
 
 export async function createService() {
   await migrate(env.DATABASE_URL);
@@ -36,8 +67,12 @@ export async function createService() {
   const toMonitor = (row: typeof monitors.$inferSelect): Monitor => ({
     id: row.id,
     config: row.config,
+    configRevision: row.configRevision,
+    archivedAt: row.archivedAt,
     enabled: row.enabled,
-    health: visibleHealth(row.status, row.enabled, row.lastObservedAt, row.config.intervalSeconds),
+    health: row.archivedAt
+      ? 'archived'
+      : visibleHealth(row.status, row.enabled, row.lastObservedAt, row.config.intervalSeconds),
     lastRunAt: row.lastRunAt,
     lastObservedAt: row.lastObservedAt,
     lastDurationMs: row.lastDurationMs,
@@ -58,7 +93,7 @@ export async function createService() {
     };
   }
   async function publicStatus(): Promise<PublicStatus> {
-    const published = sql`(${monitors.config}->>'public')::boolean IS TRUE`;
+    const published = sql`(${monitors.config}->>'public')::boolean IS TRUE AND ${monitors.archivedAt} IS NULL`;
     const [components, history] = await Promise.all([
       db
         .select({
@@ -102,19 +137,34 @@ export async function createService() {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      const due = await client.query<{ id: string; config: CheckConfig }>(
+      const due = await client.query<{
+        id: string;
+        config: CheckConfig;
+        config_revision: number;
+        execution_epoch: number;
+        enabled: boolean;
+        archived_at: Date | null;
+      }>(
         id
-          ? 'SELECT id, config FROM monitors WHERE id=$1 AND enabled FOR UPDATE'
-          : 'SELECT id, config FROM monitors WHERE enabled AND next_run_at <= now() ORDER BY next_run_at LIMIT 100 FOR UPDATE SKIP LOCKED',
+          ? 'SELECT * FROM monitors WHERE id=$1 FOR UPDATE'
+          : 'SELECT * FROM monitors WHERE enabled AND archived_at IS NULL AND next_run_at <= now() ORDER BY next_run_at LIMIT 100 FOR UPDATE SKIP LOCKED',
         id ? [id] : [],
       );
+      if (id && !due.rows.length) throw new CheckError(404, 'Check not found');
+      if (id && (due.rows[0]!.archived_at || !due.rows[0]!.enabled))
+        throw new CheckError(409, 'Restore and resume the check before running it');
       const adapter: Db = { executeSql: (text, values) => client.query(text, values) };
       let count = 0;
       for (const row of due.rows) {
         const jobId = await boss.send(
           'http-check',
-          { monitorId: row.id, scheduledAt: Date.now() },
-          { singletonKey: row.id, db: adapter },
+          {
+            monitorId: row.id,
+            scheduledAt: Date.now(),
+            configRevision: row.config_revision,
+            executionEpoch: row.execution_epoch,
+          },
+          { singletonKey: `${row.id}:${row.execution_epoch}`, db: adapter },
         );
         if (jobId) count++;
         await client.query(
@@ -131,7 +181,7 @@ export async function createService() {
       client.release();
     }
   }
-  async function runJob(job: { id: string; data: { monitorId: string; scheduledAt: number } }) {
+  async function runJob(job: { id: string; data: CheckJob }) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -140,6 +190,9 @@ export async function createService() {
       } = await client.query('SELECT * FROM monitors WHERE id=$1 FOR UPDATE', [job.data.monitorId]);
       if (
         !row?.enabled ||
+        row.archived_at ||
+        row.config_revision !== (job.data.configRevision ?? 1) ||
+        row.execution_epoch !== (job.data.executionEpoch ?? 1) ||
         (await client.query('SELECT 1 FROM runs WHERE id=$1', [job.id])).rowCount ||
         Date.now() - job.data.scheduledAt > Math.max(row.config.intervalSeconds * 2, 120) * 1000
       ) {
@@ -158,7 +211,7 @@ export async function createService() {
         config.recoveryThreshold,
       );
       await client.query(
-        'INSERT INTO runs (id,monitor_id,outcome,status_code,duration_ms,failures,checked_at) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING',
+        'INSERT INTO runs (id,monitor_id,outcome,status_code,duration_ms,failures,checked_at,config_revision,assertions) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING',
         [
           job.id,
           row.id,
@@ -167,6 +220,8 @@ export async function createService() {
           result.durationMs,
           JSON.stringify(result.failures),
           result.checkedAt,
+          row.config_revision,
+          JSON.stringify(result.assertions ?? []),
         ],
       );
       await client.query(
@@ -222,8 +277,92 @@ export async function createService() {
       client.release();
     }
   }
+  async function changeCheck(id: string, change: CheckChange, expectedRevision?: number) {
+    return db.transaction(async (tx) => {
+      const [row] = await tx.select().from(monitors).where(eq(monitors.id, id)).for('update');
+      if (!row) throw new CheckError(404, 'Check not found');
+      if (expectedRevision !== undefined && row.configRevision !== expectedRevision) {
+        throw new CheckError(
+          409,
+          'This check was edited elsewhere. Reopen the editor to load the latest configuration. Your changes have not been saved.',
+        );
+      }
+      if (
+        (change.kind === 'archive' && row.archivedAt) ||
+        (change.kind === 'restore' && !row.archivedAt)
+      )
+        return toMonitor(row);
+      if (row.archivedAt && change.kind !== 'restore')
+        throw new CheckError(409, 'Restore this archived check before changing it');
+      if (change.kind === 'edit' && isDeepStrictEqual(change.config, row.config))
+        return toMonitor(row);
+      if (change.kind === 'enabled' && change.enabled === row.enabled) return toMonitor(row);
+      const now = new Date().toISOString();
+      const values: Partial<typeof monitors.$inferInsert> = {
+        executionEpoch: row.executionEpoch + 1,
+      };
+      if (change.kind === 'edit') {
+        values.config = change.config;
+        values.configRevision = row.configRevision + 1;
+        await tx
+          .insert(checkRevisions)
+          .values({ monitorId: id, revision: values.configRevision, config: change.config });
+      }
+      if (change.kind === 'archive') Object.assign(values, { archivedAt: now, enabled: false });
+      if (change.kind === 'restore') Object.assign(values, { archivedAt: null, enabled: false });
+      if (change.kind === 'enabled') values.enabled = change.enabled;
+      if (change.kind === 'edit' || (change.kind === 'enabled' && change.enabled)) {
+        // An edit is not a recovery: retain an open incident until real observations resolve it.
+        Object.assign(values, {
+          nextRunAt: now,
+          failures: 0,
+          successes: 0,
+          lastObservedAt: null,
+          lastRunAt: null,
+          lastOutcome: null,
+          lastDurationMs: null,
+          status: row.status === 'down' ? 'down' : 'unknown',
+        });
+      }
+      const [updated] = await tx
+        .update(monitors)
+        .set(values)
+        .where(eq(monitors.id, id))
+        .returning();
+      return toMonitor(updated!);
+    });
+  }
+  async function requireCheck(id: string) {
+    const [row] = await db.select().from(monitors).where(eq(monitors.id, id));
+    if (!row) throw new CheckError(404, 'Check not found');
+    return row;
+  }
+  async function getRevisions(id: string, before?: number): Promise<RevisionPage> {
+    await requireCheck(id);
+    const rows = await db
+      .select()
+      .from(checkRevisions)
+      .where(
+        and(
+          eq(checkRevisions.monitorId, id),
+          before ? sql`${checkRevisions.revision} < ${before}` : undefined,
+        ),
+      )
+      .orderBy(desc(checkRevisions.revision))
+      .limit(21);
+    const revisions = rows.slice(0, 20);
+    return { revisions, nextBefore: rows.length > 20 ? revisions.at(-1)!.revision : null };
+  }
+  async function getRevision(id: string, revision: number) {
+    const [row] = await db
+      .select()
+      .from(checkRevisions)
+      .where(and(eq(checkRevisions.monitorId, id), eq(checkRevisions.revision, revision)));
+    if (!row) throw new CheckError(404, 'Configuration revision not found');
+    return row;
+  }
   async function startWorker() {
-    await boss.work<{ monitorId: string; scheduledAt: number }>(
+    await boss.work<CheckJob>(
       'http-check',
       { localConcurrency: 5, pollingIntervalSeconds: 1 },
       async (jobs) => {
@@ -286,11 +425,23 @@ export async function createService() {
     runJob,
     startWorker,
     toMonitor,
+    changeCheck,
+    getRevisions,
+    getRevision,
+    async getCheck(id: string) {
+      return toMonitor(await requireCheck(id));
+    },
     async createCheck(config: CheckConfig) {
-      const [row] = await db.insert(monitors).values({ config }).returning();
-      return toMonitor(row!);
+      return db.transaction(async (tx) => {
+        const [row] = await tx.insert(monitors).values({ config }).returning();
+        await tx
+          .insert(checkRevisions)
+          .values({ monitorId: row!.id, revision: 1, config, createdAt: row!.createdAt });
+        return toMonitor(row!);
+      });
     },
     async getRuns(id: string) {
+      await requireCheck(id);
       return db
         .select()
         .from(runs)

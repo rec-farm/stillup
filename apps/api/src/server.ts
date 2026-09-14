@@ -3,8 +3,7 @@ import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
 import { z } from 'zod';
-import { checkSchema } from '@stillup/core';
-import { monitors, eq } from '@stillup/db';
+import { checkSchema, editCheckSchema, revisionGuardSchema } from '@stillup/core';
 import { env } from './env';
 import type { Service } from './service';
 
@@ -108,9 +107,6 @@ export async function createServer(service: Service) {
   });
   app.post('/v1/checks/:id/run', async (request, reply) => {
     const { id } = z.object({ id: z.uuid() }).parse(request.params);
-    const [row] = await service.db.select().from(monitors).where(eq(monitors.id, id));
-    if (!row) return reply.code(404).send({ error: 'Check not found' });
-    if (!row.enabled) return reply.code(409).send({ error: 'Resume the check before running it' });
     const count = await service.enqueue(id);
     return reply.code(202).send({
       queued: count > 0,
@@ -119,19 +115,40 @@ export async function createServer(service: Service) {
   });
   app.patch('/v1/checks/:id', async (request, reply) => {
     const { id } = z.object({ id: z.uuid() }).parse(request.params);
-    const { enabled } = z.object({ enabled: z.boolean() }).parse(request.body);
-    const [row] = await service.db
-      .update(monitors)
-      .set({
-        enabled,
-        ...(enabled
-          ? { nextRunAt: new Date().toISOString(), lastObservedAt: null, failures: 0, successes: 0 }
-          : {}),
-      })
-      .where(eq(monitors.id, id))
-      .returning();
-    if (!row) return reply.code(404).send({ error: 'Check not found' });
-    return service.toMonitor(row);
+    const { enabled, expectedRevision } = revisionGuardSchema
+      .partial()
+      .extend({ enabled: z.boolean() })
+      .parse(request.body);
+    return service.changeCheck(id, { kind: 'enabled', enabled }, expectedRevision);
+  });
+  app.get('/v1/checks/:id', async (request) => {
+    const { id } = z.object({ id: z.uuid() }).parse(request.params);
+    return service.getCheck(id);
+  });
+  app.put('/v1/checks/:id', async (request) => {
+    const { id } = z.object({ id: z.uuid() }).parse(request.params);
+    const { config, expectedRevision } = editCheckSchema.parse(request.body);
+    return service.changeCheck(id, { kind: 'edit', config }, expectedRevision);
+  });
+  for (const kind of ['archive', 'restore'] as const) {
+    app.post(`/v1/checks/:id/${kind}`, async (request) => {
+      const { id } = z.object({ id: z.uuid() }).parse(request.params);
+      const { expectedRevision } = revisionGuardSchema.parse(request.body);
+      return service.changeCheck(id, { kind }, expectedRevision);
+    });
+  }
+  app.get('/v1/checks/:id/revisions', async (request) => {
+    const { id } = z.object({ id: z.uuid() }).parse(request.params);
+    const { before } = z
+      .object({ before: z.coerce.number().int().positive().optional() })
+      .parse(request.query);
+    return service.getRevisions(id, before);
+  });
+  app.get('/v1/checks/:id/revisions/:revision', async (request) => {
+    const { id, revision } = z
+      .object({ id: z.uuid(), revision: z.coerce.number().int().positive() })
+      .parse(request.params);
+    return service.getRevision(id, revision);
   });
   return app;
 }

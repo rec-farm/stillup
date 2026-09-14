@@ -87,6 +87,9 @@ importers:
 
   packages/core:
     dependencies:
+      ajv:
+        specifier: ^8.20.0
+        version: 8.20.0
       ipaddr.js:
         specifier: ^2.3.0
         version: 2.5.0

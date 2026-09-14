@@ -43,6 +43,7 @@ export function StatusView({ initial }: { initial: PublicStatus }) {
     down: 'Service disruption',
     unknown: 'Awaiting data',
     paused: 'Monitoring paused',
+    archived: 'Archived',
   };
   return (
     <main className="status-page">

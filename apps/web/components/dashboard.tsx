@@ -1,7 +1,10 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import {
   Activity,
+  Archive,
+  Pencil,
+  RotateCcw,
   ArrowDownRight,
   ArrowUpRight,
   ArrowRight,
@@ -25,11 +28,13 @@ import {
 import type { Dashboard, Monitor, Run, Health } from '@stillup/core';
 import { Brand } from './brand';
 import { CheckForm } from './check-form';
+import { ConfigurationHistory, RevisionViewer } from './configuration-history';
 const labels: Record<Health, string> = {
   up: 'Healthy',
   down: 'Failing',
   unknown: 'Awaiting data',
   paused: 'Paused',
+  archived: 'Archived',
 };
 export function HealthBadge({ health }: { health: Health }) {
   return (
@@ -64,6 +69,12 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 export function DashboardView({ initial }: { initial: Dashboard }) {
   const [data, setData] = useState(initial);
   const [create, setCreate] = useState(false);
+  const [editing, setEditing] = useState<Monitor | null>(null);
+  const [viewRevision, setViewRevision] = useState<{ monitorId: string; revision: number } | null>(
+    null,
+  );
+  const [actionError, setActionError] = useState('');
+  const refreshSequence = useRef(0);
   const [selected, setSelected] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all');
@@ -71,17 +82,22 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const refresh = useCallback(async () => {
+    const sequence = ++refreshSequence.current;
     try {
-      setData(await api<Dashboard>('dashboard'));
+      const next = await api<Dashboard>('dashboard');
+      if (sequence !== refreshSequence.current) return;
+      setData(next);
       setError('');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not refresh');
+      if (sequence === refreshSequence.current)
+        setError(e instanceof Error ? e.message : 'Could not refresh');
     }
   }, []);
   useEffect(() => {
     const timer = setInterval(() => void refresh(), 10000);
     return () => clearInterval(timer);
   }, [refresh]);
+  const activeMonitors = data.monitors.filter((m) => !m.archivedAt);
   const counts = {
     up: data.monitors.filter((m) => m.health === 'up').length,
     down: data.monitors.filter((m) => m.health === 'down').length,
@@ -90,31 +106,48 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
   const workerOnline = !!data.workerAt && Date.now() - Date.parse(data.workerAt) < 30000;
   const visible = data.monitors.filter(
     (m) =>
-      (filter === 'all' || m.health === filter) &&
+      (filter === 'archived'
+        ? !!m.archivedAt
+        : !m.archivedAt && (filter === 'all' || m.health === filter)) &&
       `${m.config.name} ${m.config.url}`.toLowerCase().includes(query.toLowerCase()),
   );
   const current = data.monitors.find((m) => m.id === selected);
-  async function action(monitor: Monitor, kind: 'run' | 'toggle') {
+  async function action(monitor: Monitor, kind: 'run' | 'toggle' | 'archive' | 'restore') {
     setBusy(true);
     setNotice('');
-    setError('');
+    setActionError('');
     try {
       if (kind === 'run') {
         const result = await api<{ message: string }>(`checks/${monitor.id}/run`, {
           method: 'POST',
         });
         setNotice(result.message);
+      } else if (kind === 'archive' || kind === 'restore') {
+        await api(`checks/${monitor.id}/${kind}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ expectedRevision: monitor.configRevision }),
+        });
+        setFilter(kind === 'archive' ? 'archived' : 'all');
+        setNotice(
+          kind === 'archive'
+            ? 'Check archived. Its results and configuration history are preserved.'
+            : 'Check restored in a paused state. Resume it when you are ready.',
+        );
       } else {
         await api(`checks/${monitor.id}`, {
           method: 'PATCH',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ enabled: !monitor.enabled }),
+          body: JSON.stringify({
+            enabled: !monitor.enabled,
+            expectedRevision: monitor.configRevision,
+          }),
         });
         setNotice(monitor.enabled ? 'Check paused' : 'Check resumed');
       }
       await refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Action failed');
+      setActionError(e instanceof Error ? e.message : 'Action failed');
     } finally {
       setBusy(false);
     }
@@ -141,7 +174,7 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
           </a>
           <a href="#checks" className="nav-item">
             <Activity size={18} />
-            API checks<span className="nav-count">{data.monitors.length}</span>
+            API checks<span className="nav-count">{activeMonitors.length}</span>
           </a>
           <a href="#incidents" className="nav-item">
             <Radio size={18} />
@@ -240,7 +273,7 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
               <h2>
                 {counts.down
                   ? `${counts.down} ${counts.down === 1 ? 'API needs' : 'APIs need'} your attention`
-                  : !data.monitors.length
+                  : !activeMonitors.length
                     ? 'Your next layer of confidence starts here'
                     : !workerOnline
                       ? 'Waiting for your monitoring worker'
@@ -253,7 +286,7 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
               <p>
                 {counts.down
                   ? 'Review the latest failures and active incidents below.'
-                  : !data.monitors.length
+                  : !activeMonitors.length
                     ? 'Add an endpoint. Set your expectations. We’ll take it from there.'
                     : !workerOnline
                       ? 'Observations become unknown when they are no longer fresh.'
@@ -272,7 +305,7 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
           <section className="metrics" aria-label="Monitoring summary">
             <Metric
               label="Total checks"
-              value={data.monitors.length}
+              value={activeMonitors.length}
               icon={<Activity size={18} />}
               detail="HTTP & API endpoints"
             />
@@ -301,7 +334,7 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
             <div className="section-heading">
               <div>
                 <h2>
-                  API checks <span className="count-pill">{data.monitors.length}</span>
+                  API checks <span className="count-pill">{activeMonitors.length}</span>
                 </h2>
                 <p>Your endpoints, under a watchful eye.</p>
               </div>
@@ -317,6 +350,7 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
                   ['up', 'Healthy'],
                   ['down', 'Failing'],
                   ['paused', 'Paused'],
+                  ['archived', `Archived (${data.monitors.length - activeMonitors.length})`],
                 ].map(([value, label]) => (
                   <button
                     key={value}
@@ -338,7 +372,7 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
                 />
               </label>
             </div>
-            {!data.monitors.length ? (
+            {!activeMonitors.length && filter !== 'archived' ? (
               <div className="empty-state">
                 <div className="empty-illustration">
                   <div className="endpoint-chip">
@@ -371,8 +405,14 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
             ) : visible.length === 0 ? (
               <div className="empty-state compact">
                 <Search size={24} />
-                <h3>No matching checks</h3>
-                <p>Try another name or status filter.</p>
+                <h3>
+                  {filter === 'archived' && !query ? 'No archived checks' : 'No matching checks'}
+                </h3>
+                <p>
+                  {filter === 'archived' && !query
+                    ? 'Checks you archive will appear here with their history.'
+                    : 'Try another name or status filter.'}
+                </p>
               </div>
             ) : (
               <div className="table-scroll">
@@ -450,7 +490,11 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
                         <small>{time(i.openedAt)}</small>
                       </div>
                       <span className={`incident-state ${i.resolvedAt ? 'resolved' : ''}`}>
-                        {i.resolvedAt ? 'Resolved' : 'Investigating'}
+                        {i.resolvedAt
+                          ? 'Resolved'
+                          : data.monitors.find((m) => m.id === i.monitorId)?.archivedAt
+                            ? 'Archived'
+                            : 'Investigating'}
                       </span>
                     </div>
                   ))}
@@ -496,22 +540,65 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
           </footer>
         </main>
       </div>
-      {create && (
+      {(create || editing) && (
         <CheckForm
-          onClose={() => setCreate(false)}
-          onCreated={(m) => {
+          key={editing ? `${editing.id}:${editing.configRevision}` : 'create'}
+          monitor={editing ?? undefined}
+          onClose={() => {
             setCreate(false);
+            setEditing(null);
+          }}
+          onSaved={(m) => {
+            refreshSequence.current++;
+            setNotice(
+              editing
+                ? `Saved revision ${m.configRevision}. Earlier results are preserved.`
+                : 'Check created. Its first run will start shortly.',
+            );
+            setCreate(false);
+            setEditing(null);
+            setActionError('');
             setSelected(m.id);
-            setData((d) => ({ ...d, monitors: [m, ...d.monitors] }));
-            setNotice('Check created. Its first run will start shortly.');
+            setFilter('all');
+            setData((d) => ({
+              ...d,
+              monitors: [m, ...d.monitors.filter((existing) => existing.id !== m.id)],
+            }));
             void refresh();
           }}
+        />
+      )}
+      {viewRevision && (
+        <RevisionViewer
+          key={`${viewRevision.monitorId}:${viewRevision.revision}`}
+          {...viewRevision}
+          onClose={() => setViewRevision(null)}
         />
       )}
       {current && (
         <CheckDetail
           monitor={current}
-          onClose={() => setSelected(null)}
+          key={current.id}
+          onClose={() => {
+            setSelected(null);
+            setActionError('');
+          }}
+          onEdit={() => {
+            setBusy(true);
+            setActionError('');
+            void api<Monitor>(`checks/${current.id}`)
+              .then((latest) => {
+                if (latest.archivedAt)
+                  throw new Error('This check was archived. Restore it before editing.');
+                setEditing(latest);
+              })
+              .catch((e) =>
+                setActionError(e instanceof Error ? e.message : 'Could not open editor'),
+              )
+              .finally(() => setBusy(false));
+          }}
+          onRevision={(revision) => setViewRevision({ monitorId: current.id, revision })}
+          actionError={actionError}
           onAction={(kind) => void action(current, kind)}
           busy={busy}
         />
@@ -547,14 +634,22 @@ function CheckDetail({
   monitor,
   onClose,
   onAction,
+  onEdit,
+  onRevision,
+  actionError,
   busy,
 }: {
   monitor: Monitor;
   onClose: () => void;
-  onAction: (kind: 'run' | 'toggle') => void;
+  onAction: (kind: 'run' | 'toggle' | 'archive' | 'restore') => void;
+  onEdit: () => void;
+  onRevision: (revision: number) => void;
+  actionError: string;
   busy: boolean;
 }) {
   const [runs, setRuns] = useState<Run[]>([]);
+  const [tab, setTab] = useState<'runs' | 'history'>('runs');
+  const [confirmArchive, setConfirmArchive] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   useEffect(() => {
@@ -583,7 +678,7 @@ function CheckDetail({
   }, [monitor.id]);
   useEffect(() => {
     const listener = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape' && !document.querySelector('dialog[open]')) onClose();
     };
     window.addEventListener('keydown', listener);
     return () => window.removeEventListener('keydown', listener);
@@ -602,20 +697,82 @@ function CheckDetail({
         <span className="method">{monitor.config.method}</span>
         {monitor.config.url}
       </p>
-      <div className="detail-actions">
-        <button
-          className="button primary"
-          disabled={busy || !monitor.enabled}
-          onClick={() => onAction('run')}
-        >
-          <Play size={14} />
-          Run now
-        </button>
-        <button className="button secondary" disabled={busy} onClick={() => onAction('toggle')}>
-          {monitor.enabled ? <Pause size={14} /> : <Play size={14} />}{' '}
-          {monitor.enabled ? 'Pause' : 'Resume'}
-        </button>
-      </div>
+      {monitor.archivedAt ? (
+        <div className="archive-note">
+          <p>
+            Archived {time(monitor.archivedAt)}. Results and configurations remain available. Open
+            incidents are preserved; archiving does not signal recovery.
+          </p>
+          <button className="button secondary" disabled={busy} onClick={() => onAction('restore')}>
+            <RotateCcw size={14} />
+            Restore check
+          </button>
+          <small>Restores paused. Public visibility follows the saved configuration.</small>
+        </div>
+      ) : (
+        <>
+          <div className="detail-actions">
+            <button
+              className="button primary"
+              disabled={busy || !monitor.enabled}
+              onClick={() => onAction('run')}
+            >
+              <Play size={14} />
+              Run now
+            </button>
+            <button className="button secondary" disabled={busy} onClick={() => onAction('toggle')}>
+              {monitor.enabled ? <Pause size={14} /> : <Play size={14} />}{' '}
+              {monitor.enabled ? 'Pause' : 'Resume'}
+            </button>
+            <button className="button secondary" disabled={busy} onClick={onEdit}>
+              <Pencil size={14} />
+              Edit check
+            </button>
+          </div>
+          {confirmArchive ? (
+            <div className="archive-note">
+              <p>
+                Archive {monitor.config.name}? This stops future checks and removes it from public
+                status. All history is kept. An in-flight request may finish before archiving takes
+                effect.
+              </p>
+              <div className="detail-actions">
+                <button
+                  className="button secondary"
+                  disabled={busy}
+                  onClick={() => setConfirmArchive(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="button secondary"
+                  disabled={busy}
+                  onClick={() => {
+                    onAction('archive');
+                    setConfirmArchive(false);
+                  }}
+                >
+                  Archive check
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              className="archive-link"
+              disabled={busy}
+              onClick={() => setConfirmArchive(true)}
+            >
+              <Archive size={14} />
+              Archive check
+            </button>
+          )}
+        </>
+      )}
+      {actionError && (
+        <p className="error-message" role="alert">
+          {actionError}
+        </p>
+      )}
       <dl className="check-config">
         <div>
           <dt>Expected status</dt>
@@ -631,65 +788,102 @@ function CheckDetail({
         </div>
         <div>
           <dt>Public status</dt>
-          <dd>{monitor.config.public ? 'Published' : 'Private'}</dd>
+          <dd>
+            {monitor.archivedAt
+              ? 'Hidden while archived'
+              : monitor.config.public
+                ? 'Published'
+                : 'Private'}
+          </dd>
         </div>
       </dl>
-      <div className="section-heading">
-        <h3>Recent responses</h3>
-        <span className="muted">Last {runs.length} runs</span>
+      <div className="detail-tabs" role="group" aria-label="Check detail view">
+        <button aria-pressed={tab === 'runs'} onClick={() => setTab('runs')}>
+          Responses
+        </button>
+        <button aria-pressed={tab === 'history'} onClick={() => setTab('history')}>
+          Configuration history
+        </button>
       </div>
-      {error && (
-        <p className="error-message" role="alert">
-          {error}
-        </p>
-      )}
-      {loading ? (
-        <p className="muted">Loading runs…</p>
-      ) : !runs.length ? (
-        <div className="detail-empty">
-          <Clock3 size={24} />
-          <p>Waiting for the first observation.</p>
-        </div>
+      {tab === 'history' ? (
+        <ConfigurationHistory key={monitor.configRevision} monitor={monitor} onView={onRevision} />
       ) : (
         <>
-          <div className="run-bars" aria-label="Recent response times">
-            {[...runs].reverse().map((r) => (
-              <div
-                key={r.id}
-                className={r.outcome}
-                style={{
-                  height: `${Math.max(8, Math.round((r.durationMs / Math.max(...runs.map((r) => r.durationMs), 1)) * 70))}px`,
-                }}
-                title={`${r.outcome} · ${r.durationMs} ms · ${time(r.checkedAt)}`}
-              />
-            ))}
+          <div className="section-heading">
+            <h3>Recent responses</h3>
+            <span className="muted">Last {runs.length} runs</span>
           </div>
-          <div className="run-list">
-            {runs.map((r) => (
-              <details key={r.id} className={`run ${r.outcome}`}>
-                <summary>
-                  <span className="run-dot" />
-                  <span>
-                    {r.outcome === 'pass'
-                      ? 'Passed'
-                      : r.outcome === 'fail'
-                        ? 'Failed'
-                        : 'Execution error'}
-                    <small>{time(r.checkedAt)}</small>
-                  </span>
-                  <span className="mono">{r.durationMs} ms</span>
-                </summary>
-                <div>
-                  <p>HTTP {r.statusCode ?? '—'}</p>
-                  {r.failures.length ? (
-                    r.failures.map((f, i) => <p key={i}>{f}</p>)
-                  ) : (
-                    <p>All assertions passed.</p>
-                  )}
-                </div>
-              </details>
-            ))}
-          </div>
+          {error && (
+            <p className="error-message" role="alert">
+              {error}
+            </p>
+          )}
+          {loading ? (
+            <p className="muted">Loading runs…</p>
+          ) : !runs.length ? (
+            <div className="detail-empty">
+              <Clock3 size={24} />
+              <p>Waiting for the first observation.</p>
+            </div>
+          ) : (
+            <>
+              <div className="run-bars" aria-label="Recent response times">
+                {[...runs].reverse().map((r) => (
+                  <div
+                    key={r.id}
+                    className={r.outcome}
+                    style={{
+                      height: `${Math.max(8, Math.round((r.durationMs / Math.max(...runs.map((r) => r.durationMs), 1)) * 70))}px`,
+                    }}
+                    title={`${r.outcome} · ${r.durationMs} ms · ${time(r.checkedAt)}`}
+                  />
+                ))}
+              </div>
+              <div className="run-list">
+                {runs.map((r) => (
+                  <details key={r.id} className={`run ${r.outcome}`}>
+                    <summary>
+                      <span className="run-dot" />
+                      <span>
+                        {r.outcome === 'pass'
+                          ? 'Passed'
+                          : r.outcome === 'fail'
+                            ? 'Failed'
+                            : 'Execution error'}
+                        <small>{time(r.checkedAt)}</small>
+                      </span>
+                      <span className="mono">{r.durationMs} ms</span>
+                    </summary>
+                    <div>
+                      <p>HTTP {r.statusCode ?? '—'}</p>
+                      <button
+                        className="revision-link"
+                        onClick={() => onRevision(r.configRevision)}
+                      >
+                        View configuration · Revision {r.configRevision}
+                      </button>
+                      {r.assertions?.length ? (
+                        <ul className="assertion-results">
+                          {r.assertions.map((assertion, index) => (
+                            <li key={index} data-passed={assertion.passed}>
+                              <strong>
+                                {assertion.passed ? 'Pass' : 'Fail'} · {assertion.label}
+                              </strong>
+                              <span>{assertion.message}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : r.failures.length ? (
+                        r.failures.map((f, i) => <p key={i}>{f}</p>)
+                      ) : (
+                        <p>All assertions passed.</p>
+                      )}
+                    </div>
+                  </details>
+                ))}
+              </div>
+            </>
+          )}
         </>
       )}
     </aside>

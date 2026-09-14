@@ -11,8 +11,9 @@
     "typecheck": "tsc"
   },
   "dependencies": {
-    "zod": "4.6.2",
+    "ajv": "^8.20.0",
+    "ipaddr.js": "^2.3.0",
     "undici": "^7.16.0",
-    "ipaddr.js": "^2.3.0"
+    "zod": "4.6.2"
   }
 }

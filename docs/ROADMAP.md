@@ -10,7 +10,11 @@ HTTP check creation; status/latency/JSON assertions; PostgreSQL persistence; dur
 
 ## Milestone 2 — Everyday administration
 
-Check editing with configuration revisions, safe archival, reusable secrets, project defaults, first-admin setup, user invitations and roles, delivery history/retry visibility, email notifications, and better incident investigation.
+**Implemented:** check editing with configuration revisions, immutable run attribution, stale-edit protection, reversible archival, restoration to a paused state, and configuration history in the UI.
+
+**API contracts implemented:** visual JSON/header assertion editor, typed comparisons, bounded draft-07 schema validation, and per-assertion results without storing response values.
+
+**Remaining:** reusable secrets, project defaults, first-admin setup, user invitations and roles, delivery history/retry visibility, email notifications, and better incident investigation.
 
 ## Milestone 3 — Complete status communication
 

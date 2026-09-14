@@ -2,17 +2,21 @@
 import { useRef, useState, useEffect } from 'react';
 import { X, ArrowRight, Globe2, Code2 } from 'lucide-react';
 import { checkSchema, type Monitor } from '@stillup/core';
+import { AssertionEditor } from './assertion-editor';
 export function CheckForm({
   onClose,
-  onCreated,
+  onSaved,
+  monitor,
 }: {
   onClose: () => void;
-  onCreated: (monitor: Monitor) => void;
+  onSaved: (monitor: Monitor) => void;
+  monitor?: Monitor;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [method, setMethod] = useState('GET');
+  const [method, setMethod] = useState(monitor?.config.method ?? 'GET');
+  const [body, setBody] = useState(monitor?.config.body ?? '');
   useEffect(() => {
     dialog.current?.showModal();
   }, []);
@@ -22,7 +26,7 @@ export function CheckForm({
     const form = new FormData(event.currentTarget);
     const number = (name: string) => Number(form.get(name));
     try {
-      const config = checkSchema.parse({
+      const parsed = checkSchema.safeParse({
         name: form.get('name'),
         url: form.get('url'),
         method,
@@ -33,23 +37,39 @@ export function CheckForm({
         failureThreshold: number('failureThreshold'),
         recoveryThreshold: number('recoveryThreshold'),
         headers: JSON.parse(String(form.get('headers') || '{}')),
-        body: String(form.get('body') || ''),
+        body: ['GET', 'HEAD'].includes(method) ? '' : body,
         jsonAssertions: JSON.parse(String(form.get('assertions') || '[]')),
+        headerAssertions:
+          form.get('headerAssertions') === '[]' && !monitor?.config.headerAssertions
+            ? undefined
+            : JSON.parse(String(form.get('headerAssertions') || '[]')),
+        responseSchema: String(form.get('responseSchema') || '').trim()
+          ? JSON.parse(String(form.get('responseSchema')))
+          : undefined,
         public: form.get('public') === 'on',
       });
+      if (!parsed.success)
+        throw new Error(
+          parsed.error.issues
+            .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+            .join('; '),
+        );
+      const config = parsed.data;
       setBusy(true);
-      const res = await fetch('/api/v1/checks', {
-        method: 'POST',
+      const res = await fetch(monitor ? `/api/v1/checks/${monitor.id}` : '/api/v1/checks', {
+        method: monitor ? 'PUT' : 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(config),
+        body: JSON.stringify(
+          monitor ? { config, expectedRevision: monitor.configRevision } : config,
+        ),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      onCreated(data);
+      onSaved(data);
     } catch (error) {
       setError(
         error instanceof SyntaxError
-          ? 'Headers and assertions must contain valid JSON.'
+          ? 'Headers and response schema must contain valid JSON.'
           : error instanceof Error
             ? error.message
             : 'Could not create check',
@@ -62,6 +82,7 @@ export function CheckForm({
     <dialog
       ref={dialog}
       className="check-dialog"
+      aria-labelledby="check-editor-title"
       onCancel={(event) => {
         event.preventDefault();
         if (!busy) onClose();
@@ -70,8 +91,12 @@ export function CheckForm({
       <form onSubmit={submit}>
         <header className="dialog-header">
           <div>
-            <span className="eyebrow">START MONITORING</span>
-            <h2>Give your API a checkup.</h2>
+            <span className="eyebrow">
+              {monitor ? `EDIT CHECK · REVISION ${monitor.configRevision}` : 'START MONITORING'}
+            </span>
+            <h2 id="check-editor-title">
+              {monitor ? `Edit ${monitor.config.name}` : 'Give your API a checkup.'}
+            </h2>
           </div>
           <button
             type="button"
@@ -84,6 +109,12 @@ export function CheckForm({
           </button>
         </header>
         <div className="dialog-content">
+          {monitor && (
+            <p className="edit-note">
+              Saving starts a fresh evaluation. Earlier results and any open incident stay in
+              history.{!monitor.enabled && ' This check will remain paused.'}
+            </p>
+          )}
           <div className="form-section-title">
             <Globe2 size={18} />
             <h3>Request</h3>
@@ -92,6 +123,7 @@ export function CheckForm({
           <input
             id="check-name"
             name="name"
+            defaultValue={monitor?.config.name}
             placeholder="Production API"
             maxLength={80}
             required
@@ -100,7 +132,11 @@ export function CheckForm({
           <div className="request-fields">
             <div>
               <label htmlFor="method">Method</label>
-              <select id="method" value={method} onChange={(e) => setMethod(e.target.value)}>
+              <select
+                id="method"
+                value={method}
+                onChange={(e) => setMethod(e.target.value as Monitor['config']['method'])}
+              >
                 {['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'].map((m) => (
                   <option key={m}>{m}</option>
                 ))}
@@ -111,6 +147,7 @@ export function CheckForm({
               <input
                 id="url"
                 name="url"
+                defaultValue={monitor?.config.url}
                 type="url"
                 placeholder="https://api.example.com/health"
                 required
@@ -120,12 +157,23 @@ export function CheckForm({
           <div className="form-grid">
             <div>
               <label htmlFor="interval">Run every</label>
-              <select id="interval" name="intervalSeconds" defaultValue="60">
+              <select
+                id="interval"
+                name="intervalSeconds"
+                defaultValue={monitor?.config.intervalSeconds ?? 60}
+              >
                 <option value="30">30 seconds</option>
                 <option value="60">1 minute</option>
                 <option value="300">5 minutes</option>
                 <option value="900">15 minutes</option>
                 <option value="3600">1 hour</option>
+                <option value="86400">1 day</option>
+                {monitor &&
+                  ![30, 60, 300, 900, 3600, 86400].includes(monitor.config.intervalSeconds) && (
+                    <option value={monitor.config.intervalSeconds}>
+                      {monitor.config.intervalSeconds} seconds
+                    </option>
+                  )}
               </select>
             </div>
             <div>
@@ -136,7 +184,7 @@ export function CheckForm({
                 type="number"
                 min="100"
                 max="30000"
-                defaultValue="10000"
+                defaultValue={monitor?.config.timeoutMs ?? 10000}
                 required
               />
             </div>
@@ -154,7 +202,7 @@ export function CheckForm({
                 type="number"
                 min="100"
                 max="599"
-                defaultValue="200"
+                defaultValue={monitor?.config.expectedStatus ?? 200}
                 required
               />
             </div>
@@ -163,6 +211,7 @@ export function CheckForm({
               <input
                 id="latency"
                 name="maxResponseMs"
+                defaultValue={monitor?.config.maxResponseMs ?? ''}
                 type="number"
                 min="1"
                 max="30000"
@@ -177,7 +226,7 @@ export function CheckForm({
                 type="number"
                 min="1"
                 max="10"
-                defaultValue="2"
+                defaultValue={monitor?.config.failureThreshold ?? 2}
                 required
               />
             </div>
@@ -189,17 +238,44 @@ export function CheckForm({
                 type="number"
                 min="1"
                 max="10"
-                defaultValue="1"
+                defaultValue={monitor?.config.recoveryThreshold ?? 1}
                 required
               />
             </div>
           </div>
+          <AssertionEditor kind="json" initial={monitor?.config.jsonAssertions} />
+          <AssertionEditor kind="header" initial={monitor?.config.headerAssertions} />
+          <details className="advanced" open={monitor?.config.responseSchema !== undefined}>
+            <summary>JSON Schema validation</summary>
+            <label htmlFor="response-schema">Response schema (optional)</label>
+            <textarea
+              id="response-schema"
+              name="responseSchema"
+              rows={6}
+              maxLength={16384}
+              defaultValue={
+                monitor?.config.responseSchema !== undefined
+                  ? JSON.stringify(monitor.config.responseSchema, null, 2)
+                  : ''
+              }
+              placeholder={
+                '{"type":"object","required":["status"],"properties":{"status":{"type":"string"}}}'
+              }
+            />
+            <p className="field-hint">
+              Draft-07 subset: type, properties, required, additionalProperties (boolean), items,
+              enum (scalar values), minimum, maximum, minLength, maxLength, minItems, maxItems,
+              title, description. Up to 16 KiB and 8 nested levels; references and regex patterns
+              are not supported. Leave empty to disable.
+            </p>
+          </details>
           <details className="advanced">
-            <summary>Headers, request body & JSON assertions</summary>
+            <summary>Request headers & body</summary>
             <label htmlFor="headers">Headers (JSON object)</label>
             <textarea
               id="headers"
               name="headers"
+              defaultValue={monitor ? JSON.stringify(monitor.config.headers, null, 2) : ''}
               rows={3}
               placeholder={'{"Authorization": "Bearer {{API_TOKEN}}"}'}
             />
@@ -210,22 +286,19 @@ export function CheckForm({
             {!['GET', 'HEAD'].includes(method) && (
               <>
                 <label htmlFor="body">Request body</label>
-                <textarea id="body" name="body" rows={3} placeholder={'{"example": true}'} />
+                <textarea
+                  id="body"
+                  name="body"
+                  value={body}
+                  onChange={(e) => setBody(e.target.value)}
+                  rows={3}
+                  placeholder={'{"example": true}'}
+                />
               </>
             )}
-            <label htmlFor="assertions">JSON assertions</label>
-            <textarea
-              id="assertions"
-              name="assertions"
-              rows={3}
-              placeholder={'[{"path":"$.status","equals":"ok"}]'}
-            />
-            <p className="field-hint">
-              Dot paths support object fields and array indexes, such as $.items.0.id.
-            </p>
           </details>
           <label className="checkbox-label">
-            <input name="public" type="checkbox" />
+            <input name="public" type="checkbox" defaultChecked={monitor?.config.public ?? false} />
             <span>
               Show on public status page
               <small>
@@ -250,7 +323,7 @@ export function CheckForm({
             Cancel
           </button>
           <button className="button primary" disabled={busy}>
-            {busy ? 'Creating…' : 'Create check'}
+            {busy ? (monitor ? 'Saving…' : 'Creating…') : monitor ? 'Save changes' : 'Create check'}
             <ArrowRight size={16} />
           </button>
         </footer>
