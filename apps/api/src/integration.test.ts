@@ -18,8 +18,21 @@ const legacyId = randomUUID();
 let hold: { entered: () => void; release: Promise<void> } | null = null;
 let targetRequests = 0;
 const notifications: unknown[] = [];
+let hookStatus = 503;
+const hookCalls: { key: string | undefined; body: Record<string, unknown> }[] = [];
 const fixture = httpServer((req, res) => {
-  if (req.url === '/webhook') {
+  if (req.url?.startsWith('/delivery-hook')) {
+    let body = '';
+    req.on('data', (chunk) => (body += chunk));
+    req.on('end', () => {
+      hookCalls.push({
+        key: req.headers['idempotency-key'] as string | undefined,
+        body: JSON.parse(body),
+      });
+      res.writeHead(hookStatus);
+      res.end('private-response-token');
+    });
+  } else if (req.url === '/webhook') {
     let data = '';
     req.on('data', (chunk) => (data += chunk));
     req.on('end', () => {
@@ -641,5 +654,345 @@ suite(
     expect(runs[0].outcome).toBe('fail');
     expect(response.body).not.toContain('do-not-store');
     expect((await service.getRuns(legacyId))[0]!.assertions).toEqual([]);
+  },
+);
+
+suite(
+  'manages private channel destinations, validates routing, and enforces authorization and revisions',
+  async () => {
+    const path = '/v1/notification-channels';
+    expect((await app.inject({ url: path })).statusCode).toBe(401);
+    const headers = { authorization: `Bearer ${token}` };
+    const created = await app.inject({
+      url: path,
+      method: 'POST',
+      headers,
+      payload: {
+        name: 'Operations',
+        url: origin + '/delivery-hook/private-url-token',
+        isDefault: false,
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    const ch = created.json();
+    expect(created.body).not.toContain('private-url-token');
+    expect(ch.destination).toBe(origin);
+    const edited = await app.inject({
+      url: `${path}/${ch.id}`,
+      method: 'PUT',
+      headers,
+      payload: { name: 'Operations renamed', enabled: true, isDefault: false, expectedRevision: 1 },
+    });
+    expect(edited.statusCode).toBe(200);
+    expect(
+      (
+        await app.inject({
+          url: `${path}/${ch.id}`,
+          method: 'PUT',
+          headers,
+          payload: { name: 'Stale', enabled: true, isDefault: true, expectedRevision: 1 },
+        })
+      ).statusCode,
+    ).toBe(409);
+    expect(
+      (
+        await app.inject({
+          url: '/v1/checks',
+          method: 'POST',
+          headers,
+          payload: { name: 'Bad routing', url: origin, notificationChannelIds: [randomUUID()] },
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          url: path,
+          method: 'POST',
+          headers,
+          payload: { name: 'Bad URL', url: 'http://user:password@example.com' },
+        })
+      ).statusCode,
+    ).toBe(400);
+    const tested = await app.inject({ url: `${path}/${ch.id}/test`, method: 'POST', headers });
+    expect(tested.statusCode).toBe(202);
+    const detail = await service.notifications.attempts(tested.json().deliveryId);
+    expect(detail.delivery.event.type).toBe('notification.test');
+    expect(detail.delivery.incidentId).toBeNull();
+    expect(JSON.stringify(detail)).not.toContain('private-url-token');
+  },
+);
+
+suite(
+  'retries durably with stable idempotency, records six failures, and supports manual retry',
+  async () => {
+    const channel = await service.notifications.saveChannel({
+      name: 'Retry channel',
+      url: origin + '/delivery-hook/private-destination',
+    });
+    const { deliveryId } = await service.notifications.testChannel(channel.id);
+    hookStatus = 503;
+    const start = hookCalls.length;
+    for (let i = 1; i <= 6; i++) {
+      await service.pool.query(
+        'UPDATE notification_deliveries SET next_attempt_at=now() WHERE id=$1',
+        [deliveryId],
+      );
+      expect(await service.notifications.deliverOne(deliveryId)).toBe(true);
+      const result = await service.notifications.attempts(deliveryId!);
+      expect(result.delivery.attempts).toBe(i);
+      expect(result.delivery.status).toBe(i === 6 ? 'failed' : 'retrying');
+      expect(result.attempts[0]?.statusCode).toBe(503);
+      if (i < 6)
+        expect(Date.parse(result.delivery.nextAttemptAt!) - Date.now()).toBeGreaterThan(29000);
+      expect(JSON.stringify(result)).not.toMatch(/private-destination|private-response-token/);
+    }
+    expect(hookCalls.slice(start).map((c) => c.key)).toEqual(Array(6).fill(deliveryId));
+    expect(
+      hookCalls
+        .slice(start)
+        .every((c) => c.body.eventId === deliveryId && c.body.type === 'notification.test'),
+    ).toBe(true);
+    expect(await service.notifications.deliverOne(deliveryId)).toBe(false);
+    const retries = await Promise.allSettled([
+      service.notifications.retry(deliveryId!),
+      service.notifications.retry(deliveryId!),
+    ]);
+    expect(retries.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    hookStatus = 204;
+    const deliveries = await Promise.all([
+      service.notifications.deliverOne(deliveryId),
+      service.notifications.deliverOne(deliveryId),
+    ]);
+    expect(deliveries.filter(Boolean)).toHaveLength(1);
+    const final = await service.notifications.attempts(deliveryId!);
+    expect(final.delivery.status).toBe('delivered');
+    expect(final.delivery.attempts).toBe(7);
+    expect(final.delivery.cycleAttempts).toBe(1);
+    expect(final.attempts).toHaveLength(7);
+    await expect(service.notifications.retry(deliveryId!)).rejects.toMatchObject({
+      statusCode: 409,
+    });
+  },
+);
+
+suite(
+  'recovers expired delivery leases and cancels disabled channels without making a request',
+  async () => {
+    hookStatus = 204;
+    const ch = await service.notifications.saveChannel({
+      name: 'Lease recovery',
+      url: origin + '/delivery-hook',
+    });
+    const { deliveryId } = await service.notifications.testChannel(ch.id);
+    const claim = randomUUID();
+    await service.pool.query(
+      "UPDATE notification_deliveries SET status='delivering',attempts=1,cycle_attempts=1,claim_id=$2,lease_until=now()-interval '1 second',next_attempt_at=now()-interval '1 second' WHERE id=$1",
+      [deliveryId, claim],
+    );
+    await service.pool.query(
+      'INSERT INTO notification_attempts(id,delivery_id,number) VALUES($1,$2,1)',
+      [claim, deliveryId],
+    );
+    await service.notifications.deliverOne(deliveryId);
+    const recovered = await service.notifications.attempts(deliveryId!);
+    expect(recovered.delivery.status).toBe('delivered');
+    expect(recovered.attempts[1]?.error).toContain('interrupted');
+    const next = await service.notifications.testChannel(ch.id);
+    await service.notifications.saveChannel(
+      { name: ch.name, enabled: false, isDefault: false, expectedRevision: ch.revision },
+      ch.id,
+    );
+    const before = hookCalls.length;
+    await service.notifications.deliverOne(next.deliveryId);
+    expect(hookCalls).toHaveLength(before);
+    expect((await service.notifications.attempts(next.deliveryId!)).delivery.status).toBe(
+      'cancelled',
+    );
+  },
+);
+
+suite(
+  'routes transitions once, orders recovery after opening, and retains incident snapshots after run retention',
+  async () => {
+    hookStatus = 503;
+    status = 503;
+    const ch = await service.notifications.saveChannel({
+      name: 'Incident route',
+      url: origin + '/delivery-hook',
+    });
+    const config = checkSchema.parse({
+      name: 'Routed incident',
+      url: origin,
+      failureThreshold: 1,
+      notificationChannelIds: [ch.id],
+    });
+    const monitor = await service.createCheck(config);
+    const perform = () =>
+      service.runJob({
+        id: randomUUID(),
+        data: {
+          monitorId: monitor.id,
+          scheduledAt: Date.now(),
+          configRevision: 1,
+          executionEpoch: 1,
+        },
+      });
+    await perform();
+    await perform();
+    const incident = (await service.dashboard()).incidents.find((i) => i.monitorId === monitor.id)!;
+    const opening = (await service.notifications.history(incident.id)).deliveries;
+    expect(opening).toHaveLength(1);
+    expect(opening[0]?.channelId).toBe(ch.id);
+    await service.notifications.deliverOne(opening[0]!.id);
+    status = 200;
+    await perform();
+    const history = (await service.notifications.history(incident.id)).deliveries;
+    const recovery = history.find((d) => d.event.type === 'incident.resolved')!;
+    expect(await service.notifications.deliverOne(recovery.id)).toBe(false);
+    hookStatus = 204;
+    await service.pool.query(
+      'UPDATE notification_deliveries SET next_attempt_at=now() WHERE id=$1',
+      [opening[0]!.id],
+    );
+    await service.notifications.deliverOne(opening[0]!.id);
+    await service.notifications.deliverOne(recovery.id);
+    expect((await service.notifications.attempts(recovery.id)).delivery.status).toBe('delivered');
+    const timeline = await service.incidentTimeline(incident.id);
+    expect(timeline.events.map((e) => e.type)).toEqual(['incident.opened', 'incident.resolved']);
+    expect(timeline.observations).toHaveLength(3);
+    expect(timeline.events[0]?.result.outcome).toBe('fail');
+    expect(timeline.events[1]?.result.outcome).toBe('pass');
+    await service.pool.query('DELETE FROM runs WHERE monitor_id=$1', [monitor.id]);
+    expect((await service.incidentTimeline(incident.id)).events).toHaveLength(2);
+    expect((await service.incidentTimeline(incident.id)).observations).toHaveLength(0);
+    status = 503;
+    const muted = await service.createCheck(
+      checkSchema.parse({
+        name: 'Muted',
+        url: origin,
+        failureThreshold: 1,
+        notificationChannelIds: [],
+      }),
+    );
+    await service.runJob({
+      id: randomUUID(),
+      data: { monitorId: muted.id, scheduledAt: Date.now() },
+    });
+    const mutedIncident = (await service.dashboard()).incidents.find(
+      (i) => i.monitorId === muted.id,
+    )!;
+    expect((await service.notifications.history(mutedIncident.id)).deliveries).toHaveLength(0);
+  },
+);
+
+suite(
+  'queues opt-in reminders once and suppresses paused, stale, recovering, and resolved incidents',
+  async () => {
+    status = 503;
+    hookStatus = 204;
+    const ch = await service.notifications.saveChannel({
+      name: 'Reminders',
+      url: origin + '/delivery-hook',
+    });
+    const monitor = await service.createCheck(
+      checkSchema.parse({
+        name: 'Reminder check',
+        url: origin,
+        failureThreshold: 1,
+        reminderIntervalSeconds: 300,
+        notificationChannelIds: [ch.id],
+      }),
+    );
+    await service.runJob({
+      id: randomUUID(),
+      data: { monitorId: monitor.id, scheduledAt: Date.now() },
+    });
+    const incident = (await service.dashboard()).incidents.find((i) => i.monitorId === monitor.id)!;
+    const opening = (await service.notifications.history(incident.id)).deliveries[0]!;
+    await service.notifications.deliverOne(opening.id);
+    const due = () =>
+      service.pool.query(
+        "UPDATE incidents SET last_reminder_at=now()-interval '301 seconds' WHERE id=$1",
+        [incident.id],
+      );
+    await due();
+    await Promise.all([service.notifications.reminders(), service.notifications.reminders()]);
+    let reminders = (await service.notifications.history(incident.id)).deliveries.filter(
+      (d) => d.event.type === 'incident.reminder',
+    );
+    expect(reminders).toHaveLength(1);
+    await service.notifications.deliverOne(reminders[0]!.id);
+    for (const change of [
+      'enabled=false',
+      "enabled=true,last_observed_at=now()-interval '1 day'",
+      "last_observed_at=now(),last_outcome='pass'",
+    ]) {
+      await service.pool.query(`UPDATE monitors SET ${change} WHERE id=$1`, [monitor.id]);
+      await due();
+      await service.notifications.reminders();
+      expect((await service.notifications.history(incident.id)).deliveries).toHaveLength(2);
+    }
+    await service.pool.query("UPDATE monitors SET last_outcome='fail' WHERE id=$1", [monitor.id]);
+    await due();
+    await service.notifications.reminders();
+    reminders = (await service.notifications.history(incident.id)).deliveries.filter(
+      (d) => d.status === 'pending',
+    );
+    expect(reminders).toHaveLength(1);
+    await service.pool.query('UPDATE incidents SET resolved_at=now() WHERE id=$1', [incident.id]);
+    const before = hookCalls.length;
+    await service.notifications.deliverOne(reminders[0]!.id);
+    expect(hookCalls).toHaveLength(before);
+    expect((await service.notifications.attempts(reminders[0]!.id)).delivery.status).toBe(
+      'cancelled',
+    );
+  },
+);
+
+suite(
+  'paginates delivery history, drains legacy notifications idempotently, and keeps management data private',
+  async () => {
+    const ch = await service.notifications.saveChannel({
+      name: 'Paged channel',
+      url: origin + '/delivery-hook/secret-page-token',
+    });
+    for (let i = 0; i < 27; i++) await service.notifications.testChannel(ch.id);
+    const first = await service.notifications.history();
+    expect(first.deliveries).toHaveLength(25);
+    expect(first.nextBefore).not.toBeNull();
+    const next = await service.notifications.history(undefined, first.nextBefore!);
+    expect(next.deliveries.some((d) => first.deliveries.some((f) => f.id === d.id))).toBe(false);
+    const incident = (await service.dashboard()).incidents[0]!;
+    const legacy = {
+      id: randomUUID(),
+      data: {
+        id: incident.id,
+        type: 'incident.opened' as const,
+        name: incident.name,
+        at: incident.openedAt,
+      },
+    };
+    await service.notifications.legacy(legacy);
+    await service.notifications.legacy(legacy);
+    expect(
+      (await service.notifications.history(incident.id)).deliveries.filter(
+        (d) => d.id === legacy.id,
+      ),
+    ).toHaveLength(1);
+    const headers = { authorization: `Bearer ${token}` };
+    for (const url of [
+      '/v1/notification-deliveries',
+      `/v1/notification-deliveries/${first.deliveries[0]!.id}`,
+      `/v1/incidents/${incident.id}`,
+    ]) {
+      expect((await app.inject({ url })).statusCode).toBe(401);
+      const response = await app.inject({ url, headers });
+      expect(response.statusCode).toBe(200);
+      expect(response.body).not.toMatch(/secret-page-token|private-response-token|target_url/);
+    }
+    expect((await app.inject({ url: '/v1/public/status' })).body).not.toMatch(
+      /notification|secret-page-token|target_url/,
+    );
   },
 );

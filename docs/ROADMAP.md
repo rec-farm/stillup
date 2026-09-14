@@ -14,7 +14,9 @@ HTTP check creation; status/latency/JSON assertions; PostgreSQL persistence; dur
 
 **API contracts implemented:** visual JSON/header assertion editor, typed comparisons, bounded draft-07 schema validation, and per-assertion results without storing response values.
 
-**Remaining:** reusable secrets, project defaults, first-admin setup, user invitations and roles, delivery history/retry visibility, email notifications, and better incident investigation.
+**Alerting implemented:** configurable webhook channels, per-check routing, durable delivery/attempt history, backoff and manual retry, interrupted-worker recovery, ordered transitions, optional outage reminders, and incident timelines with retained opening/recovery snapshots.
+
+**Remaining:** reusable secrets, project defaults, first-admin setup, user invitations and roles, and email notifications.
 
 ## Milestone 3 — Complete status communication
 
@@ -36,7 +38,7 @@ Scoped remote-runner credentials, job leases and versioned protocol, private loc
 - A committed run is idempotent by job ID; a worker crash after a network request but before commit can repeat that request. Monitoring requests must tolerate repetition.
 - The scheduler advances overdue checks to their next interval, rather than replaying missed intervals after downtime.
 - Public incident history includes the latest 50 incidents belonging to published checks.
-- Detailed observations expire; incidents persist. No retention-independent uptime aggregate yet.
+- Detailed observations expire; incidents, transition snapshots, and delivery history persist. No retention-independent uptime aggregate yet.
 - Browser session revocation is installation-token rotation or expiry; sign-out removes the current browser cookie.
 - Rate limits are process-local. All browser API proxy traffic shares a rate-limit bucket in this initial single-admin deployment.
 - No managed geographic locations, external SaaS dependencies, or billing.

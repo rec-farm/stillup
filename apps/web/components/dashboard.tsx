@@ -29,6 +29,7 @@ import type { Dashboard, Monitor, Run, Health } from '@stillup/core';
 import { Brand } from './brand';
 import { CheckForm } from './check-form';
 import { ConfigurationHistory, RevisionViewer } from './configuration-history';
+import { NotificationDialog, IncidentDialog } from './notifications';
 const labels: Record<Health, string> = {
   up: 'Healthy',
   down: 'Failing',
@@ -69,6 +70,8 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 export function DashboardView({ initial }: { initial: Dashboard }) {
   const [data, setData] = useState(initial);
   const [create, setCreate] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [incidentId, setIncidentId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Monitor | null>(null);
   const [viewRevision, setViewRevision] = useState<{ monitorId: string; revision: number } | null>(
     null,
@@ -486,7 +489,9 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
                     <div className="incident" key={i.id}>
                       <span className={`incident-dot ${i.resolvedAt ? 'resolved' : ''}`} />
                       <div>
-                        <strong>{i.name}</strong>
+                        <button className="revision-link" onClick={() => setIncidentId(i.id)}>
+                          {i.name}
+                        </button>
                         <small>{time(i.openedAt)}</small>
                       </div>
                       <span className={`incident-state ${i.resolvedAt ? 'resolved' : ''}`}>
@@ -530,8 +535,11 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
               </div>
               <p>
                 <CircleHelp size={14} />
-                Configure ALERT_WEBHOOK_URL to receive incident and recovery events.
+                Receive incident and recovery events through your notification channels.
               </p>
+              <button className="button secondary" onClick={() => setNotificationsOpen(true)}>
+                Manage notifications
+              </button>
             </section>
           </div>
           <footer className="dashboard-footer">
@@ -540,6 +548,20 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
           </footer>
         </main>
       </div>
+      {notificationsOpen && (
+        <NotificationDialog
+          onClose={() => setNotificationsOpen(false)}
+          onChanged={() => void refresh()}
+        />
+      )}
+      {incidentId && (
+        <IncidentDialog
+          key={incidentId}
+          id={incidentId}
+          onClose={() => setIncidentId(null)}
+          onRevision={(monitorId, revision) => setViewRevision({ monitorId, revision })}
+        />
+      )}
       {(create || editing) && (
         <CheckForm
           key={editing ? `${editing.id}:${editing.configRevision}` : 'create'}

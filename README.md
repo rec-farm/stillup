@@ -115,19 +115,34 @@ Configuration edits and lifecycle changes serialize with in-flight requests: a r
 
 ## Alerts
 
-Set `ALERT_WEBHOOK_URL` to receive JSON events for incident opening and recovery. Restart the API and worker after changing it. The dashboard shows whether a webhook is configured.
+Open **Manage notifications** on the dashboard to add, edit, enable, or disable webhook channels and send a labeled test notification. Channels have an optional default flag. A check uses default channels unless its configuration selects channel IDs; an empty `notificationChannelIds` array mutes the check. The check editor exposes these controls. API channel creation defaults `isDefault` to false; the UI explicitly offers it enabled for a new channel.
+
+Existing `ALERT_WEBHOOK_URL` installations automatically get an environment-backed default channel. Its name/default/enabled settings are editable; change its URL through the environment and restart all API/worker processes together. Legacy queued notifications are imported into delivery history with their original idempotency key. Stop older writers before upgrading; migration `004_notifications.sql` runs at startup.
 
 ```json
 {
-  "eventId": "delivery-job-uuid",
+  "eventId": "delivery-uuid",
   "id": "incident-uuid",
   "type": "incident.opened",
   "name": "Production API",
-  "at": "2026-09-12T12:00:00.000Z"
+  "at": "2026-09-12T12:00:00.000Z",
+  "monitorId": "check-uuid",
+  "runId": "run-uuid",
+  "configRevision": 1
 }
 ```
 
-Recovery uses `incident.resolved`. Deliveries have a 10-second timeout and up to five retries with backoff. Delivery is at least once: receivers should deduplicate using `eventId` or the `Idempotency-Key` header. Webhook payloads omit endpoint URLs and response details. The destination is configured by the installation operator and must be trusted. Events created while alerts are disabled are not delivered retroactively.
+Recovery uses `incident.resolved`, opt-in reminders use `incident.reminder`, and tests use `notification.test`. Test events do not create incidents. Payloads omit monitored URLs and response details; reminders and legacy events may omit run attribution.
+
+Delivery history shows pending, delivering, retrying, delivered, failed, and cancelled records with attempt timestamps and safe error messages. There are six attempts per cycle, a 10-second request timeout, and retry delays of 30, 60, 120, 240, and 480 seconds. A 2xx response acknowledges delivery; redirects are never followed and response bodies are discarded. Network policies (including DNS pinning and `ALLOW_PRIVATE_NETWORKS`) apply to webhooks as well as checks. Private webhook receivers need the private-network setting explicitly enabled.
+
+Attempts use a persistent 30-second lease. An interrupted worker leaves a visible attempt and another worker can retry after expiry. Delivery is **at least once**: a receiver can accept a message just before the worker crashes. Receivers should deduplicate the stable `eventId` / `Idempotency-Key`, including across manual retries. Events for one incident/channel are attempted in creation order; a recovery waits until earlier deliveries complete, fail, or are cancelled. Other channels and incidents can progress independently.
+
+**Retry delivery** starts a fresh six-attempt cycle for a failed/cancelled record, preserving its history, original destination, payload, and idempotency key. Changing a channel URL affects future events and tests. Disabling a channel cancels queued deliveries when processed; a request already in flight may finish. Events created without any enabled destination are not delivered retroactively. Full webhook URLs are stored in the database but never returned by management/history APIs; the UI shows their origin only. Protect database access and backups.
+
+Set `reminderIntervalSeconds` on a check (300–86400 seconds) to enable outage reminders. The default is off. Reminders require a still-open incident, an enabled/unarchived check, and recent failed observations. They stop when paused, archived, stale, or showing recovery observations. Queued reminders are rechecked before sending. Missed reminder intervals are not replayed.
+
+Click an incident name for its timeline: opening/recovery snapshots, retained observations, configuration revision links, and associated deliveries. Transition snapshots survive run retention. Older incidents cannot reconstruct transition snapshots that were never recorded. History pages contain 25 deliveries or 50 observations and provide `nextBefore`; attempt details show the latest 100 attempts. Delivery and incident history currently persist without automatic pruning.
 
 ## API
 
@@ -194,3 +209,17 @@ Restore into a new database first and verify it before changing `DATABASE_URL`. 
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE).
+
+Notification and investigation endpoints (all require administrator authentication):
+
+| Method     | Endpoint                                            | Purpose                                                                       |
+| ---------- | --------------------------------------------------- | ----------------------------------------------------------------------------- |
+| GET / POST | `/v1/notification-channels`                         | List channels / create a channel                                              |
+| PUT        | `/v1/notification-channels/:id`                     | Save name, enabled, isDefault, optional replacement URL, and expectedRevision |
+| POST       | `/v1/notification-channels/:id/test`                | Queue a labeled test notification                                             |
+| GET        | `/v1/notification-deliveries?incidentId=…&before=…` | Delivery history; both filters optional                                       |
+| GET        | `/v1/notification-deliveries/:id`                   | Delivery and latest 100 attempts                                              |
+| POST       | `/v1/notification-deliveries/:id/retry`             | Retry a failed/cancelled delivery                                             |
+| GET        | `/v1/incidents/:id?before=…`                        | Incident transitions and paginated observations                               |
+
+Test and retry endpoints each allow 10 requests per minute within the existing installation-wide rate limits. Channel edits reject stale revisions with HTTP 409. Channel URLs cannot contain embedded HTTP credentials or fragments. Up to 100 channels per installation and 20 selected channels per check are supported.

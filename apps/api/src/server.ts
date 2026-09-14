@@ -150,5 +150,44 @@ export async function createServer(service: Service) {
       .parse(request.params);
     return service.getRevision(id, revision);
   });
+  app.get('/v1/notification-channels', () => service.notifications.listChannels());
+  app.post('/v1/notification-channels', async (request, reply) =>
+    reply.code(201).send(await service.notifications.saveChannel(request.body)),
+  );
+  app.put('/v1/notification-channels/:id', async (request) => {
+    const { id } = z.object({ id: z.uuid() }).parse(request.params);
+    return service.notifications.saveChannel(request.body, id);
+  });
+  app.post(
+    '/v1/notification-channels/:id/test',
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const { id } = z.object({ id: z.uuid() }).parse(request.params);
+      return reply.code(202).send(await service.notifications.testChannel(id));
+    },
+  );
+  app.get('/v1/notification-deliveries', async (request) => {
+    const { incidentId, before } = z
+      .object({ incidentId: z.uuid().optional(), before: z.uuid().optional() })
+      .parse(request.query);
+    return service.notifications.history(incidentId, before);
+  });
+  app.get('/v1/notification-deliveries/:id', async (request) => {
+    const { id } = z.object({ id: z.uuid() }).parse(request.params);
+    return service.notifications.attempts(id);
+  });
+  app.post(
+    '/v1/notification-deliveries/:id/retry',
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const { id } = z.object({ id: z.uuid() }).parse(request.params);
+      return reply.code(202).send(await service.notifications.retry(id));
+    },
+  );
+  app.get('/v1/incidents/:id', async (request) => {
+    const { id } = z.object({ id: z.uuid() }).parse(request.params);
+    const { before } = z.object({ before: z.uuid().optional() }).parse(request.query);
+    return service.incidentTimeline(id, before);
+  });
   return app;
 }

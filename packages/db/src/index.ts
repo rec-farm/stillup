@@ -89,3 +89,5 @@ export function connectDatabase(url: string) {
   };
 }
 export { eq, desc, and, sql, isNull } from 'drizzle-orm';
+
+export type { PoolClient } from 'pg';

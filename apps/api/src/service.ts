@@ -24,14 +24,9 @@ import { executeCheck } from '@stillup/core/executor';
 import { env } from './env';
 import { migrate } from './migrate';
 
-export class CheckError extends Error {
-  constructor(
-    public statusCode: number,
-    message: string,
-  ) {
-    super(message);
-  }
-}
+import { CheckError } from './errors';
+export { CheckError } from './errors';
+import { createNotifications } from './notifications';
 type CheckJob = {
   monitorId: string;
   scheduledAt: number;
@@ -46,6 +41,8 @@ type CheckChange =
 export async function createService() {
   await migrate(env.DATABASE_URL);
   const { pool, db } = connectDatabase(env.DATABASE_URL);
+  const notifications = createNotifications(pool);
+  await notifications.initialize();
   const boss = new PgBoss({ connectionString: env.DATABASE_URL });
   boss.on('error', (error) => console.error('Queue error:', error.message));
   await boss.start();
@@ -89,7 +86,7 @@ export async function createService() {
       monitors: rows.map(toMonitor),
       incidents: history,
       workerAt: heartbeat.rows[0]?.seen_at?.toISOString() ?? null,
-      notificationsEnabled: Boolean(env.ALERT_WEBHOOK_URL),
+      notificationsEnabled: (await notifications.listChannels()).some((c) => c.enabled),
     };
   }
   async function publicStatus(): Promise<PublicStatus> {
@@ -236,7 +233,7 @@ export async function createService() {
           result.outcome,
         ],
       );
-      let event: { id: string; type: string; name: string; at: string } | null = null;
+      let event: import('@stillup/core').AlertEvent | null = null;
       if (state.status === 'down' && row.status !== 'down') {
         const {
           rows: [incident],
@@ -265,10 +262,18 @@ export async function createService() {
             at: result.checkedAt,
           };
       }
-      if (event && env.ALERT_WEBHOOK_URL)
-        await boss.send('notify', event, {
-          db: { executeSql: (text, values) => client.query(text, values) },
+      if (event) {
+        Object.assign(event, {
+          monitorId: row.id,
+          runId: job.id,
+          configRevision: row.config_revision,
         });
+        await client.query(
+          'INSERT INTO incident_events(incident_id,type,at,run_id,config_revision,result) VALUES($1,$2,$3,$4,$5,$6)',
+          [event.id, event.type, event.at, job.id, row.config_revision, JSON.stringify(result)],
+        );
+        await notifications.queueEvent(client, event, config, `${event.id}:${event.type}`);
+      }
       await client.query('COMMIT');
     } catch (error) {
       await client.query('ROLLBACK');
@@ -278,6 +283,7 @@ export async function createService() {
     }
   }
   async function changeCheck(id: string, change: CheckChange, expectedRevision?: number) {
+    if (change.kind === 'edit') await notifications.validateRoutes(change.config);
     return db.transaction(async (tx) => {
       const [row] = await tx.select().from(monitors).where(eq(monitors.id, id)).for('update');
       if (!row) throw new CheckError(404, 'Check not found');
@@ -361,6 +367,46 @@ export async function createService() {
     if (!row) throw new CheckError(404, 'Configuration revision not found');
     return row;
   }
+  async function incidentTimeline(
+    id: string,
+    before?: string,
+  ): Promise<import('@stillup/core').IncidentTimeline> {
+    const [incident] = await db.select().from(incidents).where(eq(incidents.id, id));
+    if (!incident) throw new CheckError(404, 'Incident not found');
+    const [events, observations] = await Promise.all([
+      pool.query('SELECT * FROM incident_events WHERE incident_id=$1 ORDER BY at,id', [id]),
+      db
+        .select()
+        .from(runs)
+        .where(
+          and(
+            eq(runs.monitorId, incident.monitorId),
+            sql`${runs.checkedAt} >= ${incident.openedAt}::timestamptz`,
+            incident.resolvedAt
+              ? sql`${runs.checkedAt} <= ${incident.resolvedAt}::timestamptz`
+              : undefined,
+            before
+              ? sql`(${runs.checkedAt},${runs.id}) < (SELECT checked_at,id FROM runs WHERE id=${before}::uuid)`
+              : undefined,
+          ),
+        )
+        .orderBy(desc(runs.checkedAt), desc(runs.id))
+        .limit(51),
+    ]);
+    return {
+      incident,
+      events: events.rows.map((e) => ({
+        id: e.id,
+        type: e.type,
+        at: e.at.toISOString(),
+        runId: e.run_id,
+        configRevision: e.config_revision,
+        result: e.result,
+      })),
+      observations: observations.slice(0, 50),
+      nextBefore: observations.length > 50 ? observations[49]!.id : null,
+    };
+  }
   async function startWorker() {
     await boss.work<CheckJob>(
       'http-check',
@@ -369,22 +415,12 @@ export async function createService() {
         for (const job of jobs) await runJob(job);
       },
     );
-    await boss.work<{ id: string; type: string; name: string; at: string }>(
+    // Drain jobs queued by older versions into the durable delivery ledger.
+    await boss.work<import('@stillup/core').AlertEvent>(
       'notify',
       { pollingIntervalSeconds: 1 },
       async (jobs) => {
-        for (const job of jobs) {
-          if (!env.ALERT_WEBHOOK_URL) throw new Error('Webhook is not configured');
-          const response = await fetch(env.ALERT_WEBHOOK_URL, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json', 'idempotency-key': job.id },
-            body: JSON.stringify({ eventId: job.id, ...job.data }),
-            redirect: 'error',
-            signal: AbortSignal.timeout(10000),
-          });
-          await response.body?.cancel();
-          if (!response.ok) throw new Error(`Webhook returned ${response.status}`);
-        }
+        for (const job of jobs) await notifications.legacy(job);
       },
     );
     let stopping = false;
@@ -409,13 +445,30 @@ export async function createService() {
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
     };
-    const task = loop();
+    const alertLoop = async () => {
+      while (!stopping) {
+        try {
+          await notifications.reminders();
+          const results = await Promise.allSettled(
+            Array.from({ length: 5 }, () => notifications.deliverOne()),
+          );
+          if (results.some((result) => result.status === 'rejected'))
+            console.error('A notification attempt could not be recorded; its lease will recover');
+        } catch {
+          console.error('Notification worker could not complete a delivery cycle');
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+    };
+    const task = Promise.all([loop(), alertLoop()]);
     return async () => {
       stopping = true;
       await task;
     };
   }
   return {
+    notifications,
+    incidentTimeline,
     db,
     pool,
     boss,
@@ -432,6 +485,7 @@ export async function createService() {
       return toMonitor(await requireCheck(id));
     },
     async createCheck(config: CheckConfig) {
+      await notifications.validateRoutes(config);
       return db.transaction(async (tx) => {
         const [row] = await tx.insert(monitors).values({ config }).returning();
         await tx

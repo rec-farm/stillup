@@ -20,18 +20,13 @@ export function resolveSecrets(value: string, secrets: Record<string, string | u
     return secret;
   });
 }
-export async function executeCheck(
-  config: CheckConfig,
-  options: { allowPrivateNetworks?: boolean; secrets?: Record<string, string | undefined> } = {},
-): Promise<CheckResult> {
-  const started = performance.now();
-  const checkedAt = new Date().toISOString();
-  const agent = new Agent({
+export function createRequestAgent(allowPrivateNetworks = false) {
+  return new Agent({
     connect: {
       lookup: (hostname, lookupOptions, callback) => {
         lookup(hostname, { all: true }, (error, addresses) => {
           if (error) return callback(error, [], undefined as never);
-          if (!options.allowPrivateNetworks && addresses.some((a) => !isPublicAddress(a.address))) {
+          if (!allowPrivateNetworks && addresses.some((a) => !isPublicAddress(a.address))) {
             return callback(
               new PolicyError('Target resolves to a restricted network'),
               [],
@@ -44,6 +39,19 @@ export async function executeCheck(
       },
     },
   });
+}
+export function validateNetworkTarget(url: URL, allowPrivateNetworks = false) {
+  const literal = url.hostname.replace(/^\[|\]$/g, '');
+  if (!allowPrivateNetworks && ipaddr.isValid(literal) && !isPublicAddress(literal))
+    throw new PolicyError('Target resolves to a restricted network');
+}
+export async function executeCheck(
+  config: CheckConfig,
+  options: { allowPrivateNetworks?: boolean; secrets?: Record<string, string | undefined> } = {},
+): Promise<CheckResult> {
+  const started = performance.now();
+  const checkedAt = new Date().toISOString();
+  const agent = createRequestAgent(options.allowPrivateNetworks);
   let statusCode: number | null = null;
   try {
     const parsed = checkSchema.safeParse(config);
@@ -57,9 +65,7 @@ export async function executeCheck(
       }
     }
     const url = new URL(config.url);
-    const literal = url.hostname.replace(/^\[|\]$/g, '');
-    if (!options.allowPrivateNetworks && ipaddr.isValid(literal) && !isPublicAddress(literal))
-      throw new PolicyError('Target resolves to a restricted network');
+    validateNetworkTarget(url, options.allowPrivateNetworks);
     const headers = Object.fromEntries(
       Object.entries(config.headers).map(([key, value]) => [
         key,

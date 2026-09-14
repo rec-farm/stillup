@@ -3,6 +3,7 @@ import { useRef, useState, useEffect } from 'react';
 import { X, ArrowRight, Globe2, Code2 } from 'lucide-react';
 import { checkSchema, type Monitor } from '@stillup/core';
 import { AssertionEditor } from './assertion-editor';
+import { NotificationRouting } from './notification-routing';
 export function CheckForm({
   onClose,
   onSaved,
@@ -45,6 +46,15 @@ export function CheckForm({
             : JSON.parse(String(form.get('headerAssertions') || '[]')),
         responseSchema: String(form.get('responseSchema') || '').trim()
           ? JSON.parse(String(form.get('responseSchema')))
+          : undefined,
+        notificationChannelIds:
+          form.get('notificationRouting') === 'default'
+            ? undefined
+            : form.get('notificationRouting') === 'none'
+              ? []
+              : form.getAll('notificationChannelId'),
+        reminderIntervalSeconds: form.get('reminderIntervalSeconds')
+          ? number('reminderIntervalSeconds')
           : undefined,
         public: form.get('public') === 'on',
       });
@@ -297,6 +307,7 @@ export function CheckForm({
               </>
             )}
           </details>
+          <NotificationRouting config={monitor?.config} />
           <label className="checkbox-label">
             <input name="public" type="checkbox" defaultChecked={monitor?.config.public ?? false} />
             <span>

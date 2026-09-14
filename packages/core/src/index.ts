@@ -1,4 +1,5 @@
 import { z } from 'zod';
+export * from './notifications';
 import {
   jsonAssertionSchema,
   headerAssertionSchema,
@@ -39,6 +40,12 @@ export const checkSchema = z
     responseSchema: responseSchema.optional(),
     failureThreshold: z.number().int().min(1).max(10).default(2),
     recoveryThreshold: z.number().int().min(1).max(10).default(1),
+    notificationChannelIds: z
+      .array(z.uuid())
+      .max(20)
+      .refine((ids) => new Set(ids).size === ids.length, 'Choose each channel once')
+      .optional(),
+    reminderIntervalSeconds: z.number().int().min(300).max(86400).optional(),
     public: z.boolean().default(false),
   })
   .superRefine((value, ctx) => {
@@ -139,4 +146,18 @@ export type PublicStatus = {
   updatedAt: string;
   components: { id: string; name: string; health: Health; lastObservedAt: string | null }[];
   incidents: Incident[];
+};
+
+export type IncidentTimeline = {
+  incident: Incident;
+  events: {
+    id: string;
+    type: string;
+    at: string;
+    runId: string;
+    configRevision: number;
+    result: CheckResult;
+  }[];
+  observations: Run[];
+  nextBefore: string | null;
 };

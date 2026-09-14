@@ -1853,3 +1853,97 @@ small {
 .assertion-results span {
   font-size: 12px;
 }
+
+.notification-dialog {
+  max-width: 760px;
+}
+.notification-dialog > .dialog-content {
+  overflow-y: auto;
+  min-height: 0;
+}
+.notification-dialog > .dialog-header {
+  flex-shrink: 0;
+}
+.notification-card,
+.channel-form,
+.attempt-history {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  margin: 14px 0;
+  border: 1px solid var(--border, #dce3df);
+  border-radius: 12px;
+  overflow-wrap: anywhere;
+}
+.notification-card small {
+  display: block;
+  margin-top: 6px;
+  color: #657775;
+  font-size: 12px;
+}
+.notification-card p {
+  font-size: 13px;
+}
+.notification-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.notification-heading {
+  margin-top: 32px;
+}
+.notification-routing {
+  padding: 20px 0;
+}
+.delivery-state {
+  display: inline-block;
+  border-radius: 5px;
+  background: #eef2f1;
+  padding: 3px 7px;
+  font-size: 12px;
+  margin-top: 10px;
+  text-transform: capitalize;
+}
+.delivery-state.delivered {
+  color: #17694e;
+  background: #eaf6ef;
+}
+.delivery-state.failed,
+.delivery-state.cancelled {
+  color: #9b4036;
+  background: #fcf0eb;
+}
+.delivery-state.retrying {
+  color: #845b15;
+  background: #fff5df;
+}
+.timeline-observation {
+  padding: 14px 0;
+  border-bottom: 1px solid #e2e8e5;
+}
+.timeline-observation summary {
+  cursor: pointer;
+  font-size: 13px;
+}
+.notification-dialog h3 {
+  font-size: 17px;
+}
+.notification-dialog .section-heading {
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.notification-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.notification-dialog .dialog-content > p {
+  font-size: 13px;
+  line-height: 1.65;
+  margin: 12px 0 20px;
+}
+.notification-dialog .dialog-content > h3 {
+  margin-top: 24px;
+  margin-bottom: 12px;
+}

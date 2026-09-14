@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./executor": "./src/executor.ts"
+    "./executor": "./src/executor.ts",
+    "./webhook": "./src/webhook.ts"
   },
   "scripts": {
     "typecheck": "tsc"
