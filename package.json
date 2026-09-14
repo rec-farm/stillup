@@ -1,0 +1,28 @@
+{
+  "name": "stillup",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.9.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter './apps/*' dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "vitest run packages/core",
+    "db:migrate": "pnpm --filter @stillup/api db:migrate",
+    "check": "pnpm typecheck && pnpm test && pnpm build",
+    "test:integration": "node --env-file=.env ./node_modules/vitest/vitest.mjs run apps/api/src/integration.test.ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "typescript": "^6.0.2",
+    "tsx": "^4.20.0",
+    "vitest": "^4.1.0",
+    "@types/node": "^24.0.0",
+    "prettier": "^3.8.0"
+  }
+}

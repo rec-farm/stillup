@@ -1,0 +1,25 @@
+{
+  "name": "@stillup/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file=../../.env src/dev.ts",
+    "start": "tsx src/main.ts",
+    "worker": "tsx src/worker-main.ts",
+    "dev:worker": "tsx watch --env-file=../../.env src/worker-main.ts",
+    "db:migrate": "tsx --env-file=../../.env src/migrate.ts",
+    "typecheck": "tsc",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@stillup/core": "workspace:*",
+    "@stillup/db": "workspace:*",
+    "fastify": "5.12.4",
+    "@fastify/cookie": "^11.1.2",
+    "@fastify/rate-limit": "^10.3.0",
+    "pg-boss": "12.31.0",
+    "zod": "4.6.2",
+    "tsx": "^4.20.0"
+  }
+}

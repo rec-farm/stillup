@@ -1,0 +1,18 @@
+{
+  "name": "@stillup/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./executor": "./src/executor.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "zod": "4.6.2",
+    "undici": "^7.16.0",
+    "ipaddr.js": "^2.3.0"
+  }
+}
