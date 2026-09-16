@@ -8,14 +8,18 @@ export const webhookUrlSchema = z
       ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password && !url.hash
     );
   }, 'Use an HTTP(S) URL without embedded credentials or a fragment');
+export const webhookDestinationSchema = z.union([
+  z.string().regex(/^\{\{[A-Z][A-Z0-9_]*\}\}$/),
+  webhookUrlSchema,
+]);
 export const channelSchema = z.object({
   name: z.string().trim().min(1).max(80),
-  url: webhookUrlSchema,
+  url: webhookDestinationSchema,
   enabled: z.boolean().default(true),
   isDefault: z.boolean().default(false),
 });
 export const channelEditSchema = channelSchema.omit({ url: true }).extend({
-  url: webhookUrlSchema.optional(),
+  url: webhookDestinationSchema.optional(),
   expectedRevision: z.number().int().positive(),
 });
 export type Channel = {

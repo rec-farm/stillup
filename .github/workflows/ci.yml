@@ -37,3 +37,4 @@ jobs:
       - run: pnpm test
       - run: pnpm test:integration
       - run: pnpm build
+      - run: docker build --target probe -t stillup-probe:ci .

@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./executor": "./src/executor.ts",
-    "./webhook": "./src/webhook.ts"
+    "./webhook": "./src/webhook.ts",
+    "./secret-crypto": "./src/secret-crypto.ts"
   },
   "scripts": {
     "typecheck": "tsc"

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect, it } from 'vitest';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { checkSchema } from '@stillup/core';
 import { createServer as httpServer } from 'node:http';
@@ -19,13 +19,26 @@ let hold: { entered: () => void; release: Promise<void> } | null = null;
 let targetRequests = 0;
 const notifications: unknown[] = [];
 let hookStatus = 503;
-const hookCalls: { key: string | undefined; body: Record<string, unknown> }[] = [];
+const hookCalls: { key: string | undefined; body: Record<string, unknown>; path: string }[] = [];
+let receivedCredential = '';
+let receivedBody = '';
 const fixture = httpServer((req, res) => {
+  if (req.url === '/secret-check') {
+    receivedCredential = String(req.headers.authorization ?? '');
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', () => {
+      receivedBody = body;
+      res.end('{}');
+    });
+    return;
+  }
   if (req.url?.startsWith('/delivery-hook')) {
     let body = '';
     req.on('data', (chunk) => (body += chunk));
     req.on('end', () => {
       hookCalls.push({
+        path: req.url!,
         key: req.headers['idempotency-key'] as string | undefined,
         body: JSON.parse(body),
       });
@@ -76,6 +89,7 @@ beforeAll(async () => {
   Object.assign(process.env, {
     DATABASE_URL: url.toString(),
     ADMIN_TOKEN: token,
+    SECRETS_ENCRYPTION_KEY: randomBytes(32).toString('hex'),
     ALLOW_PRIVATE_NETWORKS: 'true',
     ALERT_WEBHOOK_URL: origin + '/webhook',
     APP_ORIGIN: 'http://localhost:3000',
@@ -995,4 +1009,855 @@ suite(
       /notification|secret-page-token|target_url/,
     );
   },
+);
+
+suite(
+  'encrypts and rotates named secrets without persisting resolved credentials in runs or revisions',
+  async () => {
+    const headers = { authorization: `Bearer ${token}` };
+    const secret = 'credential-v1-private';
+    const create = await app.inject({
+      url: '/v1/secrets',
+      method: 'POST',
+      headers,
+      payload: { name: 'MANAGED_TOKEN', value: secret },
+    });
+    expect(create.statusCode).toBe(201);
+    expect(create.body).not.toContain(secret);
+    const stored = (
+      await service.pool.query('SELECT * FROM managed_secrets WHERE name=$1', ['MANAGED_TOKEN'])
+    ).rows[0];
+    expect(JSON.stringify(stored)).not.toContain(secret);
+    const monitor = await service.createCheck(
+      checkSchema.parse({
+        name: 'Secret check',
+        url: origin + '/secret-check',
+        method: 'POST',
+        headers: { Authorization: 'Bearer {{MANAGED_TOKEN}}' },
+        body: '{{MANAGED_TOKEN}}',
+        notificationChannelIds: [],
+      }),
+    );
+    const run = () =>
+      service.runJob({
+        id: randomUUID(),
+        data: { monitorId: monitor.id, scheduledAt: Date.now() },
+      });
+    await run();
+    expect(receivedCredential).toBe('Bearer ' + secret);
+    expect(receivedBody).toBe(secret);
+    await service.secrets.save(
+      { value: 'credential-v2-private', enabled: true, expectedRevision: 1 },
+      'MANAGED_TOKEN',
+    );
+    await run();
+    expect(receivedCredential).toBe('Bearer credential-v2-private');
+    expect((await service.getCheck(monitor.id)).configRevision).toBe(1);
+    for (const output of [
+      await service.getRuns(monitor.id),
+      await service.getRevisions(monitor.id),
+      await service.secrets.overview(),
+    ])
+      expect(JSON.stringify(output)).not.toMatch(/credential-v[12]-private|ciphertext/);
+    const overview = await service.secrets.overview();
+    expect(overview.secrets.find((s) => s.name === 'MANAGED_TOKEN')?.usages).toContainEqual({
+      kind: 'check',
+      id: monitor.id,
+      name: 'Secret check',
+      archived: false,
+    });
+    await expect(
+      service.secrets.save({ enabled: true, expectedRevision: 1 }, 'MANAGED_TOKEN'),
+    ).rejects.toMatchObject({ statusCode: 409 });
+    process.env.CHECK_SECRET_MANAGED_TOKEN = 'environment-fallback-must-not-be-used';
+    await service.secrets.save({ enabled: false, expectedRevision: 2 }, 'MANAGED_TOKEN');
+    receivedCredential = '';
+    await run();
+    expect(receivedCredential).toBe('');
+    expect((await service.getRuns(monitor.id))[0]?.outcome).toBe('error');
+    delete process.env.CHECK_SECRET_MANAGED_TOKEN;
+    expect((await app.inject({ url: '/v1/secrets' })).statusCode).toBe(401);
+  },
+);
+
+suite(
+  'resolves webhook references on each attempt, preserves reference-only delivery records, and supports environment secrets',
+  async () => {
+    await service.secrets.save({
+      name: 'MANAGED_HOOK',
+      value: origin + '/delivery-hook/rotating-private-v1',
+    });
+    const ch = await service.notifications.saveChannel({
+      name: 'Secret webhook',
+      url: '{{MANAGED_HOOK}}',
+    });
+    expect(ch.destination).toContain('MANAGED_HOOK');
+    hookStatus = 503;
+    const { deliveryId } = await service.notifications.testChannel(ch.id);
+    await service.notifications.deliverOne(deliveryId);
+    await service.secrets.save(
+      { value: origin + '/delivery-hook/rotating-private-v2', enabled: true, expectedRevision: 1 },
+      'MANAGED_HOOK',
+    );
+    await service.pool.query(
+      'UPDATE notification_deliveries SET next_attempt_at=now() WHERE id=$1',
+      [deliveryId],
+    );
+    hookStatus = 204;
+    await service.notifications.deliverOne(deliveryId);
+    const row = (
+      await service.pool.query('SELECT * FROM notification_deliveries WHERE id=$1', [deliveryId])
+    ).rows[0];
+    expect(hookCalls.at(-1)?.path).toBe('/delivery-hook/rotating-private-v2');
+    expect(row.target_url).toBe('{{MANAGED_HOOK}}');
+    expect(row.status).toBe('delivered');
+    expect(JSON.stringify(row)).not.toContain('rotating-private');
+    const usages = (await service.secrets.overview()).secrets.find(
+      (s) => s.name === 'MANAGED_HOOK',
+    )!.usages;
+    expect(usages.some((u) => u.kind === 'channel' && u.id === ch.id)).toBe(true);
+    process.env.CHECK_SECRET_ENV_COMPAT = 'env-compat-value';
+    expect(await service.secrets.resolve(['{{ENV_COMPAT}}'])).toEqual({
+      CHECK_SECRET_ENV_COMPAT: 'env-compat-value',
+    });
+    await expect(
+      service.secrets.save({ name: 'ENV_COMPAT', value: 'replacement' }),
+    ).rejects.toMatchObject({ statusCode: 409 });
+    delete process.env.CHECK_SECRET_ENV_COMPAT;
+  },
+);
+
+suite(
+  'publishes branding, visible component groups, scheduled maintenance, and manual incident communication without private data',
+  async () => {
+    status = 200;
+    const pub = await service.createCheck(
+      checkSchema.parse({
+        name: 'Public payments',
+        url: origin,
+        public: true,
+        notificationChannelIds: [],
+      }),
+    );
+    const hidden = await service.createCheck(
+      checkSchema.parse({
+        name: 'Private billing',
+        url: origin + '/private',
+        notificationChannelIds: [],
+      }),
+    );
+    for (const m of [pub, hidden])
+      await service.runJob({
+        id: randomUUID(),
+        data: { monitorId: m.id, scheduledAt: Date.now() },
+      });
+    const baseline = await service.statusManagement.admin();
+    const group = randomUUID();
+    await service.statusManagement.saveSettings(
+      {
+        ...baseline.settings,
+        title: 'Acme status',
+        brandName: 'Acme',
+        description: 'Service health',
+        accentColor: '#123456',
+        groups: [
+          { id: group, name: 'Payments', monitorIds: [pub.id] },
+          { id: randomUUID(), name: 'Secret internal group', monitorIds: [hidden.id] },
+        ],
+      },
+      baseline.revision,
+    );
+    await expect(
+      service.statusManagement.saveSettings(baseline.settings, baseline.revision),
+    ).rejects.toMatchObject({ statusCode: 409 });
+    let publicData = await service.publicStatus();
+    expect(publicData.title).toBe('Acme status');
+    expect(publicData.groups).toContainEqual({ id: group, name: 'Payments' });
+    expect(JSON.stringify(publicData)).not.toMatch(/Private billing|Secret internal group/);
+    expect(JSON.stringify(publicData)).not.toContain(hidden.id);
+    const maintenance = await service.statusManagement.saveMaintenance({
+      title: 'Payments upgrade',
+      description: 'Planned database upgrade',
+      monitorIds: [pub.id],
+      startsAt: new Date(Date.now() - 60000).toISOString(),
+      endsAt: new Date(Date.now() + 60000).toISOString(),
+    });
+    publicData = await service.publicStatus();
+    expect(publicData.components.find((c) => c.id === pub.id)?.health).toBe('maintenance');
+    expect((await service.getCheck(pub.id)).health).toBe('up');
+    await service.statusManagement.saveMaintenance(
+      { ...maintenance, cancelled: true },
+      maintenance.id,
+      maintenance.revision,
+    );
+    expect((await service.publicStatus()).components.find((c) => c.id === pub.id)?.health).toBe(
+      'up',
+    );
+    const manual = await service.statusManagement.createIncident({
+      title: 'Delayed settlements',
+      monitorIds: [pub.id],
+      body: 'Investigating delayed processing.',
+    });
+    publicData = await service.publicStatus();
+    expect(publicData.components.find((c) => c.id === pub.id)?.health).toBe('down');
+    expect((await service.getCheck(pub.id)).health).toBe('up');
+    await service.statusManagement.updateIncident(manual.id, {
+      source: 'manual',
+      stage: 'identified',
+      body: 'The processing delay has been identified.',
+      expectedRevision: 1,
+    });
+    await expect(
+      service.statusManagement.updateIncident(manual.id, {
+        source: 'manual',
+        stage: 'resolved',
+        body: 'stale update',
+        expectedRevision: 1,
+      }),
+    ).rejects.toMatchObject({ statusCode: 409 });
+    await service.statusManagement.updateIncident(manual.id, {
+      source: 'manual',
+      stage: 'resolved',
+      body: 'Processing has recovered.',
+      expectedRevision: 2,
+    });
+    publicData = await service.publicStatus();
+    expect(publicData.communications?.find((i) => i.id === manual.id)?.updates).toHaveLength(3);
+    expect(publicData.components.find((c) => c.id === pub.id)?.health).toBe('up');
+    await service.changeCheck(
+      pub.id,
+      { kind: 'edit', config: { ...pub.config, public: false } },
+      1,
+    );
+    publicData = await service.publicStatus();
+    expect(publicData.communications?.some((i) => i.id === manual.id)).toBe(false);
+    expect(publicData.groups?.some((g) => g.id === group)).toBe(false);
+    await expect(
+      service.statusManagement.createIncident({
+        title: 'Private incident',
+        monitorIds: [hidden.id],
+        body: 'Should not publish',
+      }),
+    ).rejects.toMatchObject({ statusCode: 400 });
+    expect((await app.inject({ url: '/v1/status-management' })).statusCode).toBe(401);
+  },
+);
+
+suite(
+  'publishes progress updates for detected incidents without manufacturing recovery',
+  async () => {
+    status = 503;
+    const monitor = await service.createCheck(
+      checkSchema.parse({
+        name: 'Detected public issue',
+        url: origin,
+        public: true,
+        failureThreshold: 1,
+        notificationChannelIds: [],
+      }),
+    );
+    await service.runJob({
+      id: randomUUID(),
+      data: { monitorId: monitor.id, scheduledAt: Date.now() },
+    });
+    const incident = (await service.dashboard()).incidents.find((i) => i.monitorId === monitor.id)!;
+    await service.statusManagement.updateIncident(incident.id, {
+      source: 'automatic',
+      stage: 'identified',
+      body: 'A fix is being prepared.',
+      expectedRevision: 1,
+    });
+    expect(
+      (await service.publicStatus()).communications?.find((i) => i.id === incident.id)?.stage,
+    ).toBe('identified');
+    await expect(
+      service.statusManagement.updateIncident(incident.id, {
+        source: 'automatic',
+        stage: 'resolved',
+        body: 'Not actually recovered',
+        expectedRevision: 2,
+      }),
+    ).rejects.toMatchObject({ statusCode: 409 });
+    expect((await service.getCheck(monitor.id)).health).toBe('down');
+    status = 200;
+    await service.runJob({
+      id: randomUUID(),
+      data: { monitorId: monitor.id, scheduledAt: Date.now() },
+    });
+    expect(
+      (await service.publicStatus()).communications?.find((i) => i.id === incident.id)?.stage,
+    ).toBe('resolved');
+  },
+);
+
+suite(
+  'retains public impact outside the history limit and excludes future or expired maintenance',
+  async () => {
+    status = 200;
+    const monitor = await service.createCheck(
+      checkSchema.parse({
+        name: 'Long-running public issue',
+        url: origin,
+        public: true,
+        notificationChannelIds: [],
+      }),
+    );
+    await service.runJob({
+      id: randomUUID(),
+      data: { monitorId: monitor.id, scheduledAt: Date.now() },
+    });
+    const ongoing = await service.statusManagement.createIncident({
+      title: 'Old open issue',
+      monitorIds: [monitor.id],
+      body: 'Still investigating.',
+    });
+    await service.pool.query(
+      "UPDATE status_incidents SET created_at=now()-interval '1 year' WHERE id=$1",
+      [ongoing.id],
+    );
+    await service.pool.query(
+      "INSERT INTO status_incidents(title,monitor_ids,resolved_at) SELECT 'Resolved historical issue',ARRAY[$1::uuid],now() FROM generate_series(1,101)",
+      [monitor.id],
+    );
+    expect((await service.publicStatus()).components.find((c) => c.id === monitor.id)?.health).toBe(
+      'down',
+    );
+    await service.statusManagement.updateIncident(ongoing.id, {
+      source: 'manual',
+      stage: 'resolved',
+      body: 'Resolved.',
+      expectedRevision: 1,
+    });
+    await service.statusManagement.saveMaintenance({
+      title: 'Later',
+      monitorIds: [monitor.id],
+      startsAt: new Date(Date.now() + 3600000).toISOString(),
+      endsAt: new Date(Date.now() + 7200000).toISOString(),
+    });
+    await service.statusManagement.saveMaintenance({
+      title: 'Already ended',
+      monitorIds: [monitor.id],
+      startsAt: new Date(Date.now() - 7200000).toISOString(),
+      endsAt: new Date(Date.now() - 3600000).toISOString(),
+    });
+    const data = await service.publicStatus();
+    expect(data.components.find((c) => c.id === monitor.id)?.health).toBe('up');
+    expect(data.maintenance?.some((w) => w.title === 'Later')).toBe(true);
+    expect(data.maintenance?.some((w) => w.title === 'Already ended')).toBe(false);
+  },
+);
+
+suite(
+  'tests draft requests with safe diagnostics without persisting monitoring state',
+  async () => {
+    status = 200;
+    const headers = { authorization: `Bearer ${token}` };
+    const config = checkSchema.parse({ name: 'Unsaved preview', url: origin });
+    const counts = async () =>
+      (
+        await service.pool.query(`SELECT
+    (SELECT count(*) FROM monitors) AS monitors,
+    (SELECT count(*) FROM check_revisions) AS revisions,
+    (SELECT count(*) FROM runs) AS runs,
+    (SELECT count(*) FROM incidents) AS incidents,
+    (SELECT count(*) FROM notification_deliveries) AS deliveries`)
+      ).rows[0];
+    const before = await counts();
+    const requestsBefore = targetRequests;
+    expect(
+      (await app.inject({ method: 'POST', url: '/v1/checks/test', payload: config })).statusCode,
+    ).toBe(401);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/v1/checks/test',
+          headers: { ...headers, origin: 'https://other.example' },
+          payload: config,
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/v1/checks/test',
+          headers,
+          payload: { ...config, timeoutMs: 999999 },
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(targetRequests).toBe(requestsBefore);
+    const pass = await app.inject({
+      method: 'POST',
+      url: '/v1/checks/test',
+      headers,
+      payload: config,
+    });
+    expect(pass.statusCode).toBe(200);
+    expect(pass.json()).toMatchObject({ outcome: 'pass', statusCode: 200 });
+    expect(pass.body).not.toContain('do-not-store');
+    const failed = await app.inject({
+      method: 'POST',
+      url: '/v1/checks/test',
+      headers,
+      payload: { ...config, expectedStatus: 201 },
+    });
+    expect(failed.json()).toMatchObject({
+      outcome: 'fail',
+      assertions: [{ kind: 'status', passed: false }],
+    });
+    expect(targetRequests).toBe(requestsBefore + 2);
+    await service.secrets.save({ name: 'PREVIEW_TOKEN', value: 'private-preview-token' });
+    const secretConfig = {
+      ...config,
+      url: origin + '/secret-check',
+      method: 'POST',
+      headers: { Authorization: 'Bearer {{PREVIEW_TOKEN}}' },
+      body: '{{PREVIEW_TOKEN}}',
+    };
+    const secret = await app.inject({
+      method: 'POST',
+      url: '/v1/checks/test',
+      headers,
+      payload: secretConfig,
+    });
+    expect(secret.json().outcome).toBe('pass');
+    expect(receivedCredential).toBe('Bearer private-preview-token');
+    expect(receivedBody).toBe('private-preview-token');
+    expect(secret.body).not.toContain('private-preview-token');
+    const missing = await app.inject({
+      method: 'POST',
+      url: '/v1/checks/test',
+      headers,
+      payload: { ...config, headers: { Authorization: '{{PREVIEW_MISSING}}' } },
+    });
+    expect(missing.json()).toMatchObject({ outcome: 'error', statusCode: null });
+    expect(targetRequests).toBe(requestsBefore + 2);
+    expect(await counts()).toEqual(before);
+  },
+);
+
+suite('bounds concurrent request previews and releases capacity after completion', async () => {
+  let release!: () => void;
+  let entered!: () => void;
+  let arrivals = 0;
+  const ready = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  hold = {
+    release: new Promise<void>((resolve) => {
+      release = resolve;
+    }),
+    entered: () => {
+      if (++arrivals === 2) entered();
+    },
+  };
+  const config = checkSchema.parse({
+    name: 'Held preview',
+    url: origin + '/held',
+    timeoutMs: 2000,
+  });
+  const first = service.testCheck(config);
+  const second = service.testCheck(config);
+  try {
+    await ready;
+    await expect(service.testCheck(config)).rejects.toMatchObject({ statusCode: 429 });
+  } finally {
+    release();
+    await Promise.all([first, second]);
+    hold = null;
+  }
+  expect((await service.testCheck({ ...config, url: origin })).outcome).toBe('pass');
+});
+
+const probeHeaders = (credential: string) => ({ authorization: `Bearer ${credential}` });
+async function newProbe(name = 'Regional probe') {
+  const enrollment = await service.probes.create({ name, region: 'Test region' });
+  const credential = randomBytes(32).toString('hex');
+  await service.probes.enroll(enrollment.enrollmentToken, credential);
+  return { id: enrollment.id, credential, enrollment };
+}
+const regionalResult = (outcome: 'pass' | 'fail' | 'error') => ({
+  outcome,
+  statusCode: outcome === 'error' ? null : outcome === 'pass' ? 200 : 503,
+  durationMs: 15,
+  assertions: [{ passed: outcome === 'pass' }],
+});
+suite(
+  'enrolls scoped probes once, rejects expiration, and revokes or replaces credentials',
+  async () => {
+    expect((await app.inject({ url: '/v1/locations' })).statusCode).toBe(401);
+    const p = await newProbe();
+    expect(
+      (await service.probes.enroll(p.enrollment.enrollmentToken, p.credential)).locationId,
+    ).toBe(p.id);
+    await expect(
+      service.probes.enroll(p.enrollment.enrollmentToken, randomBytes(32).toString('hex')),
+    ).rejects.toMatchObject({ statusCode: 401 });
+    expect(
+      (await app.inject({ url: '/v1/dashboard', headers: probeHeaders(p.credential) })).statusCode,
+    ).toBe(401);
+    expect(
+      (
+        await app.inject({
+          url: '/v1/probe/poll',
+          method: 'POST',
+          payload: { protocolVersion: 1 },
+          headers: probeHeaders(token),
+        })
+      ).statusCode,
+    ).toBe(401);
+    expect(
+      (
+        await app.inject({
+          url: '/v1/probe/poll',
+          method: 'POST',
+          payload: { protocolVersion: 2 },
+          headers: probeHeaders(p.credential),
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          url: '/v1/probe/poll',
+          method: 'POST',
+          payload: { protocolVersion: 1 },
+          headers: probeHeaders(p.credential),
+        })
+      ).statusCode,
+    ).toBe(200);
+    const metadata = JSON.stringify(await service.probes.list());
+    expect(metadata).not.toContain(p.credential);
+    expect(metadata).not.toContain(p.enrollment.enrollmentToken);
+    expect((await service.probes.list()).find((l) => l.id === p.id)?.status).toBe('online');
+    const replacement = await service.probes.renew(p.id);
+    await expect(service.probes.authenticate(p.credential)).rejects.toMatchObject({
+      statusCode: 401,
+    });
+    await expect(service.probes.claim(p.id, p.credential)).rejects.toMatchObject({
+      statusCode: 401,
+    });
+    const newCredential = randomBytes(32).toString('hex');
+    await service.probes.enroll(replacement.enrollmentToken, newCredential);
+    await service.probes.revoke(p.id);
+    expect(
+      (
+        await app.inject({
+          url: '/v1/probe/poll',
+          method: 'POST',
+          payload: { protocolVersion: 1 },
+          headers: probeHeaders(newCredential),
+        })
+      ).statusCode,
+    ).toBe(401);
+    const expired = await service.probes.create({ name: 'Expired', region: 'Test' });
+    await service.pool.query(
+      "UPDATE probe_locations SET enrollment_expires_at=now()-interval '1 second' WHERE id=$1",
+      [expired.id],
+    );
+    await expect(
+      service.probes.enroll(expired.enrollmentToken, randomBytes(32).toString('hex')),
+    ).rejects.toMatchObject({ statusCode: 401 });
+  },
+);
+suite(
+  'coordinates local and remote observations into one incident decision per round',
+  async () => {
+    const p = await newProbe('Regional voting');
+    const m = await service.createCheck(
+      checkSchema.parse({
+        name: 'Two locations',
+        url: origin,
+        locationIds: ['local', p.id],
+        locationFailureThreshold: 2,
+        failureThreshold: 2,
+        recoveryThreshold: 1,
+        notificationChannelIds: [],
+      }),
+    );
+    const round = async (local: 'pass' | 'fail', remote: 'pass' | 'fail') => {
+      expect(await service.enqueue(m.id)).toBe(1);
+      expect(await service.enqueue(m.id)).toBe(0);
+      const a = (await service.probes.claim('local')).job!;
+      const b = (await service.probes.claim(p.id, p.credential)).job!;
+      expect(a.config.name).toBe('Two locations');
+      expect(b.config.name).toBe('Two locations');
+      await service.probes.complete('local', a.id, a.leaseToken, regionalResult(local));
+      const response = await app.inject({
+        url: '/v1/probe/results',
+        method: 'POST',
+        headers: probeHeaders(p.credential),
+        payload: {
+          protocolVersion: 1,
+          jobId: b.id,
+          leaseToken: b.leaseToken,
+          result: { ...regionalResult(remote), failures: ['do-not-persist-private-value'] },
+        },
+      });
+      expect(response.statusCode).toBe(200);
+      await service.probes.complete(p.id, b.id, b.leaseToken, regionalResult(remote), p.credential);
+    };
+    await round('fail', 'pass');
+    expect((await service.getCheck(m.id)).health).toBe('up');
+    await round('fail', 'fail');
+    expect((await service.getCheck(m.id)).health).toBe('up');
+    await round('fail', 'fail');
+    expect((await service.getCheck(m.id)).health).toBe('down');
+    const incidents = (
+      await service.pool.query('SELECT * FROM incidents WHERE monitor_id=$1', [m.id])
+    ).rows;
+    expect(incidents).toHaveLength(1);
+    await round('pass', 'pass');
+    expect((await service.getCheck(m.id)).health).toBe('up');
+    expect(
+      (await service.pool.query('SELECT resolved_at FROM incidents WHERE monitor_id=$1', [m.id]))
+        .rows[0].resolved_at,
+    ).not.toBeNull();
+    expect(await service.getRuns(m.id)).toHaveLength(4);
+    const stored = JSON.stringify(
+      (
+        await service.pool.query(
+          'SELECT result FROM probe_jobs j JOIN probe_rounds r ON r.id=j.round_id WHERE r.monitor_id=$1',
+          [m.id],
+        )
+      ).rows,
+    );
+    expect(stored).not.toContain('do-not-persist-private-value');
+    const observations = await service.probes.observations(m.id);
+    expect(observations).toHaveLength(2);
+    expect(observations.every((o) => o.fresh && o.outcome === 'pass')).toBe(true);
+  },
+);
+suite(
+  'treats offline probes as missing coverage and expires rounds without false outages',
+  async () => {
+    const p = await newProbe('Offline');
+    const m = await service.createCheck(
+      checkSchema.parse({
+        name: 'Coverage',
+        url: origin,
+        locationIds: ['local', p.id],
+        locationFailureThreshold: 2,
+        failureThreshold: 1,
+      }),
+    );
+    await service.enqueue(m.id);
+    const a = (await service.probes.claim('local')).job!;
+    await service.probes.complete('local', a.id, a.leaseToken, regionalResult('fail'));
+    await service.pool.query(
+      "UPDATE probe_rounds SET deadline=now()-interval '1 second' WHERE monitor_id=$1",
+      [m.id],
+    );
+    await service.probes.expire();
+    expect((await service.getCheck(m.id)).health).toBe('unknown');
+    expect((await service.getRuns(m.id))[0]?.outcome).toBe('error');
+    expect(
+      (await service.pool.query('SELECT count(*) FROM incidents WHERE monitor_id=$1', [m.id]))
+        .rows[0].count,
+    ).toBe('0');
+    await service.pool.query(
+      "UPDATE probe_locations SET last_seen_at=now()-interval '1 minute' WHERE id=$1",
+      [p.id],
+    );
+    expect((await service.probes.list()).find((l) => l.id === p.id)?.status).toBe('offline');
+    expect(
+      (await service.probes.observations(m.id)).find((o) => o.locationId === p.id)?.fresh,
+    ).toBe(false);
+    expect(await service.enqueue(m.id)).toBe(1);
+    await service.changeCheck(m.id, { kind: 'enabled', enabled: false });
+  },
+);
+suite(
+  'rejects other locations, obsolete revisions, replaced leases, and revoked in-flight jobs',
+  async () => {
+    const p = await newProbe('Lease owner');
+    const other = await newProbe('Other owner');
+    const m = await service.createCheck(
+      checkSchema.parse({ name: 'Leases', url: origin, locationIds: [p.id] }),
+    );
+    await service.enqueue(m.id);
+    const first = (await service.probes.claim(p.id, p.credential)).job!;
+    expect((await service.probes.claim(other.id, other.credential)).job).toBeNull();
+    await expect(
+      service.probes.complete(
+        other.id,
+        first.id,
+        first.leaseToken,
+        regionalResult('pass'),
+        other.credential,
+      ),
+    ).rejects.toMatchObject({ statusCode: 404 });
+    await service.pool.query(
+      "UPDATE probe_jobs SET lease_until=now()-interval '1 second' WHERE id=$1",
+      [first.id],
+    );
+    const retry = (await service.probes.claim(p.id, p.credential)).job!;
+    expect(retry.id).toBe(first.id);
+    expect(retry.leaseToken).not.toBe(first.leaseToken);
+    await expect(
+      service.probes.complete(
+        p.id,
+        first.id,
+        first.leaseToken,
+        regionalResult('pass'),
+        p.credential,
+      ),
+    ).rejects.toMatchObject({ statusCode: 409 });
+    const edited = await service.changeCheck(
+      m.id,
+      { kind: 'edit', config: { ...m.config, expectedStatus: 201 } },
+      1,
+    );
+    await expect(
+      service.probes.complete(
+        p.id,
+        retry.id,
+        retry.leaseToken,
+        regionalResult('pass'),
+        p.credential,
+      ),
+    ).rejects.toMatchObject({ statusCode: 409 });
+    expect(await service.enqueue(m.id)).toBe(1);
+    const current = (await service.probes.claim(p.id, p.credential)).job!;
+    expect(current.config.expectedStatus).toBe(201);
+    await service.probes.revoke(p.id);
+    await expect(
+      service.probes.complete(
+        p.id,
+        current.id,
+        current.leaseToken,
+        regionalResult('pass'),
+        p.credential,
+      ),
+    ).rejects.toMatchObject({ statusCode: 401 });
+    expect(await service.getRuns(m.id)).toHaveLength(0);
+    await service.changeCheck(m.id, { kind: 'archive' }, edited.configRevision);
+    await expect(
+      service.createCheck(
+        checkSchema.parse({ name: 'Invalid location', url: origin, locationIds: [randomUUID()] }),
+      ),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  },
+);
+suite(
+  'distributes only assigned secrets and resolves rotations when jobs are claimed',
+  async () => {
+    const p = await newProbe('Secret receiver');
+    const other = await newProbe('Unassigned');
+    await service.secrets.save({ name: 'REGIONAL_TOKEN', value: 'regional-secret-one' });
+    const m = await service.createCheck(
+      checkSchema.parse({
+        name: 'Regional secret check',
+        url: origin,
+        headers: { authorization: 'Bearer {{REGIONAL_TOKEN}}' },
+        locationIds: [p.id],
+      }),
+    );
+    await service.enqueue(m.id);
+    await service.secrets.save(
+      { value: 'regional-secret-two', enabled: true, expectedRevision: 1 },
+      'REGIONAL_TOKEN',
+    );
+    expect((await service.probes.claim(other.id, other.credential)).job).toBeNull();
+    const { job } = await service.probes.claim(p.id, p.credential);
+    expect(job?.secrets).toEqual({ CHECK_SECRET_REGIONAL_TOKEN: 'regional-secret-two' });
+    const stored = JSON.stringify(
+      (
+        await service.pool.query(
+          'SELECT j.* FROM probe_jobs j JOIN probe_rounds r ON r.id=j.round_id WHERE r.monitor_id=$1',
+          [m.id],
+        )
+      ).rows,
+    );
+    expect(stored).not.toContain('regional-secret');
+    await service.probes.complete(
+      p.id,
+      job!.id,
+      job!.leaseToken,
+      regionalResult('pass'),
+      p.credential,
+    );
+  },
+);
+
+suite(
+  'runs the standalone probe over HTTP and reconnects using its persisted identity',
+  async () => {
+    const { spawn } = await import('node:child_process');
+    const { mkdtemp, readFile, rm } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    const directory = await mkdtemp(join(tmpdir(), 'stillup-probe-test-'));
+    const address = await app.listen({ port: 0, host: '127.0.0.1' });
+    const enrollment = await service.probes.create({
+      name: 'Standalone executable',
+      region: 'Integration test',
+    });
+    await service.secrets.save({ name: 'STANDALONE_TOKEN', value: 'standalone-private-value' });
+    const m = await service.createCheck(
+      checkSchema.parse({
+        name: 'Standalone API',
+        url: origin + '/secret-check',
+        headers: { authorization: 'Bearer {{STANDALONE_TOKEN}}' },
+        locationIds: [enrollment.id],
+        failureThreshold: 1,
+      }),
+    );
+    let child: ReturnType<typeof spawn> | undefined;
+    const start = (token?: string) => {
+      child = spawn(
+        process.execPath,
+        ['--import', 'tsx', fileURLToPath(new URL('../../probe/src/main.ts', import.meta.url))],
+        {
+          env: {
+            PATH: process.env.PATH,
+            STILLUP_URL: address,
+            STILLUP_ENROLLMENT_TOKEN: token ?? '',
+            STILLUP_PROBE_DATA: directory,
+            STILLUP_PROBE_ALLOW_HTTP: 'true',
+            STILLUP_PROBE_ALLOW_PRIVATE_NETWORKS: 'true',
+          },
+          stdio: ['ignore', 'pipe', 'pipe'],
+        },
+      );
+      // Read streams to avoid blocked pipes; never echo request data or identity state.
+      child.stdout?.resume();
+      child.stderr?.resume();
+    };
+    const stop = async () => {
+      if (!child || child.exitCode !== null) return;
+      const processToStop = child;
+      await new Promise<void>((resolve) => {
+        processToStop.once('exit', () => resolve());
+        processToStop.kill('SIGTERM');
+      });
+      child = undefined;
+    };
+    try {
+      await service.enqueue(m.id);
+      start(enrollment.enrollmentToken);
+      await eventually(async () => (await service.getCheck(m.id)).health === 'up', 10000);
+      expect(receivedCredential).toBe('Bearer standalone-private-value');
+      const identity = JSON.parse(await readFile(join(directory, 'identity.json'), 'utf8'));
+      expect(identity.locationId).toBe(enrollment.id);
+      expect(identity.enrollmentToken).toBeUndefined();
+      await stop();
+      await service.enqueue(m.id);
+      start();
+      await eventually(async () => (await service.getRuns(m.id)).length === 2, 10000);
+      expect(JSON.parse(await readFile(join(directory, 'identity.json'), 'utf8')).token).toBe(
+        identity.token,
+      );
+      expect((await service.probes.list()).find((l) => l.id === enrollment.id)?.status).toBe(
+        'online',
+      );
+    } finally {
+      await stop();
+      await rm(directory, { recursive: true, force: true });
+    }
+  },
+  30000,
 );

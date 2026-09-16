@@ -1,9 +1,14 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
-import Fastify from 'fastify';
+import Fastify, { type FastifyRequest } from 'fastify';
 import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
 import { z } from 'zod';
-import { checkSchema, editCheckSchema, revisionGuardSchema } from '@stillup/core';
+import {
+  checkSchema,
+  editCheckSchema,
+  revisionGuardSchema,
+  probeReportSchema,
+} from '@stillup/core';
 import { env } from './env';
 import type { Service } from './service';
 
@@ -47,6 +52,7 @@ export async function createServer(service: Service) {
       (path === '/v1/session' && request.method === 'POST')
     )
       return;
+    if (path?.startsWith('/v1/probe/')) return; // These routes authenticate scoped probe credentials below.
     const bearer = request.headers.authorization?.replace(/^Bearer /, '');
     if (
       !(bearer && equal(bearer, env.ADMIN_TOKEN)) &&
@@ -69,6 +75,68 @@ export async function createServer(service: Service) {
     app.log.error(error);
     return reply.code(500).send({ error: 'StillUp could not complete this request' });
   });
+  const probeId = async (request: { headers: { authorization?: string } }) =>
+    service.probes.authenticate(request.headers.authorization?.replace(/^Bearer /, '') ?? '');
+  app.post(
+    '/v1/probe/enroll',
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (request) => {
+      const body = z
+        .object({
+          enrollmentToken: z.string().regex(/^[a-f0-9]{64}$/),
+          credential: z.string().regex(/^[a-f0-9]{64}$/),
+          protocolVersion: z.literal(1),
+        })
+        .parse(request.body);
+      return service.probes.enroll(body.enrollmentToken, body.credential);
+    },
+  );
+  const probeRateLimit = {
+    max: 600,
+    timeWindow: '1 minute',
+    keyGenerator: (request: FastifyRequest) =>
+      createHash('sha256')
+        .update(request.headers.authorization ?? request.ip)
+        .digest('hex'),
+  };
+  app.post('/v1/probe/poll', { config: { rateLimit: probeRateLimit } }, async (request) => {
+    z.object({ protocolVersion: z.literal(1) }).parse(request.body);
+    return service.probes.claim(
+      await probeId(request),
+      request.headers.authorization?.replace(/^Bearer /, '') ?? '',
+    );
+  });
+  app.post('/v1/probe/results', { config: { rateLimit: probeRateLimit } }, async (request) => {
+    const id = await probeId(request);
+    const body = z
+      .object({
+        protocolVersion: z.literal(1),
+        jobId: z.uuid(),
+        leaseToken: z.uuid(),
+        result: probeReportSchema,
+      })
+      .parse(request.body);
+    return service.probes.complete(
+      id,
+      body.jobId,
+      body.leaseToken,
+      body.result,
+      request.headers.authorization?.replace(/^Bearer /, '') ?? '',
+    );
+  });
+  app.get('/v1/locations', () => service.probes.list());
+  app.post('/v1/locations', async (request, reply) =>
+    reply.code(201).send(await service.probes.create(request.body)),
+  );
+  app.post('/v1/locations/:id/enrollment', async (request) =>
+    service.probes.renew(z.object({ id: z.uuid() }).parse(request.params).id),
+  );
+  app.delete('/v1/locations/:id', async (request) =>
+    service.probes.revoke(z.object({ id: z.uuid() }).parse(request.params).id),
+  );
+  app.get('/v1/checks/:id/locations', async (request) =>
+    service.probes.observations(z.object({ id: z.uuid() }).parse(request.params).id),
+  );
   app.get('/health', async () => {
     await service.pool.query('SELECT 1');
     return { status: 'ok' };
@@ -97,6 +165,11 @@ export async function createServer(service: Service) {
   });
   app.get('/v1/dashboard', async () => service.dashboard());
   app.get('/v1/public/status', async () => service.publicStatus());
+  app.post(
+    '/v1/checks/test',
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (request) => service.testCheck(checkSchema.parse(request.body)),
+  );
   app.post('/v1/checks', async (request, reply) => {
     const row = await service.createCheck(checkSchema.parse(request.body));
     return reply.code(201).send(row);
@@ -188,6 +261,38 @@ export async function createServer(service: Service) {
     const { id } = z.object({ id: z.uuid() }).parse(request.params);
     const { before } = z.object({ before: z.uuid().optional() }).parse(request.query);
     return service.incidentTimeline(id, before);
+  });
+  app.get('/v1/secrets', () => service.secrets.overview());
+  app.post('/v1/secrets', async (request, reply) =>
+    reply.code(201).send(await service.secrets.save(request.body)),
+  );
+  app.put('/v1/secrets/:name', async (request) => {
+    const { name } = z.object({ name: z.string() }).parse(request.params);
+    return service.secrets.save(request.body, name);
+  });
+  app.get('/v1/status-management', () => service.statusManagement.admin());
+  app.put('/v1/status-management/settings', async (request) => {
+    const { config, expectedRevision } = z
+      .object({ config: z.unknown(), expectedRevision: z.number().int().min(0) })
+      .parse(request.body);
+    return service.statusManagement.saveSettings(config, expectedRevision);
+  });
+  app.post('/v1/status-management/maintenance', async (request, reply) =>
+    reply.code(201).send(await service.statusManagement.saveMaintenance(request.body)),
+  );
+  app.put('/v1/status-management/maintenance/:id', async (request) => {
+    const { id } = z.object({ id: z.uuid() }).parse(request.params);
+    const { expectedRevision } = z
+      .object({ expectedRevision: z.number().int().positive() })
+      .parse(request.body);
+    return service.statusManagement.saveMaintenance(request.body, id, expectedRevision);
+  });
+  app.post('/v1/status-management/incidents', async (request, reply) =>
+    reply.code(201).send(await service.statusManagement.createIncident(request.body)),
+  );
+  app.post('/v1/status-management/incidents/:id/updates', async (request) => {
+    const { id } = z.object({ id: z.uuid() }).parse(request.params);
+    return service.statusManagement.updateIncident(id, request.body);
   });
   return app;
 }

@@ -27,6 +27,11 @@ import { migrate } from './migrate';
 import { CheckError } from './errors';
 export { CheckError } from './errors';
 import { createNotifications } from './notifications';
+import { createSecrets } from './secrets';
+import { createStatusManagement } from './status-management';
+import { createProbes } from './probes';
+import type { PoolClient } from '@stillup/db';
+import type { CheckResult } from '@stillup/core';
 type CheckJob = {
   monitorId: string;
   scheduledAt: number;
@@ -39,10 +44,14 @@ type CheckChange =
   | { kind: 'archive' | 'restore' };
 
 export async function createService() {
+  let activePreviews = 0;
   await migrate(env.DATABASE_URL);
   const { pool, db } = connectDatabase(env.DATABASE_URL);
-  const notifications = createNotifications(pool);
+  const secrets = createSecrets(pool);
+  const statusManagement = createStatusManagement(pool);
+  const notifications = createNotifications(pool, secrets);
   await notifications.initialize();
+  const probes = createProbes(pool, secrets, recordResult);
   const boss = new PgBoss({ connectionString: env.DATABASE_URL });
   boss.on('error', (error) => console.error('Queue error:', error.message));
   await boss.start();
@@ -118,7 +127,7 @@ export async function createService() {
         .orderBy(desc(incidents.openedAt))
         .limit(50),
     ]);
-    return {
+    return statusManagement.decorate({
       title: env.STATUS_PAGE_TITLE,
       updatedAt: new Date().toISOString(),
       components: components.map((row) => ({
@@ -128,7 +137,7 @@ export async function createService() {
         lastObservedAt: row.lastObservedAt,
       })),
       incidents: history,
-    };
+    });
   }
   async function enqueue(id?: string) {
     const client = await pool.connect();
@@ -153,6 +162,14 @@ export async function createService() {
       const adapter: Db = { executeSql: (text, values) => client.query(text, values) };
       let count = 0;
       for (const row of due.rows) {
+        if (row.config.locationIds?.some((id) => id !== 'local')) {
+          if (await probes.schedule(client, row)) count++;
+          await client.query(
+            "UPDATE monitors SET next_run_at=now() + ($2 * interval '1 second') WHERE id=$1",
+            [row.id, row.config.intervalSeconds],
+          );
+          continue;
+        }
         const jobId = await boss.send(
           'http-check',
           {
@@ -187,6 +204,7 @@ export async function createService() {
       } = await client.query('SELECT * FROM monitors WHERE id=$1 FOR UPDATE', [job.data.monitorId]);
       if (
         !row?.enabled ||
+        row.config.locationIds?.some((id: string) => id !== 'local') ||
         row.archived_at ||
         row.config_revision !== (job.data.configRevision ?? 1) ||
         row.execution_epoch !== (job.data.executionEpoch ?? 1) ||
@@ -199,81 +217,9 @@ export async function createService() {
       const config = row.config as CheckConfig;
       const result = await executeCheck(config, {
         allowPrivateNetworks: env.ALLOW_PRIVATE_NETWORKS === 'true',
-        secrets: process.env,
+        secrets: await secrets.resolve([...Object.values(config.headers), config.body], client),
       });
-      const state = evaluateHealth(
-        { status: row.status, failures: row.failures, successes: row.successes },
-        result.outcome,
-        config.failureThreshold,
-        config.recoveryThreshold,
-      );
-      await client.query(
-        'INSERT INTO runs (id,monitor_id,outcome,status_code,duration_ms,failures,checked_at,config_revision,assertions) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING',
-        [
-          job.id,
-          row.id,
-          result.outcome,
-          result.statusCode,
-          result.durationMs,
-          JSON.stringify(result.failures),
-          result.checkedAt,
-          row.config_revision,
-          JSON.stringify(result.assertions ?? []),
-        ],
-      );
-      await client.query(
-        "UPDATE monitors SET status=$2, failures=$3, successes=$4, last_run_at=$5, last_duration_ms=$6, last_outcome=$7, last_observed_at=CASE WHEN $7='error' THEN last_observed_at ELSE $5 END WHERE id=$1",
-        [
-          row.id,
-          state.status,
-          state.failures,
-          state.successes,
-          result.checkedAt,
-          result.durationMs,
-          result.outcome,
-        ],
-      );
-      let event: import('@stillup/core').AlertEvent | null = null;
-      if (state.status === 'down' && row.status !== 'down') {
-        const {
-          rows: [incident],
-        } = await client.query(
-          'INSERT INTO incidents (monitor_id,name,opened_at) VALUES ($1,$2,$3) RETURNING id',
-          [row.id, config.name, result.checkedAt],
-        );
-        event = {
-          id: incident.id,
-          type: 'incident.opened',
-          name: config.name,
-          at: result.checkedAt,
-        };
-      } else if (state.status === 'up' && row.status === 'down') {
-        const {
-          rows: [incident],
-        } = await client.query(
-          'UPDATE incidents SET resolved_at=$2 WHERE monitor_id=$1 AND resolved_at IS NULL RETURNING id',
-          [row.id, result.checkedAt],
-        );
-        if (incident)
-          event = {
-            id: incident.id,
-            type: 'incident.resolved',
-            name: config.name,
-            at: result.checkedAt,
-          };
-      }
-      if (event) {
-        Object.assign(event, {
-          monitorId: row.id,
-          runId: job.id,
-          configRevision: row.config_revision,
-        });
-        await client.query(
-          'INSERT INTO incident_events(incident_id,type,at,run_id,config_revision,result) VALUES($1,$2,$3,$4,$5,$6)',
-          [event.id, event.type, event.at, job.id, row.config_revision, JSON.stringify(result)],
-        );
-        await notifications.queueEvent(client, event, config, `${event.id}:${event.type}`);
-      }
+      await recordResult(client, row, result, job.id);
       await client.query('COMMIT');
     } catch (error) {
       await client.query('ROLLBACK');
@@ -282,8 +228,87 @@ export async function createService() {
       client.release();
     }
   }
+  async function recordResult(client: PoolClient, row: any, result: CheckResult, runId: string) {
+    const config = row.config as CheckConfig;
+    const state = evaluateHealth(
+      { status: row.status, failures: row.failures, successes: row.successes },
+      result.outcome,
+      config.failureThreshold,
+      config.recoveryThreshold,
+    );
+    await client.query(
+      'INSERT INTO runs (id,monitor_id,outcome,status_code,duration_ms,failures,checked_at,config_revision,assertions) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING',
+      [
+        runId,
+        row.id,
+        result.outcome,
+        result.statusCode,
+        result.durationMs,
+        JSON.stringify(result.failures),
+        result.checkedAt,
+        row.config_revision,
+        JSON.stringify(result.assertions ?? []),
+      ],
+    );
+    await client.query(
+      "UPDATE monitors SET status=$2, failures=$3, successes=$4, last_run_at=$5, last_duration_ms=$6, last_outcome=$7, last_observed_at=CASE WHEN $7='error' THEN last_observed_at ELSE $5 END WHERE id=$1",
+      [
+        row.id,
+        state.status,
+        state.failures,
+        state.successes,
+        result.checkedAt,
+        result.durationMs,
+        result.outcome,
+      ],
+    );
+    let event: import('@stillup/core').AlertEvent | null = null;
+    if (state.status === 'down' && row.status !== 'down') {
+      const {
+        rows: [incident],
+      } = await client.query(
+        'INSERT INTO incidents (monitor_id,name,opened_at) VALUES ($1,$2,$3) RETURNING id',
+        [row.id, config.name, result.checkedAt],
+      );
+      event = {
+        id: incident.id,
+        type: 'incident.opened',
+        name: config.name,
+        at: result.checkedAt,
+      };
+    } else if (state.status === 'up' && row.status === 'down') {
+      const {
+        rows: [incident],
+      } = await client.query(
+        'UPDATE incidents SET resolved_at=$2 WHERE monitor_id=$1 AND resolved_at IS NULL RETURNING id',
+        [row.id, result.checkedAt],
+      );
+      if (incident)
+        event = {
+          id: incident.id,
+          type: 'incident.resolved',
+          name: config.name,
+          at: result.checkedAt,
+        };
+    }
+    if (event) {
+      Object.assign(event, {
+        monitorId: row.id,
+        runId: runId,
+        configRevision: row.config_revision,
+      });
+      await client.query(
+        'INSERT INTO incident_events(incident_id,type,at,run_id,config_revision,result) VALUES($1,$2,$3,$4,$5,$6)',
+        [event.id, event.type, event.at, runId, row.config_revision, JSON.stringify(result)],
+      );
+      await notifications.queueEvent(client, event, config, `${event.id}:${event.type}`);
+    }
+  }
   async function changeCheck(id: string, change: CheckChange, expectedRevision?: number) {
-    if (change.kind === 'edit') await notifications.validateRoutes(change.config);
+    if (change.kind === 'edit') {
+      await notifications.validateRoutes(change.config);
+      await probes.validate(change.config);
+    }
     return db.transaction(async (tx) => {
       const [row] = await tx.select().from(monitors).where(eq(monitors.id, id)).for('update');
       if (!row) throw new CheckError(404, 'Check not found');
@@ -428,6 +453,7 @@ export async function createService() {
     const loop = async () => {
       while (!stopping) {
         try {
+          await probes.expire();
           await enqueue();
           await pool.query(
             "INSERT INTO worker_health(id,seen_at) VALUES ('primary',now()) ON CONFLICT (id) DO UPDATE SET seen_at=now()",
@@ -435,6 +461,10 @@ export async function createService() {
           if (Date.now() - lastCleanup > 3600000) {
             await pool.query(
               "DELETE FROM runs WHERE checked_at < now() - ($1 * interval '1 day')",
+              [env.RUN_RETENTION_DAYS],
+            );
+            await pool.query(
+              "DELETE FROM probe_rounds WHERE finished_at IS NOT NULL AND created_at < now() - ($1 * interval '1 day')",
               [env.RUN_RETENTION_DAYS],
             );
             lastCleanup = Date.now();
@@ -460,13 +490,30 @@ export async function createService() {
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
     };
-    const task = Promise.all([loop(), alertLoop()]);
+    const probeLoop = async () => {
+      while (!stopping) {
+        try {
+          await probes.local();
+        } catch {
+          console.error('Local probe could not complete its cycle');
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+    };
+    const task = Promise.all([
+      loop(),
+      alertLoop(),
+      ...Array.from({ length: 5 }, () => probeLoop()),
+    ]);
     return async () => {
       stopping = true;
       await task;
     };
   }
   return {
+    probes,
+    secrets,
+    statusManagement,
     notifications,
     incidentTimeline,
     db,
@@ -481,11 +528,25 @@ export async function createService() {
     changeCheck,
     getRevisions,
     getRevision,
+    async testCheck(config: CheckConfig) {
+      if (activePreviews >= 2)
+        throw new CheckError(429, 'Two request tests are already running. Try again shortly.');
+      activePreviews++;
+      try {
+        return await executeCheck(config, {
+          allowPrivateNetworks: env.ALLOW_PRIVATE_NETWORKS === 'true',
+          secrets: await secrets.resolve([...Object.values(config.headers), config.body]),
+        });
+      } finally {
+        activePreviews--;
+      }
+    },
     async getCheck(id: string) {
       return toMonitor(await requireCheck(id));
     },
     async createCheck(config: CheckConfig) {
       await notifications.validateRoutes(config);
+      await probes.validate(config);
       return db.transaction(async (tx) => {
         const [row] = await tx.insert(monitors).values({ config }).returning();
         await tx

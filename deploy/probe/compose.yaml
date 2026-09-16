@@ -1,0 +1,17 @@
+services:
+  probe:
+    build:
+      context: ../..
+      target: probe
+    environment:
+      STILLUP_URL: ${STILLUP_URL:?Set the public HTTPS StillUp origin}
+      STILLUP_ENROLLMENT_TOKEN: ${STILLUP_ENROLLMENT_TOKEN:-}
+      STILLUP_PROBE_ALLOW_PRIVATE_NETWORKS: ${STILLUP_PROBE_ALLOW_PRIVATE_NETWORKS:-false}
+    volumes:
+      - identity:/data
+    restart: unless-stopped
+    stop_grace_period: 60s
+    security_opt:
+      - no-new-privileges:true
+volumes:
+  identity:

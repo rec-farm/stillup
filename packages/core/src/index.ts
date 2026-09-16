@@ -1,5 +1,9 @@
 import { z } from 'zod';
 export * from './notifications';
+export * from './secrets';
+export * from './status';
+export * from './probes';
+import { locationIdSchema } from './probes';
 import {
   jsonAssertionSchema,
   headerAssertionSchema,
@@ -46,9 +50,22 @@ export const checkSchema = z
       .refine((ids) => new Set(ids).size === ids.length, 'Choose each channel once')
       .optional(),
     reminderIntervalSeconds: z.number().int().min(300).max(86400).optional(),
+    locationIds: z
+      .array(locationIdSchema)
+      .min(1)
+      .max(10)
+      .refine((ids) => new Set(ids).size === ids.length, 'Choose each location once')
+      .optional(),
+    locationFailureThreshold: z.number().int().min(1).max(10).optional(),
     public: z.boolean().default(false),
   })
   .superRefine((value, ctx) => {
+    if ((value.locationFailureThreshold ?? 1) > (value.locationIds?.length ?? 1))
+      ctx.addIssue({
+        code: 'custom',
+        path: ['locationFailureThreshold'],
+        message: 'Failure threshold cannot exceed the selected locations',
+      });
     if (['GET', 'HEAD'].includes(value.method) && value.body)
       ctx.addIssue({
         code: 'custom',
@@ -142,9 +159,19 @@ export type Dashboard = {
   notificationsEnabled: boolean;
 };
 export type PublicStatus = {
+  branding?: Omit<import('./status').StatusSettings, 'groups'>;
+  groups?: { id: string; name: string }[];
+  maintenance?: import('./status').Maintenance[];
+  communications?: import('./status').CommunicationIncident[];
   title: string;
   updatedAt: string;
-  components: { id: string; name: string; health: Health; lastObservedAt: string | null }[];
+  components: {
+    id: string;
+    name: string;
+    health: Health | 'maintenance';
+    lastObservedAt: string | null;
+    groupId?: string;
+  }[];
   incidents: Incident[];
 };
 

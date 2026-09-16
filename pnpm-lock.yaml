@@ -51,6 +51,18 @@ importers:
         specifier: 4.6.2
         version: 4.6.2
 
+  apps/probe:
+    dependencies:
+      '@stillup/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      tsx:
+        specifier: ^4.20.0
+        version: 4.23.13
+      zod:
+        specifier: 4.6.2
+        version: 4.6.2
+
   apps/web:
     dependencies:
       '@fontsource-variable/dm-sans':

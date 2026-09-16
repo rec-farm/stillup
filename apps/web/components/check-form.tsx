@@ -1,9 +1,10 @@
 'use client';
 import { useRef, useState, useEffect } from 'react';
 import { X, ArrowRight, Globe2, Code2 } from 'lucide-react';
-import { checkSchema, type Monitor } from '@stillup/core';
+import { checkSchema, type Monitor, type CheckResult } from '@stillup/core';
 import { AssertionEditor } from './assertion-editor';
 import { NotificationRouting } from './notification-routing';
+import { LocationRouting } from './locations';
 export function CheckForm({
   onClose,
   onSaved,
@@ -14,15 +15,24 @@ export function CheckForm({
   monitor?: Monitor;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const resultPanel = useRef<HTMLElement>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [preview, setPreview] = useState<CheckResult | null>(null);
+  const submitting = useRef(false);
   const [method, setMethod] = useState(monitor?.config.method ?? 'GET');
   const [body, setBody] = useState(monitor?.config.body ?? '');
   useEffect(() => {
     dialog.current?.showModal();
   }, []);
+  useEffect(() => {
+    if (preview) resultPanel.current?.scrollIntoView({ block: 'center' });
+  }, [preview]);
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submitting.current) return;
+    const isTest = (event.nativeEvent as SubmitEvent).submitter?.getAttribute('value') === 'test';
     setError('');
     const form = new FormData(event.currentTarget);
     const number = (name: string) => Number(form.get(name));
@@ -56,6 +66,8 @@ export function CheckForm({
         reminderIntervalSeconds: form.get('reminderIntervalSeconds')
           ? number('reminderIntervalSeconds')
           : undefined,
+        locationIds: JSON.parse(String(form.get('locationIds') || '["local"]')),
+        locationFailureThreshold: Number(form.get('locationFailureThreshold') || 1),
         public: form.get('public') === 'on',
       });
       if (!parsed.success)
@@ -65,17 +77,28 @@ export function CheckForm({
             .join('; '),
         );
       const config = parsed.data;
+      submitting.current = true;
       setBusy(true);
-      const res = await fetch(monitor ? `/api/v1/checks/${monitor.id}` : '/api/v1/checks', {
-        method: monitor ? 'PUT' : 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(
-          monitor ? { config, expectedRevision: monitor.configRevision } : config,
-        ),
-      });
+      setTesting(isTest);
+      if (isTest) setPreview(null);
+      const res = await fetch(
+        isTest
+          ? '/api/v1/checks/test'
+          : monitor
+            ? `/api/v1/checks/${monitor.id}`
+            : '/api/v1/checks',
+        {
+          method: !isTest && monitor ? 'PUT' : 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(
+            !isTest && monitor ? { config, expectedRevision: monitor.configRevision } : config,
+          ),
+        },
+      );
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      onSaved(data);
+      if (isTest) setPreview(data);
+      else onSaved(data);
     } catch (error) {
       setError(
         error instanceof SyntaxError
@@ -85,7 +108,9 @@ export function CheckForm({
             : 'Could not create check',
       );
     } finally {
+      submitting.current = false;
       setBusy(false);
+      setTesting(false);
     }
   }
   return (
@@ -98,7 +123,7 @@ export function CheckForm({
         if (!busy) onClose();
       }}
     >
-      <form onSubmit={submit}>
+      <form onSubmit={submit} onChange={() => setPreview(null)}>
         <header className="dialog-header">
           <div>
             <span className="eyebrow">
@@ -118,7 +143,7 @@ export function CheckForm({
             <X size={20} />
           </button>
         </header>
-        <div className="dialog-content">
+        <fieldset className="dialog-content check-form-fields" disabled={busy}>
           {monitor && (
             <p className="edit-note">
               Saving starts a fresh evaluation. Earlier results and any open incident stay in
@@ -290,7 +315,7 @@ export function CheckForm({
               placeholder={'{"Authorization": "Bearer {{API_TOKEN}}"}'}
             />
             <p className="field-hint">
-              Use {'{{NAME}}'} for secrets supplied as CHECK_SECRET_NAME on the worker. Literal
+              Use {'{{NAME}}'} for managed secrets or CHECK_SECRET_NAME environment values. Literal
               values are stored in the database.
             </p>
             {!['GET', 'HEAD'].includes(method) && (
@@ -307,6 +332,7 @@ export function CheckForm({
               </>
             )}
           </details>
+          <LocationRouting monitor={monitor} />
           <NotificationRouting config={monitor?.config} />
           <label className="checkbox-label">
             <input name="public" type="checkbox" defaultChecked={monitor?.config.public ?? false} />
@@ -323,18 +349,76 @@ export function CheckForm({
               change data.
             </p>
           )}
+          <p className="field-hint">
+            Test request sends one real {method} request from the API server using this draft. It
+            does not save the check, change its health, or send alerts.
+            {!['GET', 'HEAD'].includes(method) && ' This request can change data at the endpoint.'}
+          </p>
+          {preview && (
+            <section ref={resultPanel} aria-label="Request test result" aria-live="polite">
+              <h3>
+                {preview.outcome === 'pass'
+                  ? 'Test passed'
+                  : preview.outcome === 'error'
+                    ? 'Test could not run'
+                    : 'Test failed'}
+              </h3>
+              <p className="field-hint">
+                {preview.statusCode === null ? 'No HTTP response' : `HTTP ${preview.statusCode}`} ·{' '}
+                {preview.durationMs} ms. Results from the last test; test again after changes.
+                Response bodies and header values are not displayed.
+              </p>
+              <ul className="assertion-results">
+                {preview.assertions?.length
+                  ? preview.assertions.map((assertion, index) => (
+                      <li key={index} data-passed={assertion.passed}>
+                        <strong>
+                          {assertion.passed ? 'Passed' : 'Failed'} · {assertion.kind}
+                        </strong>
+                        <span>{assertion.message}</span>
+                      </li>
+                    ))
+                  : preview.failures.map((failure, index) => (
+                      <li key={index} data-passed="false">
+                        {failure}
+                      </li>
+                    ))}
+              </ul>
+            </section>
+          )}
           {error && (
             <p className="error-message" role="alert">
               {error}
             </p>
           )}
-        </div>
-        <footer className="dialog-footer">
+        </fieldset>
+        <footer className="dialog-footer check-editor-footer">
           <button className="button secondary" type="button" onClick={onClose} disabled={busy}>
             Cancel
           </button>
-          <button className="button primary" disabled={busy}>
-            {busy ? (monitor ? 'Saving…' : 'Creating…') : monitor ? 'Save changes' : 'Create check'}
+          <button
+            className="button secondary"
+            type="submit"
+            name="action"
+            value="test"
+            disabled={busy}
+          >
+            {testing ? 'Testing…' : 'Test request'}
+          </button>
+          <button
+            className="button primary"
+            type="submit"
+            name="action"
+            value="save"
+            disabled={busy}
+          >
+            {busy && !testing
+              ? monitor
+                ? 'Saving…'
+                : 'Creating…'
+              : monitor
+                ? 'Save changes'
+                : 'Create check'}
             <ArrowRight size={16} />
           </button>
         </footer>

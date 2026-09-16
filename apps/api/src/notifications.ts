@@ -8,7 +8,9 @@ import type {
   DeliveryAttempt,
   DeliveryPage,
 } from '@stillup/core';
-import { channelSchema, channelEditSchema } from '@stillup/core';
+import { channelSchema, channelEditSchema, secretReferences } from '@stillup/core';
+import { resolveSecrets } from '@stillup/core/executor';
+import type { createSecrets } from './secrets';
 import { sendWebhook } from '@stillup/core/webhook';
 import { env } from './env';
 import { CheckError } from './errors';
@@ -33,7 +35,7 @@ function delivery(row: Record<string, any>): Delivery {
     deliveredAt: iso(row.delivered_at),
   };
 }
-export function createNotifications(pool: Pool) {
+export function createNotifications(pool: Pool, secrets: ReturnType<typeof createSecrets>) {
   async function transaction<T>(fn: (client: Client) => Promise<T>): Promise<T> {
     const client = await pool.connect();
     try {
@@ -58,8 +60,11 @@ export function createNotifications(pool: Pool) {
   function channel(row: Record<string, any>): Channel {
     const url = row.source === 'environment' ? env.ALERT_WEBHOOK_URL : row.url;
     let destination = 'Not configured';
+    const references = secretReferences([url ?? '']);
     try {
-      destination = new URL(url).origin;
+      destination = references.length
+        ? `Secret reference: ${references.join(', ')}`
+        : new URL(url).origin;
     } catch {
       /* Never return an invalid URL or secret path. */
     }
@@ -256,12 +261,19 @@ export function createNotifications(pool: Pool) {
   async function deliverOne(id?: string) {
     const row = await claim(id);
     if (!row) return false;
-    const result = await sendWebhook(
-      row.target_url,
-      row.event,
-      row.id,
-      env.ALLOW_PRIVATE_NETWORKS === 'true',
-    );
+    let result: { statusCode: number | null; error: string | null };
+    try {
+      const values = await secrets.resolve([row.target_url]);
+      const destination = resolveSecrets(row.target_url, values);
+      result = await sendWebhook(
+        destination,
+        row.event,
+        row.id,
+        env.ALLOW_PRIVATE_NETWORKS === 'true',
+      );
+    } catch {
+      result = { statusCode: null, error: 'A referenced webhook secret is unavailable' };
+    }
     await transaction(async (client) => {
       const current = (
         await client.query('SELECT claim_id FROM notification_deliveries WHERE id=$1 FOR UPDATE', [

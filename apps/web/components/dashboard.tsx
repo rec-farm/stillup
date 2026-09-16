@@ -30,6 +30,9 @@ import { Brand } from './brand';
 import { CheckForm } from './check-form';
 import { ConfigurationHistory, RevisionViewer } from './configuration-history';
 import { NotificationDialog, IncidentDialog } from './notifications';
+import { SecretsDialog } from './secrets';
+import { LocationsDialog, RegionalResults } from './locations';
+import { StatusManagementDialog } from './status-management';
 const labels: Record<Health, string> = {
   up: 'Healthy',
   down: 'Failing',
@@ -71,6 +74,8 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
   const [data, setData] = useState(initial);
   const [create, setCreate] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [secretsOpen, setSecretsOpen] = useState(false);
+  const [statusEditorOpen, setStatusEditorOpen] = useState(false);
   const [incidentId, setIncidentId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Monitor | null>(null);
   const [viewRevision, setViewRevision] = useState<{ monitorId: string; revision: number } | null>(
@@ -78,6 +83,7 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
   );
   const [actionError, setActionError] = useState('');
   const refreshSequence = useRef(0);
+  const [locationsOpen, setLocationsOpen] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('all');
@@ -540,6 +546,17 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
               <button className="button secondary" onClick={() => setNotificationsOpen(true)}>
                 Manage notifications
               </button>
+              <div className="notification-actions">
+                <button className="button secondary" onClick={() => setSecretsOpen(true)}>
+                  Manage secrets
+                </button>
+                <button className="button secondary" onClick={() => setLocationsOpen(true)}>
+                  Manage locations
+                </button>
+                <button className="button secondary" onClick={() => setStatusEditorOpen(true)}>
+                  Customize status page
+                </button>
+              </div>
             </section>
           </div>
           <footer className="dashboard-footer">
@@ -548,6 +565,14 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
           </footer>
         </main>
       </div>
+      {locationsOpen && <LocationsDialog onClose={() => setLocationsOpen(false)} />}
+      {secretsOpen && <SecretsDialog onClose={() => setSecretsOpen(false)} />}
+      {statusEditorOpen && (
+        <StatusManagementDialog
+          monitors={data.monitors}
+          onClose={() => setStatusEditorOpen(false)}
+        />
+      )}
       {notificationsOpen && (
         <NotificationDialog
           onClose={() => setNotificationsOpen(false)}
@@ -715,6 +740,7 @@ function CheckDetail({
       </header>
       <h2>{monitor.config.name}</h2>
       <HealthBadge health={monitor.health} />
+      <RegionalResults monitor={monitor} />
       <p className="detail-url">
         <span className="method">{monitor.config.method}</span>
         {monitor.config.url}

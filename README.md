@@ -138,7 +138,7 @@ Delivery history shows pending, delivering, retrying, delivered, failed, and can
 
 Attempts use a persistent 30-second lease. An interrupted worker leaves a visible attempt and another worker can retry after expiry. Delivery is **at least once**: a receiver can accept a message just before the worker crashes. Receivers should deduplicate the stable `eventId` / `Idempotency-Key`, including across manual retries. Events for one incident/channel are attempted in creation order; a recovery waits until earlier deliveries complete, fail, or are cancelled. Other channels and incidents can progress independently.
 
-**Retry delivery** starts a fresh six-attempt cycle for a failed/cancelled record, preserving its history, original destination, payload, and idempotency key. Changing a channel URL affects future events and tests. Disabling a channel cancels queued deliveries when processed; a request already in flight may finish. Events created without any enabled destination are not delivered retroactively. Full webhook URLs are stored in the database but never returned by management/history APIs; the UI shows their origin only. Protect database access and backups.
+**Retry delivery** starts a fresh six-attempt cycle for a failed/cancelled record, preserving its history, original destination template, payload, and idempotency key. Secret references resolve to their current values on each attempt. Changing a channel URL affects future events and tests. Disabling a channel cancels queued deliveries when processed; a request already in flight may finish. Events created without any enabled destination are not delivered retroactively. Literal webhook URLs are stored in the database but never returned by management/history APIs; the UI shows their origin only. Use a managed secret reference to encrypt a sensitive destination. Protect database access and backups.
 
 Set `reminderIntervalSeconds` on a check (300–86400 seconds) to enable outage reminders. The default is off. Reminders require a still-open incident, an enabled/unarchived check, and recent failed observations. They stop when paused, archived, stale, or showing recovery observations. Queued reminders are rechecked before sending. Missed reminder intervals are not replayed.
 
@@ -223,3 +223,60 @@ Notification and investigation endpoints (all require administrator authenticati
 | GET        | `/v1/incidents/:id?before=…`                        | Incident transitions and paginated observations                               |
 
 Test and retry endpoints each allow 10 requests per minute within the existing installation-wide rate limits. Channel edits reject stale revisions with HTTP 409. Channel URLs cannot contain embedded HTTP credentials or fragments. Up to 100 channels per installation and 20 selected channels per check are supported.
+
+## Managed secrets
+
+Open **Manage secrets** to create, replace, enable, or disable named secrets and inspect their current check/channel references. Names use uppercase letters, digits, and underscores and start with a letter (up to 80 characters). Values are write-only after saving. Editing requires the latest revision, so concurrent rotations cannot silently overwrite each other.
+
+Configure `SECRETS_ENCRYPTION_KEY` with a randomly generated 32-byte key encoded as 64 hexadecimal characters (`openssl rand -hex 32`). Supply the same key to the API and workers through the environment or your deployment’s secret manager. Keep it outside PostgreSQL, do not commit it, and keep a secure backup. Losing or replacing this installation key makes existing stored secrets unreadable; changing it is not a credential-rotation procedure. The API refuses writes if its key cannot unlock existing encrypted data. With the key unset, environment-based references still work and stored-secret management is unavailable.
+
+Stored values use AES-256-GCM with a fresh random 12-byte nonce, a 16-byte authentication tag, and the secret name authenticated as additional data through Node’s crypto API. Ciphertext is the only value stored in `managed_secrets`; plaintext and encryption keys are not returned by management APIs. This protects database contents, not a compromised worker that must decrypt credentials to execute checks.
+
+Use `{{API_TOKEN}}` in a request header/body and `{{WEBHOOK_URL}}` as a complete webhook destination. References in webhook paths and query strings also work. Substitution is literal: supply the appropriate JSON or URL escaping when embedding a value. References are resolved once, never recursively. Use a full-URL secret when its characters would otherwise need URL escaping.
+
+Workers resolve the latest enabled value at execution time. Rotation does not create check revisions or place resolved values in run history, incident snapshots, or delivery records. A queued webhook stores the original destination **reference**, so retries use its current value. In-flight requests can finish using the prior value. Legacy literal credentials in check revisions or webhook destinations are not automatically encrypted or removed; replace active literals with references and manage historical exposure separately.
+
+`CHECK_SECRET_NAME` environment values remain supported. Managed names take precedence, including when disabled; a disabled managed secret never falls back to an environment value. Creating a managed secret with an existing environment name is rejected to avoid accidental shadowing. Missing, disabled, or unreadable check credentials produce a configuration error rather than a fabricated target outage. Webhook resolution failures appear in delivery history and retry normally.
+
+The usage view covers current checks (including archived checks), channels, and undelivered/retryable historical delivery references. It also identifies missing references. Historical check configurations retain reference names, not resolved values. Up to 500 managed secrets are supported. Database credentials, installation keys, and backup handling remain deployment responsibilities.
+
+| Method | Endpoint            | Purpose                                                         |
+| ------ | ------------------- | --------------------------------------------------------------- |
+| GET    | `/v1/secrets`       | Availability, names, revisions, and current usage; never values |
+| POST   | `/v1/secrets`       | Create `{ name, value, enabled? }`                              |
+| PUT    | `/v1/secrets/:name` | Replace value and/or change enabled, with expectedRevision      |
+
+## Public status page management
+
+Open **Customize status page** for branding (name, title, introduction, accent color, public logo and website links), component groups, maintenance windows, and incident communication. These changes publish to `/status`. Branding also supplies the browser title and description. Only checks already marked public and not archived are included; assigning a private check to a group does not publish it. Empty groups remain private. Group order follows the editor’s group list.
+
+Maintenance windows specify start/end times, public text, and either selected public components or all published components. The editor accepts your browser’s local time and displays scheduled timestamps in UTC after saving. Active windows mark affected public components as under maintenance; future windows appear as scheduled, and expired/cancelled windows stop affecting public labels. Checks and notifications continue running. Maintenance does not resolve monitoring incidents or change private check health.
+
+Write progress updates on detected incidents using Investigating, Identified, or Monitoring. Monitoring must confirm recovery before a detected incident can be communicated as Resolved. For issues outside automated checks, publish a manual incident against selected public components; it marks their public status as disrupted until a manual Resolved update. A later non-resolved update reopens that manual incident. These communication changes do not manufacture check results or send webhook notifications. Public incident bodies are plain text; only explicitly written public copy is published.
+
+An incident/update is visible only while at least one affected component is public and active. Hidden component IDs are removed from public responses. The management/history view displays up to 100 incidents (unresolved first), 100 maintenance windows (active first), and 50 recent written updates per incident. Public component impact is calculated independently of history limits. Written updates and schedules persist; the latest status data refreshes every 15 seconds, with a stale indicator on refresh failure.
+
+| Method | Endpoint                                      | Purpose                                                        |
+| ------ | --------------------------------------------- | -------------------------------------------------------------- |
+| GET    | `/v1/status-management`                       | Current page settings, maintenance, and incident communication |
+| PUT    | `/v1/status-management/settings`              | Save `{ config, expectedRevision }`; initial revision is 0     |
+| POST   | `/v1/status-management/maintenance`           | Publish a maintenance window                                   |
+| PUT    | `/v1/status-management/maintenance/:id`       | Edit/cancel a window with expectedRevision                     |
+| POST   | `/v1/status-management/incidents`             | Publish `{ title, monitorIds, body }` as a manual incident     |
+| POST   | `/v1/status-management/incidents/:id/updates` | Publish `{ source, stage, body, expectedRevision }`            |
+
+All management endpoints require administrator authentication. Migration `005_secrets_and_status.sql` applies at startup. Restart the API and workers together when upgrading. Existing checks, environment credentials, incident records, and the public page continue to work with the default settings.
+
+## Test a request before saving
+
+The check editor's **Test request** button sends the current draft once and displays HTTP status, duration, and individual assertion results. It works for new checks and unsaved edits, including named secret references. Testing does not save a check or revision, add run history, change health, open incidents, or send notifications. Response bodies, response header values, and resolved credentials are not returned.
+
+A test sends a real request and can change data at the target, especially with POST, PUT, PATCH, or DELETE. It runs from the API server with that server's secrets and network policy; installations with separately configured workers should keep those settings consistent. Notification routing and scheduling are not exercised by a request test. Test again after changing the draft or rotating a secret.
+
+Authenticated clients can use `POST /v1/checks/test` with the same configuration body as check creation. Valid requests return a `CheckResult`, including failed assertions or execution errors; malformed configuration returns 400. Tests have the configured request timeout (at most 30 seconds), a 1 MiB response limit, ten requests per minute per rate-limit bucket, and at most two concurrent tests per API process. Excess tests return 429 without entering a queue.
+
+## Regional probes
+
+StillUp includes a local probe automatically. **Manage locations** creates short-lived enrollment commands for regional servers; checks can select locations and configure how many must fail. Location details distinguish regional failures from missing probe coverage. Remote probes need only outbound HTTPS and a persistent identity volume.
+
+See [the probe setup guide](docs/PROBES.md) for Docker Compose installation, the Fly.io template, health rules, credentials, and protocol details. Geographic servers are supplied by the operator; this version builds the probe image from your checkout.

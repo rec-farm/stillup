@@ -214,13 +214,14 @@ export function NotificationDialog({
                 <input
                   id="channel-url"
                   name="url"
-                  type="url"
+                  type="text"
                   required={!current}
                   maxLength={4096}
-                  placeholder="https://hooks.example.com/…"
+                  placeholder="https://hooks.example.com/… or {{WEBHOOK_URL}}"
                 />
                 <p className="field-hint">
-                  The full URL is stored privately and never returned to the browser. Leave blank
+                  Use {'{{WEBHOOK_URL}}'} or references in a URL path/query for encrypted
+                  credentials. The saved destination is never returned to the browser. Leave blank
                   when editing to keep it.
                 </p>
               </>
@@ -371,8 +372,9 @@ export function DeliveryHistory({ incidentId }: { incidentId?: string }) {
   return (
     <section aria-label="Notification delivery history">
       <p className="field-hint">
-        Six automatic attempts with backoff. Retries reuse the original destination and idempotency
-        key. Receivers should deduplicate this key.
+        Six automatic attempts with backoff. Retries reuse the original destination reference and
+        idempotency key. Secret references use their current values. Receivers should deduplicate
+        this key.
       </p>
       {error && (
         <p className="error-message" role="alert">
