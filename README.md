@@ -280,3 +280,7 @@ Authenticated clients can use `POST /v1/checks/test` with the same configuration
 StillUp includes a local probe automatically. **Manage locations** creates short-lived enrollment commands for regional servers; checks can select locations and configure how many must fail. Location details distinguish regional failures from missing probe coverage. Remote probes need only outbound HTTPS and a persistent identity volume.
 
 See [the probe setup guide](docs/PROBES.md) for Docker Compose installation, the Fly.io template, health rules, credentials, and protocol details. Geographic servers are supplied by the operator; this version builds the probe image from your checkout.
+
+### Company branding
+
+Use **Appearance** in the dashboard to set a shared company name, logo, accent color, welcome message, and dashboard spacing with a live preview. Changes persist in PostgreSQL and also brand the sign-in screen. Public status-page branding stays separate. See [workspace appearance](docs/APPEARANCE.md).

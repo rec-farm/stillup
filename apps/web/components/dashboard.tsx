@@ -4,6 +4,7 @@ import {
   Activity,
   Archive,
   Pencil,
+  Palette,
   RotateCcw,
   ArrowDownRight,
   ArrowUpRight,
@@ -26,6 +27,12 @@ import {
   X,
 } from 'lucide-react';
 import type { Dashboard, Monitor, Run, Health } from '@stillup/core';
+import dynamic from 'next/dynamic';
+const AppearanceDialog = dynamic(() =>
+  import('./appearance-dialog').then((module) => module.AppearanceDialog),
+);
+import { useWorkspace } from './workspace-provider';
+import { appearanceStyle } from '../lib/appearance';
 import { Brand } from './brand';
 import { CheckForm } from './check-form';
 import { ConfigurationHistory, RevisionViewer } from './configuration-history';
@@ -71,6 +78,8 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return data;
 }
 export function DashboardView({ initial }: { initial: Dashboard }) {
+  const { settings } = useWorkspace();
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [data, setData] = useState(initial);
   const [create, setCreate] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -162,22 +171,26 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
     }
   }
   return (
-    <div className="app-shell">
+    <div
+      className="app-shell themed-workspace"
+      style={appearanceStyle(settings)}
+      data-density={settings.density}
+    >
       <aside className="sidebar">
-        <a className="brand-link" href="/" aria-label="StillUp home">
-          <Brand />
+        <a className="brand-link" href="/" aria-label={`${settings.name} home`}>
+          <Brand workspace />
         </a>
         <div className="workspace">
-          <span className="workspace-avatar">S</span>
+          <span className="workspace-avatar">{settings.name.slice(0, 1).toUpperCase()}</span>
           <div>
-            <strong>My workspace</strong>
+            <strong>{settings.name === 'StillUp' ? 'My workspace' : settings.name}</strong>
             <small>Self-hosted installation</small>
           </div>
           <ShieldCheck size={16} />
         </div>
         <span className="nav-label">WORKSPACE</span>
         <nav>
-          <a href="/" className="nav-item active">
+          <a href="/" className="nav-item active" aria-current="page">
             <LayoutDashboard size={18} />
             Overview
           </a>
@@ -195,6 +208,9 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
             <ExternalLink size={13} />
           </a>
         </nav>
+        <button className="nav-item appearance-nav" onClick={() => setAppearanceOpen(true)}>
+          <Palette size={18} /> Appearance
+        </button>
         <div className="sidebar-bottom">
           <div className="ownership-note">
             <Terminal size={18} />
@@ -243,7 +259,7 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
               <h1>
                 Overview<span className="heading-dot">.</span>
               </h1>
-              <p>A little peace of mind for everything you build.</p>
+              <p>{settings.tagline}</p>
             </div>
             <button className="button primary" onClick={() => setCreate(true)}>
               <Plus size={17} />
@@ -268,7 +284,9 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
               </button>
             </div>
           )}
-          <section className={`overview-banner ${counts.down ? 'attention' : ''}`}>
+          <section
+            className={`overview-banner ${counts.down ? 'attention' : !workerOnline || !counts.up ? 'neutral' : ''}`}
+          >
             <div className="banner-icon">
               {counts.down ? (
                 <Radio size={24} />
@@ -358,6 +376,7 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
                   ['all', 'All checks'],
                   ['up', 'Healthy'],
                   ['down', 'Failing'],
+                  ['unknown', 'Awaiting data'],
                   ['paused', 'Paused'],
                   ['archived', `Archived (${data.monitors.length - activeMonitors.length})`],
                 ].map(([value, label]) => (
@@ -422,6 +441,17 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
                     ? 'Checks you archive will appear here with their history.'
                     : 'Try another name or status filter.'}
                 </p>
+                {(query || filter !== 'all') && (
+                  <button
+                    className="button secondary"
+                    onClick={() => {
+                      setQuery('');
+                      setFilter('all');
+                    }}
+                  >
+                    Clear filters
+                  </button>
+                )}
               </div>
             ) : (
               <div className="table-scroll">
@@ -565,6 +595,7 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
           </footer>
         </main>
       </div>
+      {appearanceOpen && <AppearanceDialog onClose={() => setAppearanceOpen(false)} />}
       {locationsOpen && <LocationsDialog onClose={() => setLocationsOpen(false)} />}
       {secretsOpen && <SecretsDialog onClose={() => setSecretsOpen(false)} />}
       {statusEditorOpen && (
@@ -672,7 +703,7 @@ function Metric({
         <span>{label}</span>
         {icon}
       </div>
-      <strong>{value.toString().padStart(2, '0')}</strong>
+      <strong>{value}</strong>
       <p>{detail}</p>
     </article>
   );

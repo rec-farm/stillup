@@ -1861,3 +1861,65 @@ suite(
   },
   30000,
 );
+
+suite(
+  'persists workspace appearance with authenticated writes and revision protection',
+  async () => {
+    const headers = { authorization: `Bearer ${token}` };
+    expect((await app.inject({ url: '/v1/workspace' })).statusCode).toBe(401);
+    expect(
+      (await app.inject({ url: '/v1/workspace', method: 'PUT', payload: {} })).statusCode,
+    ).toBe(401);
+    const initial = (await app.inject({ url: '/v1/workspace', headers })).json();
+    const config = {
+      name: 'Acme Operations',
+      tagline: 'Always watching.',
+      logoUrl: 'https://example.com/logo.svg',
+      accentColor: '#7c3aed',
+      density: 'compact',
+    };
+    const save = await app.inject({
+      url: '/v1/workspace',
+      method: 'PUT',
+      headers,
+      payload: { config, expectedRevision: initial.revision },
+    });
+    expect(save.statusCode).toBe(200);
+    const stored = await service.workspace.read();
+    expect(stored.settings).toEqual(config);
+    expect(stored.revision).toBe(initial.revision + 1);
+    expect((await app.inject({ url: '/v1/public/workspace' })).json()).toEqual(config);
+    const stale = await app.inject({
+      url: '/v1/workspace',
+      method: 'PUT',
+      headers,
+      payload: { config: { ...config, name: 'Stale edit' }, expectedRevision: initial.revision },
+    });
+    expect(stale.statusCode).toBe(409);
+    for (const change of [
+      { logoUrl: 'javascript:alert(1)' },
+      { logoUrl: 'https://user:password@example.com/logo.svg' },
+      { accentColor: '#fff;display:none' },
+      { density: 'invalid' },
+    ]) {
+      expect(
+        (
+          await app.inject({
+            url: '/v1/workspace',
+            method: 'PUT',
+            headers,
+            payload: { config: { ...config, ...change }, expectedRevision: stored.revision },
+          })
+        ).statusCode,
+      ).toBe(400);
+    }
+    const crossOrigin = await app.inject({
+      url: '/v1/workspace',
+      method: 'PUT',
+      headers: { ...headers, origin: 'https://untrusted.example' },
+      payload: { config, expectedRevision: stored.revision },
+    });
+    expect(crossOrigin.statusCode).toBe(403);
+    expect((await service.workspace.read()).settings).toEqual(config);
+  },
+);

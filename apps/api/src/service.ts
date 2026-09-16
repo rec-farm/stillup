@@ -28,6 +28,7 @@ import { CheckError } from './errors';
 export { CheckError } from './errors';
 import { createNotifications } from './notifications';
 import { createSecrets } from './secrets';
+import { createWorkspaceSettings } from './workspace';
 import { createStatusManagement } from './status-management';
 import { createProbes } from './probes';
 import type { PoolClient } from '@stillup/db';
@@ -514,6 +515,7 @@ export async function createService() {
     probes,
     secrets,
     statusManagement,
+    workspace: createWorkspaceSettings(pool),
     notifications,
     incidentTimeline,
     db,

@@ -188,3 +188,6 @@ export type IncidentTimeline = {
   observations: Run[];
   nextBefore: string | null;
 };
+
+export { workspaceSettingsSchema, defaultWorkspaceSettings } from './workspace';
+export type { WorkspaceSettings, WorkspaceAppearance } from './workspace';

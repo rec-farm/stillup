@@ -49,6 +49,7 @@ export async function createServer(service: Service) {
     if (
       path === '/health' ||
       path === '/v1/public/status' ||
+      (path === '/v1/public/workspace' && ['GET', 'HEAD'].includes(request.method)) ||
       (path === '/v1/session' && request.method === 'POST')
     )
       return;
@@ -269,6 +270,14 @@ export async function createServer(service: Service) {
   app.put('/v1/secrets/:name', async (request) => {
     const { name } = z.object({ name: z.string() }).parse(request.params);
     return service.secrets.save(request.body, name);
+  });
+  app.get('/v1/public/workspace', async () => (await service.workspace.read()).settings);
+  app.get('/v1/workspace', () => service.workspace.read());
+  app.put('/v1/workspace', async (request) => {
+    const { config, expectedRevision } = z
+      .object({ config: z.unknown(), expectedRevision: z.number().int().min(0) })
+      .parse(request.body);
+    return service.workspace.save(config, expectedRevision);
   });
   app.get('/v1/status-management', () => service.statusManagement.admin());
   app.put('/v1/status-management/settings', async (request) => {
