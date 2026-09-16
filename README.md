@@ -23,7 +23,15 @@ This is the first working foundation, intended for a trusted administrator manag
 - Publish selected checks and their incidents at `/status`.
 - Protect management with an installation administrator token and a 24-hour HTTP-only session.
 
-Multi-user accounts, permanent deletion, email notifications, custom domains, maintenance windows, uptime aggregates, TypeScript workflow execution, and remote runners are not implemented yet. See [the roadmap](docs/ROADMAP.md).
+Multi-user accounts, permanent deletion, email notifications, custom domains, uptime aggregates, and TypeScript workflow execution are not implemented yet. See [the roadmap](docs/ROADMAP.md).
+
+## Documentation and monitoring as code
+
+Open **Documentation** in the dashboard, or visit `/docs` without signing in, for the first-check walkthrough and guides to assertions, secrets, notifications, locations, status pages, hosting, and the API.
+
+Define version-controlled HTTP checks in TypeScript or JSON using the workspace SDK and CLI. Run `pnpm stillup --help` for `validate`, `test`, `diff`, and `apply`. Start with [the monitoring-as-code guide](docs/MONITORING_AS_CODE.md) and [example configuration](examples/monitoring/stillup.config.ts). The CLI and SDK currently run from this checkout and are not published to npm.
+
+Code-owned checks have stable project/check IDs, transactional apply with stale-preview protection, and read-only dashboard configuration. You can still pause or archive them in the dashboard. Omitted checks are retained and flagged in previews; no automatic deletion occurs.
 
 ## Run locally
 

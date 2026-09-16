@@ -24,6 +24,7 @@ import { executeCheck } from '@stillup/core/executor';
 import { env } from './env';
 import { migrate } from './migrate';
 
+import { createCodeManagement } from './code-management';
 import { CheckError } from './errors';
 export { CheckError } from './errors';
 import { createNotifications } from './notifications';
@@ -73,6 +74,7 @@ export async function createService() {
   });
   const toMonitor = (row: typeof monitors.$inferSelect): Monitor => ({
     id: row.id,
+    codeOwnership: row.codeProject ? { project: row.codeProject, id: row.codeKey! } : null,
     config: row.config,
     configRevision: row.configRevision,
     archivedAt: row.archivedAt,
@@ -313,6 +315,11 @@ export async function createService() {
     return db.transaction(async (tx) => {
       const [row] = await tx.select().from(monitors).where(eq(monitors.id, id)).for('update');
       if (!row) throw new CheckError(404, 'Check not found');
+      if (row.codeProject && change.kind === 'edit')
+        throw new CheckError(
+          409,
+          'This check is managed as code. Edit its project configuration and apply it with the CLI.',
+        );
       if (expectedRevision !== undefined && row.configRevision !== expectedRevision) {
         throw new CheckError(
           409,
@@ -512,6 +519,10 @@ export async function createService() {
     };
   }
   return {
+    code: createCodeManagement(pool, async (config) => {
+      await notifications.validateRoutes(config);
+      await probes.validate(config);
+    }),
     probes,
     secrets,
     statusManagement,

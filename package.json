@@ -16,7 +16,8 @@
     "check": "pnpm typecheck && pnpm test && pnpm build",
     "test:integration": "node --env-file=.env ./node_modules/vitest/vitest.mjs run apps/api/src/integration.test.ts",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "stillup": "tsx apps/cli/src/main.ts"
   },
   "devDependencies": {
     "typescript": "^6.0.2",

@@ -17,6 +17,8 @@ export const monitors = pgTable(
   'monitors',
   {
     id: uuid().primaryKey().defaultRandom(),
+    codeProject: text(),
+    codeKey: text(),
     config: jsonb().$type<CheckConfig>().notNull(),
     configRevision: integer().notNull().default(1),
     executionEpoch: integer().notNull().default(1),

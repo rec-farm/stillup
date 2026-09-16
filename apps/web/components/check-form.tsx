@@ -278,6 +278,11 @@ export function CheckForm({
               />
             </div>
           </div>
+          <p className="field-hint">
+            <a href="/docs/checks-and-assertions" target="_blank" rel="noreferrer">
+              Guide to assertions and response schemas ↗
+            </a>
+          </p>
           <AssertionEditor kind="json" initial={monitor?.config.jsonAssertions} />
           <AssertionEditor kind="header" initial={monitor?.config.headerAssertions} />
           <details className="advanced" open={monitor?.config.responseSchema !== undefined}>
@@ -316,7 +321,10 @@ export function CheckForm({
             />
             <p className="field-hint">
               Use {'{{NAME}}'} for managed secrets or CHECK_SECRET_NAME environment values. Literal
-              values are stored in the database.
+              values are stored in the database.{' '}
+              <a href="/docs/secrets" target="_blank" rel="noreferrer">
+                Set up secret references ↗
+              </a>
             </p>
             {!['GET', 'HEAD'].includes(method) && (
               <>
@@ -332,6 +340,15 @@ export function CheckForm({
               </>
             )}
           </details>
+          <p className="field-hint">
+            <a href="/docs/locations" target="_blank" rel="noreferrer">
+              Regional locations guide ↗
+            </a>{' '}
+            ·{' '}
+            <a href="/docs/notifications" target="_blank" rel="noreferrer">
+              Alert routing guide ↗
+            </a>
+          </p>
           <LocationRouting monitor={monitor} />
           <NotificationRouting config={monitor?.config} />
           <label className="checkbox-label">

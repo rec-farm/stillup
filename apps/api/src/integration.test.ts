@@ -1923,3 +1923,217 @@ suite(
     expect((await service.workspace.read()).settings).toEqual(config);
   },
 );
+
+suite('code projects apply atomically, preserve history, and enforce ownership', async () => {
+  const headers = { authorization: `Bearer ${token}` };
+  const { codeConfigSchema } = await import('@stillup/core/code-config');
+  const config = codeConfigSchema.parse({
+    version: 1,
+    project: 'code-lifecycle',
+    checks: [
+      {
+        id: 'health',
+        config: {
+          name: 'Code health',
+          url: origin,
+          intervalSeconds: 86400,
+          headers: { Authorization: 'Bearer {{API_TOKEN}}' },
+        },
+      },
+    ],
+  });
+  const unauthenticated = await app.inject({
+    url: '/v1/code/plan',
+    method: 'POST',
+    payload: config,
+  });
+  expect(unauthenticated.statusCode).toBe(401);
+  const preview = await app.inject({
+    url: '/v1/code/plan',
+    method: 'POST',
+    headers,
+    payload: config,
+  });
+  expect(preview.statusCode).toBe(200);
+  expect(preview.body).not.toContain('API_TOKEN');
+  expect(preview.json().changes[0].action).toBe('create');
+  expect(
+    (await service.pool.query('SELECT * FROM monitors WHERE code_project=$1', [config.project]))
+      .rowCount,
+  ).toBe(0);
+  const applied = await app.inject({
+    url: '/v1/code/apply',
+    method: 'POST',
+    headers,
+    payload: { config, token: preview.json().token },
+  });
+  expect(applied.statusCode).toBe(200);
+  const next = await service.code.plan(config);
+  expect(next.changes[0]!.action).toBe('unchanged');
+  const id = next.changes[0]!.monitorId!;
+  const monitor = await service.getCheck(id);
+  expect(monitor.codeOwnership).toEqual({ project: 'code-lifecycle', id: 'health' });
+  await service.code.apply(config, next.token);
+  expect((await service.getRevisions(id)).revisions).toHaveLength(1);
+  expect(
+    (
+      await app.inject({
+        url: `/v1/checks/${id}`,
+        method: 'PUT',
+        headers,
+        payload: { config: monitor.config, expectedRevision: 1 },
+      })
+    ).statusCode,
+  ).toBe(409);
+  const changed = structuredClone(config);
+  changed.checks[0]!.config.name = 'Renamed code health';
+  const stale = await service.code.plan(changed);
+  await service.changeCheck(id, { kind: 'enabled', enabled: false }, 1);
+  await expect(service.code.apply(changed, stale.token)).rejects.toMatchObject({ statusCode: 409 });
+  expect((await service.getCheck(id)).configRevision).toBe(1);
+  const paused = await service.code.plan(changed);
+  await service.code.apply(changed, paused.token);
+  const updated = await service.getCheck(id);
+  expect(updated.enabled).toBe(false);
+  expect(updated.configRevision).toBe(2);
+  expect((await service.getRevision(id, 1)).config.name).toBe('Code health');
+  expect(updated.config.headers.Authorization).toBe('Bearer {{API_TOKEN}}');
+  const omitted = { ...changed, checks: [] };
+  const retain = await service.code.plan(omitted);
+  expect(retain.changes[0]!.action).toBe('retained');
+  await service.code.apply(omitted, retain.token);
+  expect((await service.getCheck(id)).configRevision).toBe(2);
+  await service.changeCheck(id, { kind: 'archive' }, 2);
+  const batch = structuredClone(changed);
+  batch.checks[0]!.config.name = 'Cannot update archived';
+  batch.checks.unshift({
+    id: 'must-roll-back',
+    config: checkSchema.parse({ name: 'Atomic sibling', url: origin }),
+  });
+  const blocked = await service.code.plan(batch);
+  await expect(service.code.apply(batch, blocked.token)).rejects.toMatchObject({ statusCode: 409 });
+  expect(
+    (
+      await service.pool.query('SELECT 1 FROM monitors WHERE code_project=$1 AND code_key=$2', [
+        config.project,
+        'must-roll-back',
+      ])
+    ).rowCount,
+  ).toBe(0);
+  expect((await service.getCheck(id)).configRevision).toBe(2);
+  await service.changeCheck(id, { kind: 'restore' }, 2);
+  const restoredPlan = await service.code.plan(changed);
+  await service.code.apply(changed, restoredPlan.token);
+  expect((await service.getCheck(id)).enabled).toBe(false);
+});
+
+suite(
+  'concurrent code deployments cannot duplicate identities or touch another project',
+  async () => {
+    const { codeConfigSchema } = await import('@stillup/core/code-config');
+    const config = codeConfigSchema.parse({
+      version: 1,
+      project: 'code-concurrency',
+      checks: [
+        { id: 'health', config: { name: 'Shared name', url: origin, intervalSeconds: 86400 } },
+      ],
+    });
+    const ui = await service.createCheck(config.checks[0]!.config);
+    const preview = await service.code.plan(config);
+    const results = await Promise.allSettled([
+      service.code.apply(config, preview.token),
+      service.code.apply(config, preview.token),
+    ]);
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    const failed = results.find((r) => r.status === 'rejected') as PromiseRejectedResult;
+    expect(failed.reason.statusCode).toBe(409);
+    const sibling = { ...config, project: 'code-other-project' };
+    await service.code.apply(sibling, (await service.code.plan(sibling)).token);
+    expect(
+      (await service.pool.query('SELECT 1 FROM monitors WHERE code_project=$1', [config.project]))
+        .rowCount,
+    ).toBe(1);
+    expect((await service.code.plan(sibling)).changes[0]!.monitorId).not.toBe(
+      (await service.code.plan(config)).changes[0]!.monitorId,
+    );
+    expect((await service.getCheck(ui.id)).codeOwnership).toBeNull();
+    for (const project of [config, sibling]) {
+      const id = (await service.code.plan(project)).changes[0]!.monitorId!;
+      await service.changeCheck(id, { kind: 'enabled', enabled: false });
+    }
+    await service.changeCheck(ui.id, { kind: 'enabled', enabled: false });
+  },
+);
+
+suite(
+  'CLI validates, previews, applies, tests, and returns useful exit codes against HTTP',
+  async () => {
+    const { mkdtemp, writeFile, rm } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    const { execFile } = await import('node:child_process');
+    const { promisify } = await import('node:util');
+    const run = promisify(execFile);
+    const directory = await mkdtemp(join(tmpdir(), 'stillup-cli-'));
+    const filename = join(directory, 'checks.json');
+    const root = fileURLToPath(new URL('../../../', import.meta.url));
+    if (!app.server.listening) await app.listen({ port: 0, host: '127.0.0.1' });
+    const address = `http://127.0.0.1:${(app.server.address() as { port: number }).port}`;
+    const config = {
+      version: 1,
+      project: 'cli-e2e',
+      checks: [
+        {
+          id: 'health',
+          config: { name: 'CLI check', url: origin, intervalSeconds: 86400, expectedStatus: 200 },
+        },
+      ],
+    };
+    async function cli(...args: string[]) {
+      try {
+        const result = await run(
+          process.execPath,
+          ['--import', 'tsx', 'apps/cli/src/main.ts', ...args, '--config', filename],
+          {
+            cwd: root,
+            env: { ...process.env, STILLUP_URL: address, STILLUP_ADMIN_TOKEN: token },
+            timeout: 10000,
+          },
+        );
+        return { ...result, code: 0 };
+      } catch (error) {
+        const e = error as { stdout: string; stderr: string; code: number };
+        return { stdout: e.stdout, stderr: e.stderr, code: e.code };
+      }
+    }
+    try {
+      status = 200;
+      await writeFile(filename, JSON.stringify(config));
+      expect((await cli('validate')).code).toBe(0);
+      expect((await cli('apply')).code).toBe(1);
+      const diff = await cli('diff', '--check', '--json');
+      expect(diff.code).toBe(2);
+      expect(JSON.parse(diff.stdout).changes[0].action).toBe('create');
+      const apply = await cli('apply', '--yes', '--json');
+      expect(apply.code, apply.stderr).toBe(0);
+      expect(JSON.parse(apply.stdout).applied).toBe(true);
+      expect((await cli('diff', '--check')).code).toBe(0);
+      const test = await cli('test', '--yes', '--json');
+      expect(test.code, test.stderr).toBe(0);
+      expect(JSON.parse(test.stdout).results[0].outcome).toBe('pass');
+      config.checks[0]!.config.expectedStatus = 418;
+      await writeFile(filename, JSON.stringify(config));
+      expect((await cli('test', '--yes')).code).toBe(1);
+      expect((await cli('test', '--yes', '--id', 'missing')).code).toBe(1);
+      await writeFile(filename, JSON.stringify({ ...config, unknownOption: true }));
+      expect((await cli('validate')).code).toBe(1);
+      const { codeConfigSchema } = await import('@stillup/core/code-config');
+      const id = (await service.code.plan(codeConfigSchema.parse(config))).changes[0]!.monitorId!;
+      await service.changeCheck(id, { kind: 'enabled', enabled: false });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  },
+  30000,
+);

@@ -123,6 +123,7 @@ export function visibleHealth(
   return status;
 }
 export type Monitor = {
+  codeOwnership?: { project: string; id: string } | null;
   id: string;
   config: CheckConfig;
   configRevision: number;

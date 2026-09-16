@@ -998,6 +998,12 @@ small {
   color: #8a949e;
   margin-top: 7px !important;
 }
+.field-hint a,
+.archive-note .text-link {
+  color: var(--green);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 .checkbox-label {
   display: flex;
   align-items: flex-start;

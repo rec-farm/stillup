@@ -9,6 +9,7 @@ import {
   revisionGuardSchema,
   probeReportSchema,
 } from '@stillup/core';
+import { codeConfigSchema } from '@stillup/core/code-config';
 import { env } from './env';
 import type { Service } from './service';
 
@@ -163,6 +164,15 @@ export async function createServer(service: Service) {
   app.delete('/v1/session', async (_request, reply) => {
     reply.clearCookie('stillup_session', { path: '/' });
     return { ok: true };
+  });
+  app.post('/v1/code/plan', async (request) =>
+    service.code.plan(codeConfigSchema.parse(request.body)),
+  );
+  app.post('/v1/code/apply', async (request) => {
+    const { config, token } = z
+      .strictObject({ config: codeConfigSchema, token: z.string().regex(/^[a-f0-9]{64}$/) })
+      .parse(request.body);
+    return service.code.apply(config, token);
   });
   app.get('/v1/dashboard', async () => service.dashboard());
   app.get('/v1/public/status', async () => service.publicStatus());

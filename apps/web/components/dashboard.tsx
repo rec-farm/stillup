@@ -207,6 +207,10 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
             Public status
             <ExternalLink size={13} />
           </a>
+          <a href="/docs" className="nav-item">
+            <CircleHelp size={18} />
+            Documentation
+          </a>
         </nav>
         <button className="nav-item appearance-nav" onClick={() => setAppearanceOpen(true)}>
           <Palette size={18} /> Appearance
@@ -771,6 +775,18 @@ function CheckDetail({
       </header>
       <h2>{monitor.config.name}</h2>
       <HealthBadge health={monitor.health} />
+      {monitor.codeOwnership && (
+        <div className="archive-note">
+          <strong>Managed as code</strong>
+          <p>
+            Project {monitor.codeOwnership.project} · Check {monitor.codeOwnership.id}. Edit the
+            project file and apply it with the CLI. Pausing and archiving remain available here.
+          </p>
+          <a href="/docs/monitoring-as-code#ownership" className="text-link">
+            How code ownership works ↗
+          </a>
+        </div>
+      )}
       <RegionalResults monitor={monitor} />
       <p className="detail-url">
         <span className="method">{monitor.config.method}</span>
@@ -803,10 +819,12 @@ function CheckDetail({
               {monitor.enabled ? <Pause size={14} /> : <Play size={14} />}{' '}
               {monitor.enabled ? 'Pause' : 'Resume'}
             </button>
-            <button className="button secondary" disabled={busy} onClick={onEdit}>
-              <Pencil size={14} />
-              Edit check
-            </button>
+            {!monitor.codeOwnership && (
+              <button className="button secondary" disabled={busy} onClick={onEdit}>
+                <Pencil size={14} />
+                Edit check
+              </button>
+            )}
           </div>
           {confirmArchive ? (
             <div className="archive-note">

@@ -1,0 +1,45 @@
+# Copy into .github/workflows/monitoring.yml in a repository containing the StillUp workspace.
+# Replace the example endpoint and use a protected monitoring-production environment.
+name: Monitoring
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: monitoring-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm stillup validate --config examples/monitoring/stillup.config.ts
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: validate
+    environment: monitoring-production
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm stillup apply --config examples/monitoring/stillup.config.ts --yes
+        env:
+          STILLUP_URL: ${{ vars.STILLUP_URL }}
+          STILLUP_ADMIN_TOKEN: ${{ secrets.STILLUP_ADMIN_TOKEN }}

@@ -30,7 +30,11 @@ HTTP check creation; status/latency/JSON assertions; PostgreSQL persistence; dur
 
 ## Milestone 4 — Monitoring as code
 
-TypeScript SDK and CLI with validate/test/diff/apply, explicit UI-versus-code ownership, multi-step API workflows and cleanup. Execute user code in a separate sandbox; never evaluate submitted TypeScript in the API process.
+**Implemented:** workspace TypeScript SDK and CLI with validate/test/diff/apply for declarative HTTP checks; stable project/check IDs; strict validation; field-only previews; transactional apply with stale-preview protection; immutable configuration revisions; explicit code-versus-UI ownership; preserved pause/archive state; retained omitted checks; JSON support; configuration and CI examples. User-facing documentation is available at `/docs`.
+
+The CLI loads trusted TypeScript locally and submits validated JSON. Request tests run through the existing API request tester. The SDK and CLI are not yet published to npm.
+
+**Remaining:** published packages, scoped project credentials, explicit adoption/ownership transfer, resource deployment beyond checks, and multi-step API workflows with cleanup. Execute future user workflows in a separate sandbox; never evaluate submitted TypeScript in the API process.
 
 ## Milestone 5 — Distributed operation
 
