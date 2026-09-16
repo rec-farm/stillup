@@ -1,10 +1,8 @@
-import { Activity } from 'lucide-react';
 export function Brand() {
   return (
     <span className="brand">
-      <span className="brand-mark">
-        <Activity size={22} strokeWidth={2.6} />
-      </span>
+      {/* The adjacent wordmark supplies the accessible name. */}
+      <img className="brand-mark" src="/brand/stillup-mark.svg" width={33} height={33} alt="" />
       StillUp<span className="brand-dot">.</span>
     </span>
   );

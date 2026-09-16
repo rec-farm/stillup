@@ -174,12 +174,8 @@ small {
 .brand-mark {
   width: 33px;
   height: 33px;
-  background: var(--green);
-  border-radius: 9px;
-  color: #fff;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
+  flex-shrink: 0;
   margin-right: 9px;
 }
 .brand-dot {
