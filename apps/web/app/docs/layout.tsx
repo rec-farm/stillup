@@ -22,11 +22,22 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
       <div className="docs-layout">
         <aside className="docs-sidebar">
           <DocsNavigation
-            pages={docs.map(({ slug, title, description, category }) => ({
+            pages={docs.map(({ slug, title, description, category, sections }) => ({
               slug,
               title,
               description,
               category,
+              searchText: sections
+                .map((section) =>
+                  [
+                    section.title,
+                    ...(section.paragraphs ?? []),
+                    ...(section.endpoints ?? []).map(
+                      (endpoint) => `${endpoint.method} ${endpoint.path} ${endpoint.description}`,
+                    ),
+                  ].join(' '),
+                )
+                .join(' '),
             }))}
           />
         </aside>

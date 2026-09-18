@@ -5,6 +5,15 @@ export type DocSection = {
   steps?: string[];
   code?: string;
   language?: string;
+  codeTitle?: string;
+  callout?: { title: string; body: string; tone?: 'note' | 'warning' };
+  endpoints?: {
+    method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+    path: string;
+    description: string;
+  }[];
+  examples?: { title: string; language: string; code: string }[];
+  fieldColumns?: [string, string, string];
   fields?: { name: string; default: string; description: string }[];
 };
 export type Doc = {
@@ -463,45 +472,300 @@ export const docs: Doc[] = [
     title: 'API reference',
     category: 'Reference',
     description:
-      'Authenticate, create checks, test requests, and integrate project previews and apply.',
+      'Your monitoring, programmable. Authenticate, manage checks, and ship reviewed configuration changes.',
     sections: [
       {
         id: 'authentication',
         title: 'Connect to the management API',
         paragraphs: [
-          'Use Authorization: Bearer <ADMIN_TOKEN>. Browser sessions also work for dashboard requests. Through the web application, endpoints start with /api/v1; the private API exposes /v1 directly. Never embed tokens in URLs.',
-          'Most endpoints share an installation rate limit of 120 requests per minute per bucket. Request tests and notification test/retry actions have additional limits. A 400 response means invalid input, 401 means authentication is required, 409 means a state or revision conflict, and 429 means the limit was reached.',
+          'Authenticate with `Authorization: Bearer <ADMIN_TOKEN>`. Browser sessions also work for dashboard requests. Never embed tokens in URLs.',
+          'Through the web application, use the `/api/v1` prefix. The private API exposes `/v1` directly. In these examples, set `STILLUP_URL` to your web origin followed by `/api`, such as `https://monitoring.example.com/api`. Endpoint cards below use the `/v1` paths.',
         ],
         language: 'shell',
-        code: 'curl "$STILLUP_URL/v1/dashboard" \\\n  -H "Authorization: Bearer $STILLUP_ADMIN_TOKEN"',
+        codeTitle: 'Authenticate a request',
+        code: 'export STILLUP_URL="https://monitoring.example.com/api"\n\n# Supply STILLUP_ADMIN_TOKEN from your secret manager.\ncurl "$STILLUP_URL/v1/dashboard" \\\n  -H "Authorization: Bearer $STILLUP_ADMIN_TOKEN"',
+        callout: {
+          title: 'Keep credentials on your server',
+          body: 'The administrator token grants installation-wide access. Use it in trusted servers or CI; never ship it in browser code.',
+        },
       },
       {
         id: 'checks',
         title: 'Create, test, and edit checks',
         paragraphs: [
-          'POST /v1/checks creates a UI-owned check using the check configuration object. POST /v1/checks/test tests that same object without saving it. GET /v1/checks/:id returns configuration, revision, health, and codeOwnership.',
-          'PUT /v1/checks/:id accepts { config, expectedRevision } for UI-owned checks. PATCH accepts { enabled, expectedRevision } to pause or resume. POST /v1/checks/:id/run queues a run. POST /v1/checks/:id/archive and /restore require { expectedRevision }.',
-          'GET /v1/checks/:id/runs lists recent observations. GET /v1/checks/:id/revisions supports a before revision cursor; /revisions/:revision retrieves one snapshot. GET /v1/dashboard lists checks and recent incidents.',
+          'Create and test endpoints accept a check configuration object. Updates use the latest `expectedRevision` to protect changes made elsewhere.',
+        ],
+        endpoints: [
+          {
+            method: 'POST',
+            path: '/v1/checks',
+            description: 'Create a UI-owned check using the configuration below.',
+          },
+          {
+            method: 'POST',
+            path: '/v1/checks/test',
+            description: 'Run a draft once without saving it.',
+          },
+          {
+            method: 'GET',
+            path: '/v1/checks/:id',
+            description: 'Read configuration, revision, health, and `codeOwnership`.',
+          },
+          {
+            method: 'PUT',
+            path: '/v1/checks/:id',
+            description: 'Update a UI-owned check with `{ config, expectedRevision }`.',
+          },
+          {
+            method: 'PATCH',
+            path: '/v1/checks/:id',
+            description: 'Pause or resume with `{ enabled, expectedRevision }`.',
+          },
+          {
+            method: 'POST',
+            path: '/v1/checks/:id/run',
+            description: 'Queue a run for an existing check.',
+          },
+          {
+            method: 'POST',
+            path: '/v1/checks/:id/archive',
+            description: 'Archive with `{ expectedRevision }`.',
+          },
+          {
+            method: 'POST',
+            path: '/v1/checks/:id/restore',
+            description: 'Restore with `{ expectedRevision }`; the check remains paused.',
+          },
         ],
         language: 'json',
+        codeTitle: 'Check configuration',
         code: '{\n  "name": "Production API",\n  "url": "https://api.example.com/health",\n  "method": "GET",\n  "expectedStatus": 200,\n  "intervalSeconds": 60\n}',
+      },
+      {
+        id: 'history',
+        title: 'Read observations and revisions',
+        endpoints: [
+          {
+            method: 'GET',
+            path: '/v1/dashboard',
+            description: 'List checks and recent incidents.',
+          },
+          {
+            method: 'GET',
+            path: '/v1/checks/:id/runs',
+            description: 'List recent observations for a check.',
+          },
+          {
+            method: 'GET',
+            path: '/v1/checks/:id/revisions',
+            description: 'List configuration revisions. Use `before` as the revision cursor.',
+          },
+          {
+            method: 'GET',
+            path: '/v1/checks/:id/revisions/:revision',
+            description: 'Retrieve a specific configuration snapshot.',
+          },
+          {
+            method: 'GET',
+            path: '/v1/incidents/:id',
+            description: 'Read an incident timeline.',
+          },
+        ],
       },
       {
         id: 'projects',
         title: 'Preview and apply a code project',
         paragraphs: [
-          'POST /v1/code/plan accepts { version: 1, project, checks: [{ id, config }] }. It returns { project, token, changes }. Each change contains its stable ID, action, and changed field names, plus the monitor ID, revision, and pause/archive state when it exists.',
-          'POST /v1/code/apply accepts { config: <the same project configuration>, token: <preview token> }. It checks the preview against current project state and applies atomically. A conflict leaves all checks unchanged. The returned plan describes actions performed; request a new plan to observe the resulting revisions.',
+          'Send a project configuration to the plan endpoint first. The response contains `project`, `token`, and `changes`. Each change describes its stable ID, action, and changed fields, plus the existing monitor ID, revision, and pause/archive state when available.',
+          'Apply the exact configuration with the returned preview token. The server checks current project state and applies the changes atomically. The result describes the actions performed; request a new plan to observe the resulting revisions.',
+        ],
+        endpoints: [
+          {
+            method: 'POST',
+            path: '/v1/code/plan',
+            description:
+              'Preview `{ version: 1, project, checks: [{ id, config }] }` without changing checks.',
+          },
+          {
+            method: 'POST',
+            path: '/v1/code/apply',
+            description:
+              'Apply `{ config, token }` using the configuration and token from the preview.',
+          },
+        ],
+        callout: {
+          title: 'A conflict leaves your checks unchanged',
+          tone: 'warning',
+          body: 'On `409`, fetch a fresh plan and review it before applying. Omitted checks are retained, not deleted.',
+        },
+        examples: [
+          {
+            title: '1. Request a preview',
+            language: 'json',
+            code: '{\n  "version": 1,\n  "project": "production",\n  "checks": [\n    {\n      "id": "api-health",\n      "config": {\n        "name": "Production API",\n        "url": "https://api.example.com/health",\n        "expectedStatus": 200\n      }\n    }\n  ]\n}',
+          },
+          {
+            title: '2. Apply the reviewed configuration',
+            language: 'javascript',
+            code: 'const headers = {\n  Authorization: `Bearer ${process.env.STILLUP_ADMIN_TOKEN}`,\n  "Content-Type": "application/json",\n};\nconst base = process.env.STILLUP_URL;\n// config is the same project object used for the preview.\nconst response = await fetch(`${base}/v1/code/plan`, {\n  method: "POST", headers, body: JSON.stringify(config),\n});\nif (!response.ok) throw new Error(`Preview failed: ${response.status}`);\nconst plan = await response.json();\n\n// Review plan.changes before executing the apply request.\nconst applied = await fetch(`${base}/v1/code/apply`, {\n  method: "POST", headers,\n  body: JSON.stringify({ config, token: plan.token }),\n});\nif (!applied.ok) throw new Error(`Apply failed: ${applied.status}`);',
+          },
         ],
       },
       {
         id: 'other',
-        title: 'Other resources',
+        title: 'Notification channels and deliveries',
+        endpoints: [
+          {
+            method: 'GET',
+            path: '/v1/notification-channels',
+            description: 'List configured webhook channels.',
+          },
+          {
+            method: 'POST',
+            path: '/v1/notification-channels',
+            description: 'Create a webhook channel.',
+          },
+          {
+            method: 'PUT',
+            path: '/v1/notification-channels/:id',
+            description: 'Update a webhook channel.',
+          },
+          {
+            method: 'POST',
+            path: '/v1/notification-channels/:id/test',
+            description: 'Send a test notification.',
+          },
+          {
+            method: 'GET',
+            path: '/v1/notification-deliveries',
+            description: 'List delivery history.',
+          },
+          {
+            method: 'GET',
+            path: '/v1/notification-deliveries/:id',
+            description: 'Inspect delivery attempts.',
+          },
+          {
+            method: 'POST',
+            path: '/v1/notification-deliveries/:id/retry',
+            description: 'Retry a failed or cancelled delivery.',
+          },
+        ],
+      },
+      {
+        id: 'secrets-locations',
+        title: 'Secrets and regional locations',
+        endpoints: [
+          {
+            method: 'GET',
+            path: '/v1/secrets',
+            description: 'List secret metadata; stored values are never returned.',
+          },
+          {
+            method: 'POST',
+            path: '/v1/secrets',
+            description: 'Create a write-only secret.',
+          },
+          {
+            method: 'PUT',
+            path: '/v1/secrets/:name',
+            description: 'Replace a secret value.',
+          },
+          {
+            method: 'GET',
+            path: '/v1/locations',
+            description: 'List probe locations.',
+          },
+          {
+            method: 'POST',
+            path: '/v1/locations',
+            description: 'Create a remote location.',
+          },
+          {
+            method: 'POST',
+            path: '/v1/locations/:id/enrollment',
+            description: 'Renew a location’s enrollment.',
+          },
+          {
+            method: 'DELETE',
+            path: '/v1/locations/:id',
+            description: 'Revoke a remote location.',
+          },
+        ],
+      },
+      {
+        id: 'status-page',
+        title: 'Public status and communication',
+        endpoints: [
+          {
+            method: 'GET',
+            path: '/v1/public/status',
+            description: 'Read published status without authentication.',
+          },
+          {
+            method: 'GET',
+            path: '/v1/status-management',
+            description: 'Read page settings, maintenance, and incident communications.',
+          },
+          {
+            method: 'PUT',
+            path: '/v1/status-management/settings',
+            description: 'Save `{ config, expectedRevision }`.',
+          },
+          {
+            method: 'POST',
+            path: '/v1/status-management/maintenance',
+            description: 'Create a maintenance window.',
+          },
+          {
+            method: 'PUT',
+            path: '/v1/status-management/maintenance/:id',
+            description: 'Edit a window with its `expectedRevision`.',
+          },
+          {
+            method: 'POST',
+            path: '/v1/status-management/incidents',
+            description: 'Create a manual incident.',
+          },
+          {
+            method: 'POST',
+            path: '/v1/status-management/incidents/:id/updates',
+            description: 'Publish a progress update.',
+          },
+        ],
+        callout: {
+          title: 'Public status is intentionally limited',
+          body: 'The public endpoint exposes published components and communications. Management endpoints require authentication.',
+        },
+      },
+      {
+        id: 'errors',
+        title: 'Response codes and limits',
+        fieldColumns: ['Status', 'Meaning', 'What to do'],
         paragraphs: [
-          'GET/POST /v1/notification-channels and PUT /v1/notification-channels/:id manage webhooks. /:id/test sends a test. GET /v1/notification-deliveries lists history and /:id lists attempts; POST /:id/retry retries a failed or cancelled delivery.',
-          'GET/POST /v1/secrets and PUT /v1/secrets/:name manage write-only secret values. GET/POST /v1/locations manage locations; POST /:id/enrollment renews enrollment and DELETE /:id revokes a remote location.',
-          'GET /v1/status-management returns page management data; PUT /settings saves { config, expectedRevision }. POST /maintenance creates a window; PUT /maintenance/:id edits it. POST /incidents creates a manual incident; POST /incidents/:id/updates publishes an update.',
-          'GET /v1/incidents/:id provides the incident timeline. GET /v1/public/status is unauthenticated. The repository README includes resource-specific fields and operational limits.',
+          'Most endpoints share an installation rate limit of 120 requests per minute per bucket. Request tests and notification test/retry actions have additional limits.',
+        ],
+        fields: [
+          {
+            name: '400',
+            default: 'Bad request',
+            description: 'Validate the request body and field types.',
+          },
+          {
+            name: '401',
+            default: 'Unauthorized',
+            description: 'Supply a valid administrator token or browser session.',
+          },
+          {
+            name: '409',
+            default: 'Conflict',
+            description: 'Refresh the resource revision or project preview before retrying.',
+          },
+          {
+            name: '429',
+            default: 'Rate limited',
+            description: 'Slow down and wait before retrying.',
+          },
         ],
       },
     ],
