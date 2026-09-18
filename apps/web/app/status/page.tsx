@@ -13,7 +13,8 @@ export async function generateMetadata(): Promise<Metadata> {
   try {
     const data = await readStatus();
     return {
-      title: data.title,
+      title: { absolute: data.title },
+      icons: data.branding?.faviconUrl ? { icon: data.branding.faviconUrl } : undefined,
       description: data.branding?.description,
       robots: { index: true, follow: true },
     };

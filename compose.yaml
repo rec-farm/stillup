@@ -48,6 +48,7 @@ services:
       target: web
     environment:
       API_URL: http://api:3001
+      STATUS_PAGE_DOMAINS: ${STATUS_PAGE_DOMAINS:-}
       HOSTNAME: 0.0.0.0
       PORT: 3000
     ports:

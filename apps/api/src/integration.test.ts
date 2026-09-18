@@ -1160,6 +1160,18 @@ suite(
         brandName: 'Acme',
         description: 'Service health',
         accentColor: '#123456',
+        theme: 'dark',
+        layout: 'wide',
+        showPoweredBy: false,
+        links: [{ label: 'Support', url: 'https://example.com/support' }],
+        content: [
+          {
+            id: randomUUID(),
+            title: 'Our commitment',
+            body: 'Updates every hour.',
+            position: 'before-services',
+          },
+        ],
         groups: [
           { id: group, name: 'Payments', monitorIds: [pub.id] },
           { id: randomUUID(), name: 'Secret internal group', monitorIds: [hidden.id] },
@@ -1172,6 +1184,15 @@ suite(
     ).rejects.toMatchObject({ statusCode: 409 });
     let publicData = await service.publicStatus();
     expect(publicData.title).toBe('Acme status');
+    expect(publicData.branding).toMatchObject({
+      theme: 'dark',
+      layout: 'wide',
+      showPoweredBy: false,
+      links: [{ label: 'Support', url: 'https://example.com/support' }],
+      content: [
+        { title: 'Our commitment', body: 'Updates every hour.', position: 'before-services' },
+      ],
+    });
     expect(publicData.groups).toContainEqual({ id: group, name: 'Payments' });
     expect(JSON.stringify(publicData)).not.toMatch(/Private billing|Secret internal group/);
     expect(JSON.stringify(publicData)).not.toContain(hidden.id);

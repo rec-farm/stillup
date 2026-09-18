@@ -2268,3 +2268,174 @@ select {
 .login-story img.brand-mark {
   background: transparent;
 }
+
+/* Public appearance is isolated from workspace appearance and editor controls. */
+.status-canvas {
+  background: var(--status-background);
+  color: var(--status-text);
+  min-height: 100vh;
+  --line: color-mix(in srgb, var(--status-text) 16%, transparent);
+}
+.status-canvas[data-theme='dark'] {
+  --status-background: #101b20 !important;
+  --status-surface: #19292f !important;
+  --status-text: #e0ece8 !important;
+}
+@media (prefers-color-scheme: dark) {
+  .status-canvas[data-theme='auto'] {
+    --status-background: #101b20 !important;
+    --status-surface: #19292f !important;
+    --status-text: #e0ece8 !important;
+  }
+}
+.status-canvas .status-page {
+  width: 100%;
+}
+.status-page[data-layout='wide'] {
+  max-width: 1120px;
+}
+.status-page[data-layout='compact'] {
+  max-width: 680px;
+}
+.status-page[data-layout='compact'] .status-hero {
+  margin: 24px 0;
+  padding: 24px;
+}
+.status-page[data-layout='compact'] .public-component {
+  padding: 14px 18px;
+}
+.status-page[data-font='system'] {
+  font-family: system-ui, sans-serif;
+}
+.status-page[data-font='mono'] {
+  font-family: ui-monospace, monospace;
+}
+.status-page[data-font='serif'] {
+  font-family: Georgia, serif;
+}
+.status-canvas .public-component,
+.status-canvas .public-empty,
+.status-canvas .public-incidents article,
+.status-canvas .status-content-block {
+  background: var(--status-surface);
+  color: var(--status-text);
+  border-color: var(--line);
+  border-radius: var(--status-radius);
+}
+.status-canvas .public-component {
+  margin-top: 6px;
+}
+.status-canvas .status-hero {
+  border-radius: var(--status-radius);
+}
+.status-canvas .status-hero.up {
+  background: color-mix(in srgb, var(--status-accent) 10%, var(--status-surface));
+  border-color: color-mix(in srgb, var(--status-accent) 25%, var(--status-surface));
+}
+.status-canvas .status-hero.up h1,
+.status-canvas .status-hero.up .status-symbol {
+  color: var(--status-text);
+}
+.status-canvas .status-hero.up p,
+.status-canvas .status-hero.up small,
+.status-canvas .public-incidents article p {
+  color: var(--status-text);
+  opacity: 0.8;
+}
+.status-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  margin-top: 24px;
+  font-size: 13px;
+}
+.status-links a {
+  color: var(--status-text);
+  text-decoration-color: var(--status-accent);
+  text-underline-offset: 5px;
+}
+.status-content-block {
+  margin: 24px 0;
+  padding: 24px;
+  border: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.status-content-block h2 {
+  font-size: 17px;
+  margin: 0 0 12px;
+}
+.status-content-block p {
+  font-size: 14px;
+  line-height: 1.7;
+}
+.status-page > footer {
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
+}
+.status-page > footer > .status-attribution {
+  margin-left: 0;
+}
+.status-preview {
+  margin: 24px 0;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+}
+.status-preview .status-canvas {
+  min-height: 0;
+}
+.status-preview .status-page {
+  padding: 24px 18px;
+}
+.status-design-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 20px;
+}
+.status-design-grid > div {
+  min-width: 0;
+}
+@media (max-width: 600px) {
+  .status-design-grid {
+    grid-template-columns: 1fr;
+  }
+  .status-canvas .public-component {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .status-canvas .status-page > footer > span {
+    display: inline;
+  }
+}
+.status-canvas .status-hero.unknown,
+.status-canvas .status-hero.down,
+.status-canvas .status-hero.maintenance {
+  background: color-mix(in srgb, var(--status-state-color) 10%, var(--status-surface));
+  border-color: color-mix(in srgb, var(--status-state-color) 30%, var(--status-surface));
+}
+.status-canvas .status-hero.unknown {
+  --status-state-color: #899da8;
+}
+.status-canvas .status-hero.down {
+  --status-state-color: #d47b65;
+}
+.status-canvas .status-hero.maintenance {
+  --status-state-color: #c99d45;
+}
+.status-canvas .status-hero h1,
+.status-canvas .status-hero p,
+.status-canvas .status-hero small {
+  color: var(--status-text);
+}
+.status-canvas .status-hero p,
+.status-canvas .status-hero small {
+  opacity: 0.8;
+}
+.status-canvas .status-page > header {
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.status-canvas .public-brand {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}

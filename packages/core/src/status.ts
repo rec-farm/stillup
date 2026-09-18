@@ -22,6 +22,47 @@ export const statusSettingsSchema = z
       .default('#00856a'),
     logoUrl: webLink,
     homepageUrl: webLink,
+    faviconUrl: webLink,
+    theme: z.enum(['light', 'dark', 'auto']).default('light'),
+    layout: z.enum(['comfortable', 'compact', 'wide']).default('comfortable'),
+    font: z.enum(['sans', 'system', 'mono', 'serif']).default('sans'),
+    backgroundColor: z
+      .string()
+      .regex(/^#[0-9a-fA-F]{6}$/)
+      .default('#f6f8f7'),
+    surfaceColor: z
+      .string()
+      .regex(/^#[0-9a-fA-F]{6}$/)
+      .default('#ffffff'),
+    textColor: z
+      .string()
+      .regex(/^#[0-9a-fA-F]{6}$/)
+      .default('#243d35'),
+    cornerRadius: z.number().int().min(0).max(32).default(16),
+    headerLabel: z.string().max(80).default('SERVICE STATUS'),
+    footerText: z.string().max(300).default('Know before your users do.'),
+    showPoweredBy: z.boolean().default(true),
+    showIncidentHistory: z.boolean().default(true),
+    links: z
+      .array(
+        z.object({
+          label: z.string().trim().min(1).max(60),
+          url: webLink.refine((value) => value.length > 0, 'Enter a link URL'),
+        }),
+      )
+      .max(8)
+      .default([]),
+    content: z
+      .array(
+        z.object({
+          id: z.uuid(),
+          title: z.string().trim().min(1).max(120),
+          body: z.string().max(4000),
+          position: z.enum(['before-services', 'after-services']),
+        }),
+      )
+      .max(12)
+      .default([]),
     groups: z
       .array(
         z.object({
@@ -34,6 +75,8 @@ export const statusSettingsSchema = z
       .default([]),
   })
   .superRefine((v, ctx) => {
+    if (new Set(v.content.map((block) => block.id)).size !== v.content.length)
+      ctx.addIssue({ code: 'custom', message: 'Each content section must have a unique ID' });
     const ids = v.groups.flatMap((g) => g.monitorIds);
     if (
       new Set(ids).size !== ids.length ||

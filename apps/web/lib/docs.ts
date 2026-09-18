@@ -242,6 +242,39 @@ export const docs: Doc[] = [
         ],
       },
       {
+        id: 'design',
+        title: 'Design your public page',
+        paragraphs: [
+          'Open Design & content to change typography, page width, spacing, corner radius, colors, logo, favicon, header caption, and footer. Choose light, dark, or the visitor’s system theme. Custom background, surface, and text colors apply to the light palette; dark mode uses a readable preset.',
+          'Add up to eight navigation links and twelve text sections before or after services. Move sections up to reorder them. Preview changes shows an unsaved sample using your published components; it does not represent live health. Save public page publishes the design to all configured domains.',
+          'You can remove StillUp attribution and hide resolved history. Active incidents, service health, maintenance, and stale-data warnings remain visible. Use colors with sufficient contrast for your visitors.',
+        ],
+      },
+      {
+        id: 'custom-domain',
+        title: 'Connect your domain or CDN',
+        paragraphs: [
+          'For a self-hosted installation, set STATUS_PAGE_DOMAINS on the web service to a comma-separated list such as status.example.com,status.example.net, then restart the web service. Keep your dashboard on a separate hostname. The configured public hostnames serve the status page at / and /status and allow only the read-only public status API and required static assets.',
+          'Create a CNAME to your ingress hostname (or A/AAAA records to its IP), register the hostname with your hosting provider, and provision a TLS certificate. A CNAME alone does not configure HTTPS. StillUp does not provision DNS records, verify ownership, or issue certificates: those are managed by your ingress or hosting provider.',
+          'A CDN can proxy the domain if it preserves the visitor’s original Host header to StillUp. Use HTTPS from the CDN to the origin with a valid certificate, strip untrusted forwarded headers at the ingress, and do not rewrite Host to the dashboard hostname. Only expose configured hostnames at your ingress; keep the API port private.',
+          'Bypass CDN caching for /, /status, and /api/v1/public/status so incident updates stay current. Do not cache error responses or use a stale-on-error page that claims everything is operational. Hashed /_next/static assets can be cached. Check that the public root loads, the status API updates, and /login and /api/v1/status-management return 404 on the public hostname.',
+          'This remains one status page per installation, shared across its configured domains. A custom domain or CDN does not make the monitoring installation independent: if its origin fails, live status observations can become unavailable.',
+        ],
+        code: 'STATUS_PAGE_DOMAINS=status.example.com,status.example.net',
+        language: 'env',
+      },
+      {
+        id: 'headless',
+        title: 'Build a completely custom frontend',
+        paragraphs: [
+          'For full HTML, CSS, JavaScript, or framework control, use GET /api/v1/public/status on the web origin (GET /v1/public/status on the internal API). It exposes published component names and health, groups, branding, public maintenance, and incident communications without an admin token. Keep the backend and dashboard credentials on your server.',
+          'Host your frontend anywhere and fetch the public JSON from its server or through a same-origin proxy. Cross-origin browser access is not enabled by default. Poll no faster than every 15 seconds, use no-store caching, and show an unavailable or stale state when refresh fails rather than reporting all systems operational.',
+          'The built-in editor provides structured content and appearance controls. Arbitrary HTML, CSS, and scripts belong in your separately hosted frontend. The built-in renderer never executes user-provided markup.',
+        ],
+        code: 'const response = await fetch("https://status.example.com/api/v1/public/status", { cache: "no-store" });\nif (!response.ok) throw new Error("Status unavailable");\nconst status = await response.json();',
+        language: 'javascript',
+      },
+      {
         id: 'maintenance',
         title: 'Schedule maintenance',
         paragraphs: [

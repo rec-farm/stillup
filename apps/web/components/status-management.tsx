@@ -9,6 +9,8 @@ import {
   type Maintenance,
   type CommunicationIncident,
 } from '@stillup/core';
+import { StatusView } from './status-view';
+import { StatusDesignFields } from './status-design-fields';
 import { notificationApi } from './notifications';
 const time = (s: string) => new Date(s).toLocaleString('en-GB', { timeZone: 'UTC' }) + ' UTC';
 const localTime = (s: string) => {
@@ -129,7 +131,7 @@ export function StatusManagementDialog({
               }}
             >
               {t === 'page'
-                ? 'Branding & groups'
+                ? 'Design & content'
                 : t === 'maintenance'
                   ? 'Maintenance'
                   : 'Incident updates'}
@@ -488,21 +490,27 @@ function BrandingEditor({
   onSave: (config: StatusSettings) => Promise<void>;
 }) {
   const [groups, setGroups] = useState(data.settings.groups);
+  const [links, setLinks] = useState(data.settings.links);
+  const [content, setContent] = useState(data.settings.content);
+  const [preview, setPreview] = useState<StatusSettings | null>(null);
+  function readDraft(form: HTMLFormElement) {
+    const values = Object.fromEntries(new FormData(form));
+    return statusSettingsSchema.safeParse({
+      ...values,
+      groups,
+      links,
+      content,
+      cornerRadius: Number(values.cornerRadius),
+      showPoweredBy: values.showPoweredBy === 'on',
+      showIncidentHistory: values.showIncidentHistory === 'on',
+    });
+  }
   const [error, setError] = useState('');
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        const form = new FormData(e.currentTarget);
-        const parsed = statusSettingsSchema.safeParse({
-          title: form.get('title'),
-          brandName: form.get('brandName'),
-          description: form.get('description'),
-          accentColor: form.get('accentColor'),
-          logoUrl: form.get('logoUrl'),
-          homepageUrl: form.get('homepageUrl'),
-          groups,
-        });
+        const parsed = readDraft(e.currentTarget);
         if (!parsed.success) {
           setError(parsed.error.issues.map((i) => i.message).join('; '));
           return;
@@ -551,6 +559,13 @@ function BrandingEditor({
         name="homepageUrl"
         type="url"
         defaultValue={data.settings.homepageUrl}
+      />
+      <StatusDesignFields
+        settings={data.settings}
+        links={links}
+        setLinks={setLinks}
+        content={content}
+        setContent={setContent}
       />
       <h3 className="notification-heading">Component groups</h3>
       {groups.map((g) => (
@@ -630,9 +645,55 @@ function BrandingEditor({
           {error}
         </p>
       )}
-      <button className="button primary" disabled={busy}>
-        Save public page
-      </button>
+      <div className="notification-actions">
+        <button
+          type="button"
+          className="button secondary"
+          onClick={(e) => {
+            const result = readDraft(e.currentTarget.form!);
+            if (!result.success) {
+              setError(result.error.issues.map((issue) => issue.message).join('; '));
+              return;
+            }
+            setError('');
+            setPreview(result.data);
+          }}
+        >
+          Preview changes
+        </button>
+        <button className="button primary" disabled={busy}>
+          Save public page
+        </button>
+      </div>
+      {preview && (
+        <section className="status-preview" aria-label="Unsaved page preview">
+          <p className="field-hint">
+            Unsaved preview · sample health, not live service status. Select Preview changes to
+            refresh.
+          </p>
+          <StatusView
+            preview
+            initial={{
+              title: preview.title,
+              branding: preview,
+              groups: preview.groups,
+              updatedAt: new Date().toISOString(),
+              incidents: [],
+              communications: [],
+              maintenance: [],
+              components: monitors
+                .filter((m) => m.config.public && !m.archivedAt)
+                .map((m) => ({
+                  id: m.id,
+                  name: m.config.name,
+                  health: 'up',
+                  lastObservedAt: null,
+                  groupId: preview.groups.find((g) => g.monitorIds.includes(m.id))?.id,
+                })),
+            }}
+          />
+        </section>
+      )}
     </form>
   );
 }
