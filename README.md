@@ -50,9 +50,9 @@ docker compose up -d db
 pnpm dev
 ```
 
-Open **http://localhost:3000** and sign in with your administrator token. The development command starts the web application, API, and worker. Migrations apply automatically under a database lock. The default database port is 5437 to avoid the common local PostgreSQL port.
+Open **http://stillup.localhost:1355** and sign in with your administrator token. The development command starts the web application, API, and worker. The web app runs behind [portless](https://github.com/vercel-labs/portless) (`npm install -g portless`); run `PORTLESS=0 pnpm dev` and set `APP_ORIGIN=http://localhost:3000` to use the plain port instead. Migrations apply automatically under a database lock. The default database port is 5437 to avoid the common local PostgreSQL port.
 
-Public status: **http://localhost:3000/status**. No checks are published until you explicitly select that option when creating one.
+Public status: **http://stillup.localhost:1355/status**. No checks are published until you explicitly select that option when creating one.
 
 ### First check
 

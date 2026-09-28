@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node dev.mjs",
+    "dev": "portless stillup node dev.mjs",
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit"
