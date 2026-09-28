@@ -4,6 +4,7 @@ import { ArrowRight, ShieldCheck } from 'lucide-react';
 import { useWorkspace } from '../../components/workspace-provider';
 import { appearanceStyle } from '../../lib/appearance';
 import { Brand } from '../../components/brand';
+import { WatchfulArt } from '../../components/watchful-art';
 export default function LoginPage() {
   const { settings } = useWorkspace();
   const [error, setError] = useState('');
@@ -38,21 +39,7 @@ export default function LoginPage() {
             <br />a watchful eye.
           </h1>
           <p>{settings.tagline || 'Know before your users do.'}</p>
-          <div className="signal-art" aria-hidden="true">
-            <svg viewBox="0 0 480 170" fill="none">
-              <path d="M0 90H480" stroke="currentColor" opacity=".12" />
-              <path
-                className="signal-line"
-                d="M0 90H90L108 78L126 101L152 90H182L203 90L222 35L243 139L265 69L280 90H335L350 78L368 90H480"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinejoin="round"
-                strokeLinecap="round"
-              />
-              <circle cx="280" cy="90" r="6" fill="currentColor" />
-              <circle cx="280" cy="90" r="15" stroke="currentColor" opacity=".25" />
-            </svg>
-          </div>
+          <WatchfulArt />
         </div>
         <span className="login-footer">Your infrastructure. Your data. Your peace of mind.</span>
       </section>

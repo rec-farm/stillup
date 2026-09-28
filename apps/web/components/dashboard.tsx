@@ -34,6 +34,7 @@ const AppearanceDialog = dynamic(() =>
 import { useWorkspace } from './workspace-provider';
 import { appearanceStyle } from '../lib/appearance';
 import { Brand } from './brand';
+import { WatchfulArt } from './watchful-art';
 import { CheckForm } from './check-form';
 import { ConfigurationHistory, RevisionViewer } from './configuration-history';
 import { NotificationDialog, IncidentDialog } from './notifications';
@@ -265,6 +266,7 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
               </h1>
               <p>{settings.tagline}</p>
             </div>
+            <WatchfulArt />
             <button className="button primary" onClick={() => setCreate(true)}>
               <Plus size={17} />
               Create check

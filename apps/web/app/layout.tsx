@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import './appearance.css';
+import './poster.css';
+import './status.css';
 import { readWorkspace } from '../lib/workspace';
 import { WorkspaceProvider } from '../components/workspace-provider';
 export const dynamic = 'force-dynamic';

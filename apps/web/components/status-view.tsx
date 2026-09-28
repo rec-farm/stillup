@@ -74,14 +74,15 @@ export function StatusView({
     { id: '', name: data.groups?.length ? 'Other services' : 'Services' },
   ];
   const brand = data.branding;
-  const identity = brand ? (
-    <span className="public-brand">
-      {brand.logoUrl && <Image unoptimized src={brand.logoUrl} width={40} height={40} alt="" />}
-      {brand.brandName}
-    </span>
-  ) : (
-    <Brand />
-  );
+  const identity =
+    brand && (brand.logoUrl || brand.brandName !== 'StillUp') ? (
+      <span className="public-brand">
+        {brand.logoUrl && <Image unoptimized src={brand.logoUrl} width={40} height={40} alt="" />}
+        {brand.brandName}
+      </span>
+    ) : (
+      <Brand />
+    );
   const content = (position: 'before-services' | 'after-services') =>
     brand?.content
       ?.filter((block) => block.position === position)

@@ -1,19 +1,25 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { docs } from '../../lib/docs';
+import { WatchfulArt } from '../../components/watchful-art';
 export const metadata: Metadata = { title: 'Documentation' };
 export default function DocsHome() {
   return (
     <>
-      <div className="eyebrow">THE STILLUP HANDBOOK</div>
-      <h1>
-        A little guidance.
-        <br />A lot of peace of mind.
-      </h1>
-      <p className="docs-lead">
-        Set up your first check, understand an outage, or bring your monitoring into version
-        control.
-      </p>
+      <div className="docs-cover">
+        <div>
+          <div className="eyebrow">THE STILLUP HANDBOOK</div>
+          <h1>
+            A little guidance.
+            <br />A lot of peace of mind.
+          </h1>
+          <p className="docs-lead">
+            Set up your first check, understand an outage, or bring your monitoring into version
+            control.
+          </p>
+        </div>
+        <WatchfulArt />
+      </div>
       <div className="docs-start-grid">
         <Link href="/docs/getting-started" className="docs-start-card">
           <span className="eyebrow">START WITH THE DASHBOARD</span>

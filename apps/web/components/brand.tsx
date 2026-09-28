@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import Image from 'next/image';
 import { useWorkspace } from './workspace-provider';
+import { EyeMark } from './eye-mark';
 export function Brand({ workspace = false }: { workspace?: boolean }) {
   const { settings } = useWorkspace();
   const name = workspace ? settings.name : 'StillUp';
@@ -9,17 +10,20 @@ export function Brand({ workspace = false }: { workspace?: boolean }) {
   const [failedUrl, setFailedUrl] = useState('');
   return (
     <span className="brand" title={name}>
-      <Image
-        className="brand-mark"
-        src={logo && logo !== failedUrl ? logo : '/brand/stillup-mark.svg'}
-        width={33}
-        height={33}
-        alt=""
-        unoptimized
-        onError={() => setFailedUrl(logo)}
-      />
+      {logo && logo !== failedUrl ? (
+        <Image
+          className="brand-mark"
+          src={logo}
+          width={33}
+          height={33}
+          alt=""
+          unoptimized
+          onError={() => setFailedUrl(logo)}
+        />
+      ) : (
+        <EyeMark className="brand-mark brand-eye" />
+      )}
       <span className="brand-name">{name}</span>
-      {name === 'StillUp' && <span className="brand-dot">.</span>}
     </span>
   );
 }

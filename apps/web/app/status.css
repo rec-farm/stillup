@@ -1,0 +1,208 @@
+/* A quieter version of the print identity; public appearance tokens remain authoritative. */
+.status-canvas {
+  --status-rule: color-mix(in srgb, var(--status-text) 38%, var(--status-surface));
+  --status-muted: color-mix(in srgb, var(--status-text) 76%, var(--status-surface));
+}
+.status-canvas .status-page > header {
+  padding-bottom: 24px;
+  border-bottom: 2px solid var(--status-text);
+}
+.status-canvas .public-brand {
+  font-size: 27px;
+  font-weight: 850;
+  letter-spacing: -1px;
+}
+.status-canvas .status-caption {
+  color: var(--status-text);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  padding: 7px 10px;
+  border: 1px solid var(--status-rule);
+  border-radius: min(var(--status-radius), 4px);
+}
+.status-canvas .status-links a {
+  padding: 6px 0;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+}
+.status-canvas .status-links a:hover {
+  text-decoration-color: var(--status-text);
+}
+.status-canvas .status-hero {
+  --status-state-color: var(--status-accent);
+  border: 1px solid var(--status-rule);
+  border-top: 5px solid var(--status-state-color);
+  box-shadow: 4px 4px 0 color-mix(in srgb, var(--status-text) 25%, var(--status-background));
+  margin-top: 32px;
+}
+.status-canvas .status-hero.unknown {
+  --status-state-color: #899da8;
+}
+.status-canvas .status-hero.down {
+  --status-state-color: #d47b65;
+}
+.status-canvas .status-hero.maintenance {
+  --status-state-color: #c99d45;
+}
+.status-canvas .status-symbol {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 54px;
+  height: 54px;
+  border: 1px solid var(--status-rule);
+  border-radius: min(var(--status-radius), 10px);
+  background: var(--status-surface);
+  color: var(--status-text);
+  margin-bottom: 24px;
+}
+.status-canvas .status-hero .eyebrow {
+  color: var(--status-muted);
+  letter-spacing: 1.5px;
+  line-height: 1.6;
+}
+.status-canvas .status-hero h1 {
+  font-size: clamp(28px, 3.6vw, 40px);
+  font-weight: 850;
+  letter-spacing: -1.3px;
+  line-height: 1.14;
+  overflow-wrap: anywhere;
+}
+.status-canvas .status-hero p {
+  font-size: 14px;
+  opacity: 1;
+  color: var(--status-muted);
+}
+.status-canvas .status-hero small {
+  font-size: 11px;
+  line-height: 1.7;
+  padding-top: 16px;
+  border-top: 1px solid var(--status-rule);
+  opacity: 1;
+  color: var(--status-muted);
+}
+.status-canvas :is(.status-components, .public-incidents) > h2 {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+}
+.status-canvas .public-component {
+  border-color: var(--status-rule);
+  padding: 19px 21px;
+  gap: 12px;
+}
+.status-canvas .public-component strong {
+  font-size: 14px;
+  font-weight: 650;
+}
+.status-canvas .public-health {
+  --health-tone: #899da8;
+  padding: 6px 9px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid color-mix(in srgb, var(--health-tone) 45%, var(--status-surface));
+  border-radius: min(var(--status-radius), 5px);
+  background: color-mix(in srgb, var(--health-tone) 12%, var(--status-surface));
+  color: color-mix(in srgb, var(--status-text) 80%, var(--health-tone));
+}
+.status-canvas .public-health.up {
+  --health-tone: #38a37a;
+}
+.status-canvas .public-health.down {
+  --health-tone: #d47b65;
+}
+.status-canvas .public-health.maintenance,
+.status-canvas .public-health.paused {
+  --health-tone: #c99d45;
+}
+.status-canvas .public-health > span {
+  width: 6px;
+  height: 6px;
+  background: var(--health-tone);
+}
+.status-canvas :is(.public-empty, .public-incidents article, .status-content-block) {
+  border-color: var(--status-rule);
+}
+.status-canvas .public-empty {
+  font-size: 13px;
+  line-height: 1.7;
+}
+.status-canvas .public-incidents article h3 {
+  font-size: 17px;
+  font-weight: 750;
+}
+.status-canvas .public-incidents article p {
+  font-size: 13px;
+  opacity: 1;
+  color: var(--status-muted);
+}
+.status-canvas .public-incidents article small {
+  color: var(--status-muted);
+  font-size: 11px;
+  line-height: 1.7;
+}
+.status-canvas .public-incidents .incident-state {
+  float: none;
+  display: inline-block;
+  margin-left: 0;
+  color: var(--status-text);
+  background: color-mix(in srgb, #c99d45 18%, var(--status-surface));
+  border: 1px solid var(--status-rule);
+  font-size: 11px;
+  border-radius: min(var(--status-radius), 4px);
+}
+.status-canvas .public-incidents .incident-state.resolved {
+  background: color-mix(in srgb, #38a37a 16%, var(--status-surface));
+}
+.status-canvas .public-update {
+  border-left: 2px solid var(--status-rule);
+  padding-left: 15px;
+}
+.status-canvas .status-page > footer {
+  border-top: 2px solid var(--status-rule);
+  color: var(--status-muted);
+  font-size: 11px;
+  line-height: 1.7;
+  gap: 10px;
+}
+.status-canvas .status-page[data-font]:not([data-font='sans']) :is(h1, h2, h3) {
+  font-family: inherit;
+}
+.status-canvas :is(a, button):focus-visible {
+  outline: 3px solid var(--status-text);
+  outline-offset: 4px;
+}
+@media (max-width: 600px) {
+  .status-canvas .status-page {
+    padding: 28px 20px 20px;
+  }
+  .status-canvas .status-page > header {
+    padding-bottom: 20px;
+  }
+  .status-canvas .public-brand {
+    font-size: 24px;
+  }
+  .status-canvas .status-caption {
+    font-size: 9px;
+    letter-spacing: 1px;
+  }
+  .status-canvas .status-hero {
+    padding: 24px;
+    margin-block: 26px 30px;
+  }
+  .status-canvas .status-hero h1 {
+    font-size: 29px;
+    letter-spacing: -0.8px;
+  }
+  .status-canvas .public-component {
+    padding: 17px;
+  }
+}
+.status-canvas .status-hero:is(.up, .unknown, .down, .maintenance) {
+  border-color: var(--status-rule);
+  border-top-color: var(--status-state-color);
+}
+.status-canvas .brand {
+  color: var(--status-text);
+}

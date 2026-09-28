@@ -1,7 +1,9 @@
 'use client';
+import { WatchfulArt } from './watchful-art';
+import { EyeMark } from './eye-mark';
 import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
-import { Activity, Check, Palette, RotateCcw, X } from 'lucide-react';
+import { Check, Palette, RotateCcw, X } from 'lucide-react';
 import {
   defaultWorkspaceSettings,
   workspaceSettingsSchema,
@@ -226,7 +228,7 @@ export function AppearanceDialog({ onClose }: { onClose: () => void }) {
                         onError={() => setFailedLogo(draft.logoUrl)}
                       />
                     ) : (
-                      <Activity size={20} />
+                      <EyeMark className="preview-eye" />
                     )}
                   </span>
                   <span className="preview-rail-line" />
@@ -239,6 +241,7 @@ export function AppearanceDialog({ onClose }: { onClose: () => void }) {
                     Overview<span>.</span>
                   </h3>
                   <p>{draft.tagline || 'Your monitoring workspace'}</p>
+                  <WatchfulArt className="preview-art" />
                   <div className="preview-banner">
                     <Check size={14} />
                     All systems operational
