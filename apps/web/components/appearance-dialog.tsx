@@ -10,7 +10,6 @@ import {
   type WorkspaceAppearance,
   type WorkspaceSettings,
 } from '@stillup/core';
-import { appearancePresets, appearanceStyle } from '../lib/appearance';
 import { useWorkspace } from './workspace-provider';
 import { notificationApi } from './notifications';
 
@@ -42,12 +41,6 @@ export function AppearanceDialog({ onClose }: { onClose: () => void }) {
     };
   }, []);
   const parsed = workspaceSettingsSchema.safeParse(draft);
-  const preview = parsed.success
-    ? parsed.data
-    : {
-        ...draft,
-        accentColor: /^#[\da-f]{6}$/i.test(draft.accentColor) ? draft.accentColor : '#087f67',
-      };
   const safeLogo =
     workspaceSettingsSchema.shape.logoUrl.safeParse(draft.logoUrl).success &&
     draft.logoUrl &&
@@ -89,7 +82,7 @@ export function AppearanceDialog({ onClose }: { onClose: () => void }) {
       <form onSubmit={save}>
         <header className="dialog-header">
           <div>
-            <span className="eyebrow">MAKE YOURSELF AT HOME</span>
+            <span className="eyebrow">Make yourself at home</span>
             <h2 id="appearance-title">Your workspace. Your identity.</h2>
             <p>Set the look for everyone on this installation.</p>
           </div>
@@ -156,46 +149,6 @@ export function AppearanceDialog({ onClose }: { onClose: () => void }) {
                   fallback.
                 </p>
               )}
-              <label>Accent color</label>
-              <div className="color-presets" role="group" aria-label="Accent color presets">
-                {appearancePresets.map((preset) => (
-                  <button
-                    key={preset.name}
-                    type="button"
-                    title={preset.name}
-                    aria-label={preset.name}
-                    aria-pressed={draft.accentColor.toLowerCase() === preset.color}
-                    className="color-swatch"
-                    style={{ background: preset.color }}
-                    onClick={() => patch({ accentColor: preset.color })}
-                  >
-                    {draft.accentColor.toLowerCase() === preset.color && <Check size={17} />}
-                  </button>
-                ))}
-                <label className="custom-swatch" title="Choose a custom accent">
-                  <input
-                    type="color"
-                    aria-label="Choose custom accent color"
-                    value={preview.accentColor}
-                    onChange={(e) => patch({ accentColor: e.target.value })}
-                  />
-                </label>
-              </div>
-              <label htmlFor="workspace-accent" className="sr-only">
-                Hex accent color
-              </label>
-              <input
-                id="workspace-accent"
-                className="hex-input"
-                value={draft.accentColor}
-                maxLength={7}
-                pattern="#[0-9a-fA-F]{6}"
-                required
-                onChange={(e) => patch({ accentColor: e.target.value })}
-              />
-              <p className="field-hint">
-                Controls adapt for readability. Health colors stay consistent.
-              </p>
               <label htmlFor="workspace-density">Dashboard spacing</label>
               <select
                 id="workspace-density"
@@ -208,14 +161,10 @@ export function AppearanceDialog({ onClose }: { onClose: () => void }) {
             </fieldset>
             <aside className="appearance-preview-area">
               <div className="preview-caption">
-                <span className="eyebrow">LIVE PREVIEW</span>
+                <span className="eyebrow">Live preview</span>
                 <span>Unsaved changes</span>
               </div>
-              <div
-                className="appearance-preview themed-workspace"
-                style={appearanceStyle(preview)}
-                data-density={draft.density}
-              >
+              <div className="appearance-preview" data-density={draft.density}>
                 <div className="preview-rail">
                   <span className="preview-logo">
                     {safeLogo ? (
@@ -238,7 +187,7 @@ export function AppearanceDialog({ onClose }: { onClose: () => void }) {
                 <div className="preview-main">
                   <span className="preview-name">{draft.name || 'Your workspace'}</span>
                   <h3>
-                    Overview<span>.</span>
+                    Overview<span className="period">.</span>
                   </h3>
                   <p>{draft.tagline || 'Your monitoring workspace'}</p>
                   <WatchfulArt className="preview-art" />
@@ -285,7 +234,13 @@ export function AppearanceDialog({ onClose }: { onClose: () => void }) {
             type="button"
             className="button appearance-reset"
             disabled={busy || !loaded}
-            onClick={() => setDraft({ ...defaultWorkspaceSettings })}
+            onClick={() =>
+              // The workspace accent no longer drives the UI; keep whatever is stored.
+              setDraft((current) => ({
+                ...defaultWorkspaceSettings,
+                accentColor: current.accentColor,
+              }))
+            }
           >
             <RotateCcw size={14} />
             Reset draft

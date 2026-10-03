@@ -21,7 +21,9 @@ export async function DocsCode({
 }) {
   const { tokens } = await codeToTokens(code, {
     lang: languages[language ?? ''] ?? 'text',
-    theme: 'github-dark',
+    // Dual themes: each token carries --shiki-dark / --shiki-light; docs.css picks one per data-theme.
+    themes: { dark: 'github-dark', light: 'github-light' },
+    defaultColor: false,
   });
   const Icon = language === 'shell' ? Terminal : FileCode2;
   return (
@@ -43,7 +45,7 @@ export async function DocsCode({
               </span>
               <span>
                 {line.map((token, i) => (
-                  <span key={i} style={{ color: token.color }}>
+                  <span key={i} style={token.htmlStyle as React.CSSProperties}>
                     {token.content}
                   </span>
                 ))}

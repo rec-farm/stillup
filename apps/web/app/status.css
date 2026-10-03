@@ -1,208 +1,935 @@
-/* A quieter version of the print identity; public appearance tokens remain authoritative. */
-.status-canvas {
-  --status-rule: color-mix(in srgb, var(--status-text) 38%, var(--status-surface));
-  --status-muted: color-mix(in srgb, var(--status-text) 76%, var(--status-surface));
+/* Public status pages (customer-facing, customer-branded) on REC foundations.
+   Neutrals, type, radius and status signals come from reciam.css tokens. The customer's
+   accent (--status-accent) marks "place" only: the header rule and link underlines. It never
+   stands in for health state, which always uses REC status tokens plus an icon or word.
+
+   Inline customer variables (components/status-view.tsx), each set only when customized:
+   --status-accent, --status-background, --status-surface, --status-text,
+   --status-text-muted, --status-dark-background, --status-dark-surface, --status-dark-text,
+   --status-dark-text-muted, --status-radius. */
+
+/* ---------- Theme ---------- */
+/* data-theme='light' | 'dark' already picks up the REC Paper/Dark token blocks.
+   'auto' follows the visitor's system: Dark by default, Paper under prefers light. */
+.status-canvas[data-theme='auto'] {
+  color-scheme: dark;
+  --canvas: var(--status-dark-background, var(--ink-950));
+  --surface-1: var(--status-dark-surface, var(--ink-900));
+  --surface-2: var(--ink-850);
+  --surface-3: var(--ink-800);
+  --fg: var(--status-dark-text, var(--cream));
+  --fg-muted: var(--status-dark-text-muted, var(--stone-400));
+  --fg-subtle: var(--status-dark-text-muted, var(--stone-500));
+  --border: var(--ink-700);
+  --border-strong: var(--ink-600);
+  --border-input: var(--ink-600);
+  --shadow-hard-color: var(--ink-600);
+  --primary: var(--purple-500);
+  --primary-hover: var(--purple-400);
+  --primary-soft: color-mix(in oklab, var(--purple-900) 50%, transparent);
+  --link: var(--purple-300);
+  --focus-ring: var(--purple-300);
+  --selection: var(--purple-950);
+  --success-tile: var(--mint-950);
+  --success-icon: var(--mint-400);
+  --success-text: var(--mint-400);
+  --warning-tile: var(--sun-950);
+  --warning-icon: var(--sun-400);
+  --warning-text: var(--sun-400);
+  --danger-tile: var(--rose-950);
+  --danger-icon: var(--rose-400);
+  --danger-text: var(--rose-400);
+  --info-tile: var(--lilac-950);
+  --info-icon: var(--lilac-400);
+  --info-text: var(--lilac-400);
+  --tile-fg: var(--cream);
+  --tile-fg-muted: var(--stone-400);
+  --accent: var(--sun-400);
+  --accent-fg: var(--ink-950);
+  --accent-tile: var(--sun-950);
+  --accent-text: var(--sun-400);
 }
+@media (prefers-color-scheme: light) {
+  .status-canvas[data-theme='auto'] {
+    color-scheme: light;
+    --canvas: var(--paper-100);
+    --surface-1: var(--paper-50);
+    --surface-2: var(--paper-200);
+    --surface-3: var(--paper-300);
+    --fg: var(--deep-900);
+    --fg-muted: var(--slate-600);
+    --fg-subtle: var(--slate-500);
+    --border: var(--paper-400);
+    --border-strong: var(--deep-900);
+    --border-input: var(--paper-500);
+    --shadow-hard-color: var(--deep-900);
+    --primary: var(--purple-600);
+    --primary-hover: var(--purple-700);
+    --primary-soft: var(--purple-50);
+    --link: var(--purple-600);
+    --focus-ring: var(--purple-600);
+    --selection: var(--purple-100);
+    --success-tile: var(--mint-300);
+    --success-icon: var(--deep-900);
+    --success-text: var(--mint-600);
+    --warning-tile: var(--sun-300);
+    --warning-icon: var(--deep-900);
+    --warning-text: var(--sun-600);
+    --danger-tile: var(--rose-300);
+    --danger-icon: var(--deep-900);
+    --danger-text: var(--rose-600);
+    --info-tile: var(--lilac-300);
+    --info-icon: var(--deep-900);
+    --info-text: var(--lilac-600);
+    --tile-fg: var(--deep-900);
+    --tile-fg-muted: color-mix(in oklab, var(--deep-900) 78%, transparent);
+    --accent: var(--sun-300);
+    --accent-fg: var(--deep-900);
+    --accent-tile: var(--sun-100);
+    --accent-text: var(--sun-600);
+  }
+}
+
+/* Customer page/card/text colors per theme. Unset variables fall back to REC tokens. */
+.status-canvas[data-theme='dark'] {
+  --canvas: var(--status-dark-background, var(--ink-950));
+  --surface-1: var(--status-dark-surface, var(--ink-900));
+  --fg: var(--status-dark-text, var(--cream));
+  --fg-muted: var(--status-dark-text-muted, var(--stone-400));
+  --fg-subtle: var(--status-dark-text-muted, var(--stone-500));
+}
+.status-canvas[data-theme='light'] {
+  --canvas: var(--status-background, var(--paper-100));
+  --surface-1: var(--status-surface, var(--paper-50));
+  --fg: var(--status-text, var(--deep-900));
+  --fg-muted: var(--status-text-muted, var(--slate-600));
+  --fg-subtle: var(--status-text-muted, var(--slate-500));
+}
+@media (prefers-color-scheme: light) {
+  .status-canvas[data-theme='auto'] {
+    --canvas: var(--status-background, var(--paper-100));
+    --surface-1: var(--status-surface, var(--paper-50));
+    --fg: var(--status-text, var(--deep-900));
+    --fg-muted: var(--status-text-muted, var(--slate-600));
+    --fg-subtle: var(--status-text-muted, var(--slate-500));
+  }
+}
+
+/* ---------- Canvas ---------- */
+.status-canvas {
+  /* Place accent: customer color when set, otherwise the StillUp Sun accent. */
+  --status-place: var(--status-accent, var(--accent));
+  /* Customer radius, capped at REC's 6px. Cards default to 4px. */
+  --status-r: min(var(--status-radius, var(--radius-sm)), var(--radius-md));
+  /* Signal defaults (info); state classes below swap them. */
+  --sig-tile: var(--info-tile);
+  --sig-icon: var(--info-icon);
+  --sig-text: var(--info-text);
+  min-height: 100vh;
+  background: var(--canvas);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.status-canvas .status-page {
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 64px 24px 32px;
+}
+.status-canvas .status-page[data-layout='wide'] {
+  max-width: 1120px;
+}
+.status-canvas .status-page[data-layout='compact'] {
+  max-width: 680px;
+  padding-top: 40px;
+}
+
+/* Font option: sans → Figtree (REC default), system → the visitor's UI font,
+   mono → Geist Mono, serif → serif stack. */
+.status-canvas .status-page[data-font='sans'] {
+  font-family: var(--font-sans);
+}
+.status-canvas .status-page[data-font='system'] {
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+}
+.status-canvas .status-page[data-font='mono'] {
+  font-family: var(--font-mono);
+}
+.status-canvas .status-page[data-font='serif'] {
+  font-family: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+}
+.status-canvas :is(h1, h2, h3) {
+  margin: 0;
+  font-family: inherit;
+  color: inherit;
+}
+.status-canvas p {
+  margin: 0;
+}
+
+/* Machine data: timestamps, durations. */
+.status-canvas time {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  color: var(--fg);
+}
+
+/* ---------- Header ---------- */
 .status-canvas .status-page > header {
-  padding-bottom: 24px;
-  border-bottom: 2px solid var(--status-text);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-top: 0;
+  padding: 0 0 24px;
+  border-bottom: 2px solid var(--status-place);
+}
+.status-canvas .public-brand-link {
+  color: inherit;
+  text-decoration: none;
+  border-radius: var(--radius-sm);
 }
 .status-canvas .public-brand {
-  font-size: 27px;
-  font-weight: 850;
-  letter-spacing: -1px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-sans);
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+.status-canvas .public-brand img {
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+}
+/* StillUp lockup (no customer brand): follow the canvas theme, not the viewer's site theme. */
+.status-canvas[data-theme='dark'] .brand-lockup-cream,
+.status-canvas[data-theme='light'] .brand-lockup-ink,
+.status-canvas[data-theme='auto'] .brand-lockup-cream {
+  display: block;
+}
+.status-canvas[data-theme='dark'] .brand-lockup-ink,
+.status-canvas[data-theme='light'] .brand-lockup-cream,
+.status-canvas[data-theme='auto'] .brand-lockup-ink {
+  display: none;
+}
+@media (prefers-color-scheme: light) {
+  .status-canvas[data-theme='auto'] .brand-lockup-cream {
+    display: none;
+  }
+  .status-canvas[data-theme='auto'] .brand-lockup-ink {
+    display: block;
+  }
 }
 .status-canvas .status-caption {
-  color: var(--status-text);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 1.5px;
-  padding: 7px 10px;
-  border: 1px solid var(--status-rule);
-  border-radius: min(var(--status-radius), 4px);
+  color: var(--fg-muted);
+  padding: 6px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+}
+
+/* ---------- Helpful links ---------- */
+.status-canvas .status-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  margin-top: 16px;
+  font-size: 13px;
+  font-weight: 600;
 }
 .status-canvas .status-links a {
   padding: 6px 0;
+  color: var(--fg);
   text-decoration: underline;
+  text-decoration-color: var(--status-place);
   text-decoration-thickness: 2px;
+  text-underline-offset: 5px;
+  transition: text-decoration-color var(--duration-fast) var(--ease-out);
 }
 .status-canvas .status-links a:hover {
-  text-decoration-color: var(--status-text);
+  text-decoration-color: var(--fg);
 }
+
+/* ---------- Status signals ---------- */
+.status-canvas :is(.status-hero, .public-health).up {
+  --sig-tile: var(--success-tile);
+  --sig-icon: var(--success-icon);
+  --sig-text: var(--success-text);
+}
+.status-canvas :is(.status-hero, .public-health).down {
+  --sig-tile: var(--danger-tile);
+  --sig-icon: var(--danger-icon);
+  --sig-text: var(--danger-text);
+}
+.status-canvas :is(.status-hero, .public-health):is(.maintenance, .unknown, .paused, .archived) {
+  --sig-tile: var(--info-tile);
+  --sig-icon: var(--info-icon);
+  --sig-text: var(--info-text);
+}
+
+/* ---------- Hero (overall state tile) ---------- */
 .status-canvas .status-hero {
-  --status-state-color: var(--status-accent);
-  border: 1px solid var(--status-rule);
-  border-top: 5px solid var(--status-state-color);
-  box-shadow: 4px 4px 0 color-mix(in srgb, var(--status-text) 25%, var(--status-background));
-  margin-top: 32px;
-}
-.status-canvas .status-hero.unknown {
-  --status-state-color: #899da8;
-}
-.status-canvas .status-hero.down {
-  --status-state-color: #d47b65;
-}
-.status-canvas .status-hero.maintenance {
-  --status-state-color: #c99d45;
+  margin: 32px 0 40px;
+  padding: 32px;
+  background: var(--sig-tile);
+  color: var(--tile-fg);
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--status-r);
+  box-shadow: var(--shadow-hard);
 }
 .status-canvas .status-symbol {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 54px;
-  height: 54px;
-  border: 1px solid var(--status-rule);
-  border-radius: min(var(--status-radius), 10px);
-  background: var(--status-surface);
-  color: var(--status-text);
+  width: 48px;
+  height: 48px;
   margin-bottom: 24px;
+  background: var(--surface-1);
+  color: var(--sig-icon);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--status-r);
 }
 .status-canvas .status-hero .eyebrow {
-  color: var(--status-muted);
-  letter-spacing: 1.5px;
-  line-height: 1.6;
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  margin-bottom: 8px;
+  color: var(--tile-fg-muted);
+  overflow-wrap: anywhere;
 }
 .status-canvas .status-hero h1 {
-  font-size: clamp(28px, 3.6vw, 40px);
-  font-weight: 850;
-  letter-spacing: -1.3px;
-  line-height: 1.14;
+  margin: 0 0 12px;
+  color: var(--tile-fg);
+  font-size: 40px;
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.035em;
   overflow-wrap: anywhere;
 }
 .status-canvas .status-hero p {
-  font-size: 14px;
-  opacity: 1;
-  color: var(--status-muted);
+  max-width: 60ch;
+  color: var(--tile-fg-muted);
+  font-size: 16px;
+  line-height: 1.55;
 }
 .status-canvas .status-hero small {
-  font-size: 11px;
-  line-height: 1.7;
+  display: block;
+  margin-top: 24px;
   padding-top: 16px;
-  border-top: 1px solid var(--status-rule);
-  opacity: 1;
-  color: var(--status-muted);
+  border-top: 1px solid color-mix(in oklab, var(--tile-fg) 22%, transparent);
+  color: var(--tile-fg-muted);
+  font-size: 13px;
+  line-height: 1.45;
 }
+.status-canvas .status-hero time {
+  color: var(--tile-fg);
+}
+
+/* ---------- Section headings ---------- */
 .status-canvas :is(.status-components, .public-incidents) > h2 {
-  font-size: 18px;
-  font-weight: 800;
-  letter-spacing: -0.3px;
+  margin: 40px 0 16px;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
 }
+.status-canvas .status-page[data-font='sans'] :is(h1, h2, h3) {
+  font-family: var(--font-sans);
+}
+
+/* ---------- Component list (joined rows, table-like) ---------- */
 .status-canvas .public-component {
-  border-color: var(--status-rule);
-  padding: 19px 21px;
-  gap: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 52px;
+  margin-top: -1px;
+  padding: 12px 16px;
+  background: var(--surface-1);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 0;
+  font-size: 14px;
+}
+.status-canvas h2 + .public-component {
+  margin-top: 0;
+  border-top-left-radius: var(--status-r);
+  border-top-right-radius: var(--status-r);
+}
+.status-canvas .public-component:last-child {
+  border-bottom-left-radius: var(--status-r);
+  border-bottom-right-radius: var(--status-r);
 }
 .status-canvas .public-component strong {
-  font-size: 14px;
-  font-weight: 650;
-}
-.status-canvas .public-health {
-  --health-tone: #899da8;
-  padding: 6px 9px;
-  font-size: 11px;
+  min-width: 0;
   font-weight: 600;
-  border: 1px solid color-mix(in srgb, var(--health-tone) 45%, var(--status-surface));
-  border-radius: min(var(--status-radius), 5px);
-  background: color-mix(in srgb, var(--health-tone) 12%, var(--status-surface));
-  color: color-mix(in srgb, var(--status-text) 80%, var(--health-tone));
+  overflow-wrap: anywhere;
 }
-.status-canvas .public-health.up {
-  --health-tone: #38a37a;
+.status-canvas .status-page[data-layout='compact'] .public-component {
+  min-height: 44px;
+  padding: 8px 16px;
 }
-.status-canvas .public-health.down {
-  --health-tone: #d47b65;
-}
-.status-canvas .public-health.maintenance,
-.status-canvas .public-health.paused {
-  --health-tone: #c99d45;
+
+/* Status pill: tile + 6px dot + word. */
+.status-canvas .public-health {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  background: var(--sig-tile);
+  color: var(--tile-fg);
+  border: 0;
+  border-radius: var(--radius-full);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 .status-canvas .public-health > span {
   width: 6px;
   height: 6px;
-  background: var(--health-tone);
+  flex-shrink: 0;
+  background: var(--sig-text);
+  border-radius: var(--radius-full);
 }
-.status-canvas :is(.public-empty, .public-incidents article, .status-content-block) {
-  border-color: var(--status-rule);
+.status-canvas .public-health.up > span {
+  animation: status-live 2s var(--ease-out) infinite alternate;
 }
+@keyframes status-live {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.4;
+  }
+}
+
+/* ---------- Empty states ---------- */
 .status-canvas .public-empty {
-  font-size: 13px;
-  line-height: 1.7;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 24px;
+  background: var(--surface-1);
+  color: var(--fg-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--status-r);
+  font-size: 14px;
+}
+.status-canvas .public-empty svg {
+  color: var(--success-text);
+}
+
+/* ---------- Incidents & maintenance ---------- */
+.status-canvas .public-incidents {
+  margin-top: 40px;
+}
+.status-canvas .public-incidents article {
+  margin-bottom: 12px;
+  padding: 24px;
+  background: var(--surface-1);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--status-r);
 }
 .status-canvas .public-incidents article h3 {
-  font-size: 17px;
-  font-weight: 750;
+  margin: 12px 0 8px;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: -0.005em;
 }
 .status-canvas .public-incidents article p {
+  color: var(--fg-muted);
   font-size: 13px;
-  opacity: 1;
-  color: var(--status-muted);
+  line-height: 1.45;
+}
+.status-canvas .public-incidents article p.public-prose {
+  margin-top: 8px;
+  color: var(--fg);
+  font-size: 14px;
+  line-height: 1.5;
 }
 .status-canvas .public-incidents article small {
-  color: var(--status-muted);
-  font-size: 11px;
-  line-height: 1.7;
+  display: block;
+  margin-top: 12px;
+  color: var(--fg-subtle);
+  font-size: 12px;
+  line-height: 1.4;
 }
+/* Stage badge (stamp): active incident → warning, resolved → success, maintenance → info. */
 .status-canvas .public-incidents .incident-state {
+  --sig-tile: var(--warning-tile);
   float: none;
-  display: inline-block;
-  margin-left: 0;
-  color: var(--status-text);
-  background: color-mix(in srgb, #c99d45 18%, var(--status-surface));
-  border: 1px solid var(--status-rule);
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  margin: 0;
+  padding: 0 8px;
+  background: var(--sig-tile);
+  color: var(--tile-fg);
+  border: 0;
+  border-radius: var(--radius-xs);
+  font-family: var(--font-display);
+  font-stretch: 125%;
+  font-variation-settings: 'wdth' 125;
   font-size: 11px;
-  border-radius: min(var(--status-radius), 4px);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  line-height: 1;
+  text-transform: uppercase;
 }
 .status-canvas .public-incidents .incident-state.resolved {
-  background: color-mix(in srgb, #38a37a 16%, var(--status-surface));
+  --sig-tile: var(--success-tile);
+}
+.status-canvas .public-incidents .incident-state.maintenance {
+  --sig-tile: var(--info-tile);
 }
 .status-canvas .public-update {
-  border-left: 2px solid var(--status-rule);
-  padding-left: 15px;
+  margin: 16px 0 0;
+  padding: 4px 0 0 16px;
+  border-left: 2px solid var(--border-strong);
 }
+.status-canvas .public-update strong {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+.status-canvas .public-incidents .public-update small {
+  margin: 4px 0 0;
+}
+
+/* ---------- Customer content blocks ---------- */
+.status-canvas .status-content-block {
+  margin: 24px 0;
+  padding: 24px;
+  background: var(--surface-1);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--status-r);
+  overflow-wrap: anywhere;
+}
+.status-canvas .status-content-block h2 {
+  margin: 0 0 12px;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+.status-canvas .status-content-block p {
+  max-width: 75ch;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+/* ---------- Footer ---------- */
 .status-canvas .status-page > footer {
-  border-top: 2px solid var(--status-rule);
-  color: var(--status-muted);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px 24px;
+  margin-top: 64px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+  color: var(--fg-muted);
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.status-canvas .status-page > footer > span {
+  display: inline;
+  margin-left: 0;
+}
+.status-canvas .status-page > footer > .status-attribution {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.status-canvas .status-attribution .eyebrow {
   font-size: 11px;
-  line-height: 1.7;
-  gap: 10px;
+  letter-spacing: 0.14em;
+  color: var(--fg-subtle);
 }
-.status-canvas .status-page[data-font]:not([data-font='sans']) :is(h1, h2, h3) {
-  font-family: inherit;
+.status-canvas .status-endorsed {
+  display: block;
+  width: 160px;
+  height: auto;
 }
+/* Endorsed lockup colorway: cream on Dark, ink on Paper. */
+.status-canvas .status-endorsed-ink,
+.status-canvas[data-theme='light'] .status-endorsed-cream {
+  display: none;
+}
+.status-canvas[data-theme='light'] .status-endorsed-ink {
+  display: block;
+}
+@media (prefers-color-scheme: light) {
+  .status-canvas[data-theme='auto'] .status-endorsed-cream {
+    display: none;
+  }
+  .status-canvas[data-theme='auto'] .status-endorsed-ink {
+    display: block;
+  }
+}
+
+/* ---------- Focus ---------- */
 .status-canvas :is(a, button):focus-visible {
-  outline: 3px solid var(--status-text);
-  outline-offset: 4px;
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
-@media (max-width: 600px) {
+
+/* ---------- Dashboard editor (status-management.tsx, status-design-fields.tsx) ---------- */
+.status-editor-dialog {
+  width: min(1320px, calc(100vw - 32px));
+  max-width: 1320px;
+}
+.status-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+  gap: 0 32px;
+  align-items: start;
+  margin-top: 16px;
+}
+.status-editor-fields {
+  min-width: 0;
+}
+.status-editor-section {
+  border-bottom: 1px solid var(--border);
+}
+.status-editor-section > summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 0;
+  cursor: pointer;
+  list-style: none;
+}
+.status-editor-section > summary::-webkit-details-marker {
+  display: none;
+}
+.status-editor-section > summary::before {
+  content: '';
+  flex-shrink: 0;
+  align-self: center;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid var(--fg-muted);
+  border-bottom: 1.5px solid var(--fg-muted);
+  transform: rotate(-45deg);
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+.status-editor-section[open] > summary::before {
+  transform: rotate(45deg);
+}
+.status-editor-section > summary h3 {
+  flex: 1;
+}
+.status-editor-section > summary span {
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+.status-editor-section-body {
+  display: grid;
+  gap: 4px;
+  padding: 0 0 24px;
+}
+.status-editor-section-body > .button {
+  justify-self: start;
+  margin-top: 12px;
+}
+.status-editor-section-body > .notification-card {
+  margin-top: 12px;
+}
+
+/* Presets */
+.status-presets {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+.status-preset {
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+  background: var(--surface-1);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-out);
+}
+.status-preset:hover {
+  border-color: var(--border-strong);
+}
+.status-preset[aria-pressed='true'] {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+.status-preset strong {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+}
+.status-preset strong svg {
+  color: var(--primary);
+}
+.status-preset small {
+  color: var(--fg-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.status-preset-swatch {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 48px;
+  margin-bottom: 4px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  overflow: hidden;
+}
+.status-preset-swatch > span:first-child {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 24px;
+  border-radius: 2px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.status-preset-swatch > span:nth-child(2) {
+  width: 20px;
+  height: 4px;
+  margin-bottom: 4px;
+  border-radius: 2px;
+}
+.status-preset-swatch > .status-preset-dark {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 30%;
+}
+
+/* Colors */
+.status-theme-choice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 20px;
+  margin: 0 0 8px;
+  padding: 0;
+  border: 0;
+}
+.status-theme-choice legend {
+  padding: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.status-theme-choice .checkbox-label {
+  margin-top: 10px;
+}
+.status-color-field > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.status-color-field input[type='color'] {
+  width: 44px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.status-color-field code {
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+.status-palette {
+  margin-top: 16px;
+  padding: 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.status-palette h4 {
+  margin-bottom: 4px;
+}
+.status-palette > .checkbox-label {
+  margin-top: 8px;
+}
+.status-contrast {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.status-contrast p,
+p.status-contrast {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.status-contrast svg {
+  margin-top: 2px;
+}
+.status-contrast.ok {
+  color: var(--success-text);
+}
+.status-contrast.warn {
+  color: var(--warning-text);
+}
+.status-logo-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.status-logo-thumb {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  background: var(--surface-2);
+  border: 1px dashed var(--border-input);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.status-logo-thumb img {
+  object-fit: contain;
+}
+
+/* Preview */
+.status-editor-preview {
+  position: sticky;
+  top: 0;
+  min-width: 0;
+  padding-top: 8px;
+}
+.status-preview-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.status-preview-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.status-preview-controls .detail-tabs {
+  border-bottom: 0;
+}
+.status-preview {
+  max-height: calc(90dvh - 260px);
+  min-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.status-preview .status-canvas {
+  min-height: 100%;
+}
+.status-preview .status-canvas .status-page {
+  padding: 24px 20px;
+}
+.status-preview .status-hero h1 {
+  font-size: 30px;
+}
+.status-editor-footer {
+  grid-column: 1 / -1;
+  position: sticky;
+  bottom: -24px;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 16px -24px -24px;
+  padding: 16px 24px;
+  background: var(--surface-1);
+  border-top: 1px solid var(--border);
+}
+.status-editor-footer > :first-child {
+  margin-right: auto;
+}
+.status-editor-state {
+  color: var(--fg-muted);
+  font-size: 13px;
+}
+
+.status-design-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 16px;
+}
+.status-design-grid.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.status-design-grid > div {
+  min-width: 0;
+}
+
+@media (max-width: 960px) {
+  .status-editor {
+    grid-template-columns: 1fr;
+  }
+  .status-editor-preview {
+    position: static;
+    order: -1;
+    margin-bottom: 16px;
+  }
+  .status-preview {
+    max-height: 420px;
+  }
+}
+
+/* ---------- Small screens ---------- */
+@media (max-width: 640px) {
+  .status-design-grid,
+  .status-design-grid.three {
+    grid-template-columns: 1fr;
+  }
   .status-canvas .status-page {
-    padding: 28px 20px 20px;
+    padding: 32px 16px 24px;
   }
   .status-canvas .status-page > header {
-    padding-bottom: 20px;
+    padding-bottom: 16px;
   }
   .status-canvas .public-brand {
-    font-size: 24px;
+    font-size: 20px;
   }
   .status-canvas .status-caption {
-    font-size: 9px;
-    letter-spacing: 1px;
+    font-size: 10px;
   }
   .status-canvas .status-hero {
+    margin: 24px 0 32px;
     padding: 24px;
-    margin-block: 26px 30px;
   }
   .status-canvas .status-hero h1 {
-    font-size: 29px;
-    letter-spacing: -0.8px;
+    font-size: 28px;
   }
   .status-canvas .public-component {
-    padding: 17px;
+    flex-wrap: wrap;
+    gap: 8px;
   }
-}
-.status-canvas .status-hero:is(.up, .unknown, .down, .maintenance) {
-  border-color: var(--status-rule);
-  border-top-color: var(--status-state-color);
-}
-.status-canvas .brand {
-  color: var(--status-text);
 }

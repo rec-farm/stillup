@@ -2,6 +2,7 @@ import { z } from 'zod';
 export * from './notifications';
 export * from './secrets';
 export * from './status';
+export * from './status-theme';
 export * from './probes';
 import { locationIdSchema } from './probes';
 import {

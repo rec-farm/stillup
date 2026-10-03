@@ -11,33 +11,27 @@ const webLink = z
       }, 'Use an HTTP(S) link without credentials'),
   ])
   .default('');
+const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Use a six-digit hex color');
+// Empty means "use the built-in dark palette".
+const optionalHexColor = z.union([z.literal(''), hexColor]).default('');
 export const statusSettingsSchema = z
   .object({
     title: z.string().trim().min(1).max(100),
     brandName: z.string().trim().min(1).max(80).default('StillUp'),
     description: z.string().max(1000).default('A live look at the services you depend on.'),
-    accentColor: z
-      .string()
-      .regex(/^#[0-9a-fA-F]{6}$/)
-      .default('#00856a'),
+    accentColor: hexColor.default('#00856a'),
     logoUrl: webLink,
     homepageUrl: webLink,
     faviconUrl: webLink,
     theme: z.enum(['light', 'dark', 'auto']).default('light'),
     layout: z.enum(['comfortable', 'compact', 'wide']).default('comfortable'),
     font: z.enum(['sans', 'system', 'mono', 'serif']).default('sans'),
-    backgroundColor: z
-      .string()
-      .regex(/^#[0-9a-fA-F]{6}$/)
-      .default('#f6f8f7'),
-    surfaceColor: z
-      .string()
-      .regex(/^#[0-9a-fA-F]{6}$/)
-      .default('#ffffff'),
-    textColor: z
-      .string()
-      .regex(/^#[0-9a-fA-F]{6}$/)
-      .default('#243d35'),
+    backgroundColor: hexColor.default('#f6f8f7'),
+    surfaceColor: hexColor.default('#ffffff'),
+    textColor: hexColor.default('#243d35'),
+    darkBackgroundColor: optionalHexColor,
+    darkSurfaceColor: optionalHexColor,
+    darkTextColor: optionalHexColor,
     cornerRadius: z.number().int().min(0).max(32).default(16),
     headerLabel: z.string().max(80).default('SERVICE STATUS'),
     footerText: z.string().max(300).default('Know before your users do.'),

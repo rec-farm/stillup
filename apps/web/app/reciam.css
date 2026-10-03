@@ -1,0 +1,356 @@
+/* REC Design System v1.2.0 tokens (RECIAM SAS), copied from the OpenDesign brand project
+   "RECIAM Design System" (colors_and_type.css). Keep values in sync with the source;
+   app-specific rules belong in globals.css, not here.
+   Usage: <html data-theme="dark|light" data-product="stillup">. Dark is the default. */
+@import '@fontsource-variable/archivo/wdth.css';
+@import '@fontsource-variable/figtree';
+@import '@fontsource-variable/geist-mono';
+
+:root {
+  /* Primitives — Ink (dark neutrals) */
+  --ink-950: #0a0b0c;
+  --ink-900: #101214;
+  --ink-850: #16191c;
+  --ink-800: #1d2125;
+  --ink-700: #23272b;
+  --ink-600: #3a4046;
+  --ink-500: #555c63;
+  /* Paper (light neutrals) */
+  --paper-50: #fffcf5;
+  --paper-100: #f7f1e3;
+  --paper-200: #efe8d8;
+  --paper-300: #e5ddcb;
+  --paper-400: #ddd3bf;
+  --paper-500: #cfc4ad;
+  /* Text neutrals */
+  --cream: #f4efe3;
+  --stone-400: #a8a396;
+  --stone-500: #8a867e;
+  --slate-600: #4b5b61;
+  --slate-500: #5f6b67;
+  /* Deep (teal-navy) */
+  --deep-900: #14262e;
+  --deep-800: #1b323c;
+  --deep-700: #25424e;
+  --deep-300: #a9b8b9;
+  /* REC Purple */
+  --purple-50: #f2edff;
+  --purple-100: #e4d9ff;
+  --purple-200: #cbb6ff;
+  --purple-300: #ac8bff;
+  --purple-400: #8e5fff;
+  --purple-500: #7638fa;
+  --purple-600: #6524e8;
+  --purple-700: #521bc2;
+  --purple-800: #40179a;
+  --purple-900: #2c1169;
+  --purple-950: #1a0a40;
+  /* Pastel signals */
+  --sun-100: #fbefc4;
+  --sun-300: #f2c641;
+  --sun-400: #e8b931;
+  --sun-500: #d9a514;
+  --sun-600: #7a5a00;
+  --sun-950: #241f10;
+  --mint-100: #d6eee3;
+  --mint-300: #a8d8c2;
+  --mint-400: #4cc79a;
+  --mint-500: #2f8f7a;
+  --mint-600: #1c6b53;
+  --mint-950: #10221b;
+  --rose-100: #fbe3e8;
+  --rose-300: #f2c9d1;
+  --rose-400: #f07a9c;
+  --rose-500: #e8739a;
+  --rose-600: #c42f52;
+  --rose-950: #26121a;
+  --lilac-100: #eeebf7;
+  --lilac-300: #dcd7ee;
+  --lilac-400: #b3a8ee;
+  --lilac-600: #5b4fa8;
+  --lilac-950: #1a1828;
+
+  /* Fonts */
+  --font-display:
+    'Archivo Variable', 'Arial Black', system-ui, sans-serif; /* always with font-stretch:125% */
+  --font-sans: 'Figtree Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'Geist Mono Variable', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* Radius */
+  --radius-none: 0;
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-full: 9999px;
+
+  /* Spacing (4px base) */
+  --space-0-5: 2px;
+  --space-1: 4px;
+  --space-1-5: 6px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-24: 96px;
+
+  /* Controls */
+  --control-sm: 28px;
+  --control-md: 36px;
+  --control-lg: 44px;
+
+  /* Layout */
+  --sidebar-w: 256px;
+  --sidebar-w-collapsed: 64px;
+  --topbar-h: 56px;
+  --content-max: 1200px;
+
+  /* Motion */
+  --duration-instant: 80ms;
+  --duration-fast: 140ms;
+  --duration-base: 200ms;
+  --duration-slow: 320ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-snap: cubic-bezier(0.3, 1.4, 0.5, 1);
+}
+
+/* Dark — DEFAULT */
+:root,
+[data-theme='dark'] {
+  color-scheme: dark;
+  --canvas: var(--ink-950);
+  --surface-1: var(--ink-900);
+  --surface-2: var(--ink-850);
+  --surface-3: var(--ink-800);
+  --sidebar: var(--ink-900);
+  --sidebar-fg: var(--cream);
+  --sidebar-fg-muted: var(--stone-400);
+  --sidebar-hover: var(--ink-850);
+  --fg: var(--cream);
+  --fg-muted: var(--stone-400);
+  --fg-subtle: var(--stone-500);
+  --border: var(--ink-700);
+  --border-strong: var(--ink-600);
+  --border-input: var(--ink-600);
+  --shadow-hard-color: var(--ink-600);
+  --primary: var(--purple-500);
+  --primary-hover: var(--purple-400);
+  --primary-fg: #ffffff;
+  --primary-soft: color-mix(in oklab, var(--purple-900) 50%, transparent);
+  --link: var(--purple-300);
+  --focus-ring: var(--purple-300);
+  --selection: var(--purple-950);
+  --success-tile: var(--mint-950);
+  --success-icon: var(--mint-400);
+  --success-text: var(--mint-400);
+  --warning-tile: var(--sun-950);
+  --warning-icon: var(--sun-400);
+  --warning-text: var(--sun-400);
+  --danger-tile: var(--rose-950);
+  --danger-icon: var(--rose-400);
+  --danger-text: var(--rose-400);
+  --info-tile: var(--lilac-950);
+  --info-icon: var(--lilac-400);
+  --info-text: var(--lilac-400);
+  --tile-fg: var(--cream);
+  --tile-fg-muted: var(--stone-400);
+  --danger-solid: #d93f5e;
+  --overlay: rgb(10 11 12 / 0.72);
+  --shadow-pop: 0 12px 32px -8px rgb(0 0 0 / 0.45);
+  --accent: var(--purple-500);
+  --accent-fg: #ffffff;
+  --accent-tile: var(--purple-950);
+  --accent-text: var(--purple-300);
+}
+
+/* Paper — LIGHT */
+[data-theme='light'] {
+  color-scheme: light;
+  --canvas: var(--paper-100);
+  --surface-1: var(--paper-50);
+  --surface-2: var(--paper-200);
+  --surface-3: var(--paper-300);
+  --sidebar: var(--deep-900);
+  --sidebar-fg: var(--cream);
+  --sidebar-fg-muted: var(--deep-300);
+  --sidebar-hover: var(--deep-800);
+  --fg: var(--deep-900);
+  --fg-muted: var(--slate-600);
+  --fg-subtle: var(--slate-500);
+  --border: var(--paper-400);
+  --border-strong: var(--deep-900);
+  --border-input: var(--paper-500);
+  --shadow-hard-color: var(--deep-900);
+  --primary: var(--purple-600);
+  --primary-hover: var(--purple-700);
+  --primary-fg: #ffffff;
+  --primary-soft: var(--purple-50);
+  --link: var(--purple-600);
+  --focus-ring: var(--purple-600);
+  --selection: var(--purple-100);
+  --success-tile: var(--mint-300);
+  --success-icon: var(--deep-900);
+  --success-text: var(--mint-600);
+  --warning-tile: var(--sun-300);
+  --warning-icon: var(--deep-900);
+  --warning-text: var(--sun-600);
+  --danger-tile: var(--rose-300);
+  --danger-icon: var(--deep-900);
+  --danger-text: var(--rose-600);
+  --info-tile: var(--lilac-300);
+  --info-icon: var(--deep-900);
+  --info-text: var(--lilac-600);
+  --tile-fg: var(--deep-900);
+  --tile-fg-muted: color-mix(in oklab, var(--deep-900) 78%, transparent);
+  --danger-solid: var(--rose-600);
+  --overlay: rgb(20 38 46 / 0.4);
+  --shadow-pop: 0 12px 32px -8px rgb(20 38 46 / 0.18);
+  --accent: var(--purple-600);
+  --accent-fg: #ffffff;
+  --accent-tile: var(--purple-50);
+  --accent-text: var(--purple-600);
+}
+
+/* Product accents — mark place, never action */
+[data-product='stillup'] {
+  --accent: var(--sun-400);
+  --accent-fg: var(--ink-950);
+  --accent-tile: var(--sun-950);
+  --accent-text: var(--sun-400);
+}
+[data-theme='light'][data-product='stillup'],
+[data-theme='light'] [data-product='stillup'] {
+  --accent: var(--sun-300);
+  --accent-fg: var(--deep-900);
+  --accent-tile: var(--sun-100);
+  --accent-text: var(--sun-600);
+}
+[data-product='paramtune'] {
+  --accent: var(--mint-400);
+  --accent-fg: var(--ink-950);
+  --accent-tile: var(--mint-950);
+  --accent-text: var(--mint-400);
+}
+[data-theme='light'][data-product='paramtune'],
+[data-theme='light'] [data-product='paramtune'] {
+  --accent: var(--mint-300);
+  --accent-fg: var(--deep-900);
+  --accent-tile: var(--mint-100);
+  --accent-text: var(--mint-600);
+}
+
+/* Offset shadows */
+:root {
+  --shadow-hard-sm: 2px 2px 0 0 var(--shadow-hard-color);
+  --shadow-hard: 3px 3px 0 0 var(--shadow-hard-color);
+  --shadow-hard-lg: 5px 5px 0 0 var(--shadow-hard-color);
+}
+
+/* Base */
+html {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  background: var(--canvas);
+  color: var(--fg);
+  -webkit-font-smoothing: antialiased;
+}
+::selection {
+  background: var(--selection);
+}
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+code,
+kbd,
+samp,
+pre {
+  font-family: var(--font-mono);
+}
+
+/* Type helpers */
+.font-display {
+  font-family: var(--font-display);
+  font-stretch: 125%;
+  font-variation-settings: 'wdth' 125;
+}
+.eyebrow,
+.label-stamp {
+  font-family: var(--font-display);
+  font-stretch: 125%;
+  font-variation-settings: 'wdth' 125;
+  font-size: 11px;
+  line-height: 1.2;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.eyebrow {
+  letter-spacing: 0.14em;
+  color: var(--fg-muted);
+}
+.label-stamp {
+  letter-spacing: 0.1em;
+}
+.stat-num {
+  font-family: var(--font-display);
+  font-stretch: 125%;
+  font-variation-settings: 'wdth' 125;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.title-1 {
+  font: 800 56px/1 var(--font-sans);
+  letter-spacing: -0.035em;
+}
+@media (max-width: 767px) {
+  .title-1 {
+    font-size: 40px;
+  }
+}
+.title-2 {
+  font: 800 28px/1.15 var(--font-sans);
+  letter-spacing: -0.02em;
+}
+.heading {
+  font: 700 20px/1.25 var(--font-sans);
+  letter-spacing: -0.01em;
+}
+.period {
+  color: var(--primary);
+} /* Overview<span class="period">.</span> — H1 and hero only */
+
+/* Press interaction for offset-shadowed elements */
+.press {
+  transition:
+    transform var(--duration-instant) var(--ease-snap),
+    box-shadow var(--duration-instant) var(--ease-snap);
+}
+.press:active {
+  transform: translate(2px, 2px);
+  box-shadow: 0 0 0 0 var(--shadow-hard-color);
+}
+
+/* Dot-grid texture — never behind text */
+.bg-dot-grid {
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    color-mix(in oklab, var(--border) 60%, transparent) 1px,
+    transparent 0
+  );
+  background-size: 8px 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-property: color, background-color, border-color, opacity !important;
+  }
+}

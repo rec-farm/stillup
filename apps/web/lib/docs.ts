@@ -254,9 +254,9 @@ export const docs: Doc[] = [
         id: 'design',
         title: 'Design your public page',
         paragraphs: [
-          'Open Design & content to change typography, page width, spacing, corner radius, colors, logo, favicon, header caption, and footer. Choose light, dark, or the visitor’s system theme. Custom background, surface, and text colors apply to the light palette; dark mode uses a readable preset.',
+          'Open Design & content to start from a preset, then change typography, page width, corner radius, colors, logo, favicon, header caption, and footer while a live preview updates beside the form. Choose light, dark, or the visitor’s system theme. Set page, card, and text colors for the light palette, and optionally your own dark palette; otherwise dark mode uses the built-in one.',
           'Add up to eight navigation links and twelve text sections before or after services. Move sections up to reorder them. Preview changes shows an unsaved sample using your published components; it does not represent live health. Save public page publishes the design to all configured domains.',
-          'You can remove StillUp attribution and hide resolved history. Active incidents, service health, maintenance, and stale-data warnings remain visible. Use colors with sufficient contrast for your visitors.',
+          'You can remove StillUp attribution and hide resolved history. Active incidents, service health, maintenance, and stale-data warnings remain visible. The editor warns when text falls below WCAG AA contrast (4.5:1) against the page or cards.',
         ],
       },
       {

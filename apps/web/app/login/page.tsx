@@ -2,7 +2,6 @@
 import { useState } from 'react';
 import { ArrowRight, ShieldCheck } from 'lucide-react';
 import { useWorkspace } from '../../components/workspace-provider';
-import { appearanceStyle } from '../../lib/appearance';
 import { Brand } from '../../components/brand';
 import { WatchfulArt } from '../../components/watchful-art';
 export default function LoginPage() {
@@ -29,14 +28,14 @@ export default function LoginPage() {
     }
   }
   return (
-    <main className="login-page themed-workspace" style={appearanceStyle(settings)}>
+    <main className="login-page">
       <section className="login-story">
         <Brand workspace />
         <div>
-          <span className="eyebrow">OPEN-SOURCE API MONITORING</span>
+          <span className="eyebrow">Open-source API monitoring</span>
           <h1>
             Good APIs deserve
-            <br />a watchful eye.
+            <br />a watchful eye<span className="period">.</span>
           </h1>
           <p>{settings.tagline || 'Know before your users do.'}</p>
           <WatchfulArt />
@@ -46,7 +45,7 @@ export default function LoginPage() {
       <section className="login-panel">
         <form onSubmit={login}>
           <div className="icon-tile">
-            <ShieldCheck size={25} />
+            <ShieldCheck size={24} />
           </div>
           <h2>Welcome to {settings.name}</h2>
           <p>Sign in to your monitoring workspace.</p>

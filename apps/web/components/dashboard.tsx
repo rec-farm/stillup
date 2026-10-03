@@ -27,14 +27,10 @@ import {
   X,
 } from 'lucide-react';
 import type { Dashboard, Monitor, Run, Health } from '@stillup/core';
-import dynamic from 'next/dynamic';
-const AppearanceDialog = dynamic(() =>
-  import('./appearance-dialog').then((module) => module.AppearanceDialog),
-);
 import { useWorkspace } from './workspace-provider';
-import { appearanceStyle } from '../lib/appearance';
 import { Brand } from './brand';
-import { WatchfulArt } from './watchful-art';
+import { Illustration, WatchfulArt } from './watchful-art';
+import { UserMenu } from './user-menu';
 import { CheckForm } from './check-form';
 import { ConfigurationHistory, RevisionViewer } from './configuration-history';
 import { NotificationDialog, IncidentDialog } from './notifications';
@@ -80,7 +76,6 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 }
 export function DashboardView({ initial }: { initial: Dashboard }) {
   const { settings } = useWorkspace();
-  const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [data, setData] = useState(initial);
   const [create, setCreate] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -171,50 +166,62 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
       setBusy(false);
     }
   }
+  async function signOut() {
+    try {
+      await api('session', { method: 'DELETE' });
+      window.location.assign('/login');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Sign out failed');
+    }
+  }
   return (
-    <div
-      className="app-shell themed-workspace"
-      style={appearanceStyle(settings)}
-      data-density={settings.density}
-    >
+    <div className="app-shell" data-density={settings.density}>
       <aside className="sidebar">
-        <a className="brand-link" href="/" aria-label={`${settings.name} home`}>
-          <Brand workspace />
+        {/* Product wordmark top-left (BRAND §2); the workspace's own identity lives in the card below. */}
+        <a className="brand-link" href="/" aria-label="StillUp home">
+          <Brand />
         </a>
         <div className="workspace">
-          <span className="workspace-avatar">{settings.name.slice(0, 1).toUpperCase()}</span>
+          <span className="workspace-avatar">
+            {settings.logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={settings.logoUrl} width={32} height={32} alt="" />
+            ) : (
+              settings.name.slice(0, 1).toUpperCase()
+            )}
+          </span>
           <div>
             <strong>{settings.name === 'StillUp' ? 'My workspace' : settings.name}</strong>
             <small>Self-hosted installation</small>
           </div>
           <ShieldCheck size={16} />
         </div>
-        <span className="nav-label">WORKSPACE</span>
+        <span className="nav-label eyebrow">Workspace</span>
         <nav>
           <a href="/" className="nav-item active" aria-current="page">
-            <LayoutDashboard size={18} />
+            <LayoutDashboard size={20} />
             Overview
           </a>
           <a href="#checks" className="nav-item">
-            <Activity size={18} />
+            <Activity size={20} />
             API checks<span className="nav-count">{activeMonitors.length}</span>
           </a>
           <a href="#incidents" className="nav-item">
-            <Radio size={18} />
+            <Radio size={20} />
             Incidents
           </a>
           <a href="/status" target="_blank" rel="noreferrer" className="nav-item">
-            <Globe2 size={18} />
+            <Globe2 size={20} />
             Public status
             <ExternalLink size={13} />
           </a>
           <a href="/docs" className="nav-item">
-            <CircleHelp size={18} />
+            <CircleHelp size={20} />
             Documentation
           </a>
         </nav>
-        <button className="nav-item appearance-nav" onClick={() => setAppearanceOpen(true)}>
-          <Palette size={18} /> Appearance
+        <button className="nav-item status-design-nav" onClick={() => setStatusEditorOpen(true)}>
+          <Palette size={20} /> Status page design
         </button>
         <div className="sidebar-bottom">
           <div className="ownership-note">
@@ -226,23 +233,17 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
               Always looking out.
             </p>
           </div>
-          <button
-            className="nav-item signout"
-            onClick={async () => {
-              try {
-                await api('session', { method: 'DELETE' });
-                window.location.assign('/login');
-              } catch (e) {
-                setError(e instanceof Error ? e.message : 'Sign out failed');
-              }
-            }}
-          >
-            <LogOut size={17} />
+          <button className="nav-item signout" onClick={signOut}>
+            <LogOut size={20} />
             Sign out
           </button>
+          {/* Endorsement (BRAND §2): Product vX.Y.Z · by REC, the chain at 8px cap height */}
           <div className="version">
-            <span className="tiny-dot" />
-            StillUp <span>v0.1.0</span>
+            <span>
+              StillUp <span className="mono">v0.1.0</span> · by
+            </span>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img className="rec-chain" src="/brand/rec-mark-cream.svg" width={28} height={28} alt="R.E.C." />
           </div>
         </div>
       </aside>
@@ -252,23 +253,30 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
             Workspace<span>/</span>
             <strong>Overview</strong>
           </div>
-          <a href="/status" target="_blank" rel="noreferrer">
-            Status page
-            <ArrowUpRight size={15} />
-          </a>
+          <div className="topbar-actions">
+            <a className="label-stamp" href="/status" target="_blank" rel="noreferrer">
+              Status page
+              <ArrowUpRight size={16} />
+            </a>
+            <UserMenu onSignOut={signOut} />
+          </div>
         </header>
         <main className="dashboard-main">
           <div className="page-heading">
             <div>
-              <div className="eyebrow">YOUR APIS, AT A GLANCE</div>
+              <div className="eyebrow">Your APIs, at a glance</div>
               <h1>
-                Overview<span className="heading-dot">.</span>
+                Overview<span className="period">.</span>
               </h1>
               <p>{settings.tagline}</p>
             </div>
             <WatchfulArt />
-            <button className="button primary" onClick={() => setCreate(true)}>
-              <Plus size={17} />
+            {/* The empty state carries the one primary action until the first check exists. */}
+            <button
+              className={`button ${activeMonitors.length ? 'primary' : 'secondary'}`}
+              onClick={() => setCreate(true)}
+            >
+              <Plus size={16} />
               Create check
             </button>
           </div>
@@ -295,11 +303,11 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
           >
             <div className="banner-icon">
               {counts.down ? (
-                <Radio size={24} />
+                <Radio size={20} />
               ) : counts.up > 0 && counts.unknown === 0 && workerOnline ? (
-                <ShieldCheck size={26} />
+                <ShieldCheck size={20} />
               ) : (
-                <Activity size={26} />
+                <Activity size={20} />
               )}
             </div>
             <div>
@@ -347,20 +355,21 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
               value={counts.up}
               icon={<ArrowUpRight size={18} />}
               detail="Passing your expectations"
-              tone="green"
+              tone={counts.up ? 'success' : ''}
             />
             <Metric
               label="Failing"
               value={counts.down}
               icon={<ArrowDownRight size={18} />}
               detail="Confirmed check failures"
-              tone={counts.down ? 'red' : ''}
+              tone={counts.down ? 'danger' : ''}
             />
             <Metric
               label="Awaiting data"
               value={counts.unknown}
               icon={<Clock3 size={18} />}
               detail="Pending or stale observations"
+              tone={counts.unknown ? 'info' : ''}
             />
           </section>
           <section className="checks-section" id="checks">
@@ -408,21 +417,17 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
             </div>
             {!activeMonitors.length && filter !== 'archived' ? (
               <div className="empty-state">
-                <div className="empty-illustration">
-                  <div className="endpoint-chip">
-                    <span className="method">GET</span>
-                    <code>/health</code>
-                    <span className="mini-check">
-                      <Check size={14} />
-                    </span>
-                  </div>
-                  <div className="empty-pulse" aria-hidden="true">
-                    {Array.from({ length: 25 }, (_, i) => (
-                      <span key={i} />
-                    ))}
-                  </div>
+                <div className="empty-illustration bg-dot-grid">
+                  <Illustration
+                    name="empty-state-stillup"
+                    className="empty-art"
+                    width={200}
+                    height={120}
+                  />
                 </div>
-                <h3>Meet your first API check.</h3>
+                <h3>
+                  Meet your first API check<span className="period">.</span>
+                </h3>
                 <p>
                   A healthy response is a great start.
                   <br />
@@ -464,11 +469,11 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
                 <table className="checks-table">
                   <thead>
                     <tr>
-                      <th>CHECK / ENDPOINT</th>
-                      <th>STATUS</th>
-                      <th>RESPONSE</th>
-                      <th>INTERVAL</th>
-                      <th>LAST RUN</th>
+                      <th>Check / endpoint</th>
+                      <th>Status</th>
+                      <th>Response</th>
+                      <th>Interval</th>
+                      <th>Last run</th>
                       <th>
                         <span className="sr-only">Details</span>
                       </th>
@@ -497,12 +502,12 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
                         <td className="mono">
                           {m.lastDurationMs === null ? '—' : `${m.lastDurationMs} ms`}
                         </td>
-                        <td>
+                        <td className="mono">
                           {m.config.intervalSeconds < 60
                             ? `${m.config.intervalSeconds}s`
                             : `${m.config.intervalSeconds / 60}m`}
                         </td>
-                        <td className="muted">{time(m.lastRunAt)}</td>
+                        <td className="mono muted">{time(m.lastRunAt)}</td>
                         <td>
                           <button
                             className="icon-button"
@@ -601,7 +606,6 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
           </footer>
         </main>
       </div>
-      {appearanceOpen && <AppearanceDialog onClose={() => setAppearanceOpen(false)} />}
       {locationsOpen && <LocationsDialog onClose={() => setLocationsOpen(false)} />}
       {secretsOpen && <SecretsDialog onClose={() => setSecretsOpen(false)} />}
       {statusEditorOpen && (
@@ -770,7 +774,7 @@ function CheckDetail({
   return (
     <aside className="detail-panel" aria-label={`${monitor.config.name} details`}>
       <header>
-        <span className="eyebrow">CHECK DETAILS</span>
+        <span className="eyebrow">Check details</span>
         <button className="icon-button" onClick={onClose} aria-label="Close check details">
           <X size={20} />
         </button>

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { statusSettingsSchema } from './status';
+import { contrastRatio, statusContrastIssues, statusPalettes, statusPresets } from './status-theme';
 
 describe('public page configuration', () => {
   it('loads saved configurations from before the design controls existed', () => {
@@ -40,5 +41,34 @@ describe('public page configuration', () => {
       { links: Array(9).fill({ label: 'Link', url: 'https://example.com' }) },
     ])
       expect(statusSettingsSchema.safeParse({ title: 'Status', ...fields }).success).toBe(false);
+  });
+});
+
+describe('public page theming', () => {
+  it('keeps the built-in dark palette unless dark colors are set', () => {
+    const config = statusSettingsSchema.parse({ title: 'Status' });
+    expect(config.darkBackgroundColor).toBe('');
+    expect(statusPalettes(config).dark.background).toBe('#0a0b0c');
+    expect(
+      statusSettingsSchema.safeParse({ title: 'Status', darkTextColor: 'white' }).success,
+    ).toBe(false);
+  });
+  it('measures contrast with WCAG ratios', () => {
+    expect(contrastRatio('#000000', '#ffffff')).toBeCloseTo(21);
+    expect(contrastRatio('#777777', '#777777')).toBeCloseTo(1);
+  });
+  it('flags unreadable text only in themes visitors can see', () => {
+    const base = statusSettingsSchema.parse({ title: 'Status', darkTextColor: '#111111' });
+    expect(statusContrastIssues({ ...base, theme: 'light' })).toEqual([]);
+    expect(statusContrastIssues({ ...base, theme: 'auto' }).map((i) => i.theme)).toEqual([
+      'dark',
+      'dark',
+    ]);
+  });
+  it('ships presets that are valid and readable', () => {
+    for (const preset of statusPresets) {
+      const config = statusSettingsSchema.parse({ title: 'Status', ...preset.settings });
+      expect(statusContrastIssues({ ...config, theme: 'auto' }), preset.name).toEqual([]);
+    }
   });
 });

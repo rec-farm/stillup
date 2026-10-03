@@ -1,20 +1,27 @@
 'use client';
 import { useEffect, useState, type CSSProperties } from 'react';
 import Image from 'next/image';
-import { Activity, ShieldCheck } from 'lucide-react';
-import type { PublicStatus } from '@stillup/core';
+import { CircleHelp, ShieldCheck, TriangleAlert, Wrench } from 'lucide-react';
+import { customizedColor, statusDesignDefaults, type PublicStatus } from '@stillup/core';
 import { Brand } from './brand';
-const date = (value: string) =>
-  new Date(value).toLocaleString('en-GB', { timeZone: 'UTC' }) + ' UTC';
+const date = (value: string) => (
+  <time dateTime={value}>{new Date(value).toLocaleString('en-GB', { timeZone: 'UTC' })} UTC</time>
+);
+const muted = (color: string | undefined) =>
+  color && `color-mix(in oklab, ${color} 74%, transparent)`;
 export function StatusView({
   initial,
   preview = false,
+  previewTheme,
 }: {
   initial: PublicStatus;
   preview?: boolean;
+  /** Forces one side of an 'auto' theme in the editor preview. */
+  previewTheme?: 'light' | 'dark';
 }) {
   const [data, setData] = useState(initial);
   const [stale, setStale] = useState(false);
+  const [failedLogo, setFailedLogo] = useState('');
   useEffect(() => {
     if (preview) {
       setData(initial);
@@ -74,10 +81,56 @@ export function StatusView({
     { id: '', name: data.groups?.length ? 'Other services' : 'Services' },
   ];
   const brand = data.branding;
+  const textColor = customizedColor(brand?.textColor, statusDesignDefaults.textColor);
+  const darkTextColor = brand?.darkTextColor || undefined;
+  const canvasStyle = {
+    '--status-accent': customizedColor(brand?.accentColor, statusDesignDefaults.accentColor),
+    '--status-background': customizedColor(
+      brand?.backgroundColor,
+      statusDesignDefaults.backgroundColor,
+    ),
+    '--status-surface': customizedColor(brand?.surfaceColor, statusDesignDefaults.surfaceColor),
+    '--status-text': textColor,
+    '--status-text-muted': muted(textColor),
+    '--status-dark-background': brand?.darkBackgroundColor || undefined,
+    '--status-dark-surface': brand?.darkSurfaceColor || undefined,
+    '--status-dark-text': darkTextColor,
+    '--status-dark-text-muted': muted(darkTextColor),
+    '--status-radius':
+      brand?.cornerRadius !== undefined && brand.cornerRadius !== statusDesignDefaults.cornerRadius
+        ? `${brand.cornerRadius}px`
+        : undefined,
+  } as CSSProperties;
+  const theme = brand?.theme === 'auto' && previewTheme ? previewTheme : (brand?.theme ?? 'light');
+  const logo = brand?.logoUrl && brand.logoUrl !== failedLogo ? brand.logoUrl : '';
+  const state = stale
+    ? 'unknown'
+    : down
+      ? 'down'
+      : maintenance
+        ? 'maintenance'
+        : unknown
+          ? 'unknown'
+          : 'up';
+  const StateIcon = {
+    up: ShieldCheck,
+    down: TriangleAlert,
+    maintenance: Wrench,
+    unknown: CircleHelp,
+  }[state];
   const identity =
     brand && (brand.logoUrl || brand.brandName !== 'StillUp') ? (
       <span className="public-brand">
-        {brand.logoUrl && <Image unoptimized src={brand.logoUrl} width={40} height={40} alt="" />}
+        {logo && (
+          <Image
+            unoptimized
+            src={logo}
+            width={40}
+            height={40}
+            alt=""
+            onError={() => setFailedLogo(logo)}
+          />
+        )}
         {brand.brandName}
       </span>
     ) : (
@@ -93,24 +146,11 @@ export function StatusView({
         </section>
       ));
   return (
-    <div
-      className="status-canvas"
-      data-theme={brand?.theme ?? 'light'}
-      style={
-        {
-          '--status-accent': brand?.accentColor ?? '#00856a',
-          '--status-background': brand?.backgroundColor ?? '#f6f8f7',
-          '--status-surface': brand?.surfaceColor ?? '#ffffff',
-          '--status-text': brand?.textColor ?? '#243d35',
-          '--status-radius': `${brand?.cornerRadius ?? 16}px`,
-        } as CSSProperties
-      }
-    >
+    <div className="status-canvas" data-theme={theme} data-product="stillup" style={canvasStyle}>
       <main
         className="status-page"
         data-layout={brand?.layout ?? 'comfortable'}
         data-font={brand?.font ?? 'sans'}
-        style={{ '--status-accent': brand?.accentColor ?? '#00856a' } as CSSProperties}
       >
         <header>
           {brand?.homepageUrl ? (
@@ -120,7 +160,11 @@ export function StatusView({
           ) : (
             identity
           )}
-          <span className="status-caption">{brand?.headerLabel ?? 'SERVICE STATUS'}</span>
+          {(brand?.headerLabel ?? 'SERVICE STATUS') && (
+            <span className="status-caption label-stamp">
+              {brand?.headerLabel ?? 'SERVICE STATUS'}
+            </span>
+          )}
         </header>
         {!!brand?.links?.length && (
           <nav className="status-links" aria-label="Helpful links">
@@ -131,23 +175,29 @@ export function StatusView({
             ))}
           </nav>
         )}
-        <section
-          className={`status-hero ${stale ? 'unknown' : down ? 'down' : maintenance ? 'maintenance' : unknown ? 'unknown' : 'up'}`}
-        >
+        <section className={`status-hero ${state}`}>
           <div className="status-symbol">
-            {unknown || down || maintenance ? <Activity size={30} /> : <ShieldCheck size={30} />}
+            <StateIcon size={24} strokeWidth={1.5} aria-hidden="true" />
           </div>
           <span className="eyebrow">{data.title}</span>
-          <h1>{summary}</h1>
-          <p>
-            {stale
-              ? 'The last known status is shown below. Fresh observations are currently unavailable.'
-              : down
-                ? 'We’re tracking the affected services below.'
-                : (brand?.description ?? 'A live look at the services you depend on.')}
-          </p>
+          <h1>
+            {summary}
+            <span className="period">.</span>
+          </h1>
+          {(stale || down || brand?.description !== '') && (
+            <p>
+              {stale
+                ? 'The last known status is shown below. Fresh observations are currently unavailable.'
+                : down
+                  ? 'We’re tracking the affected services below.'
+                  : (brand?.description ?? 'A live look at the services you depend on.')}
+            </p>
+          )}
           <small>
-            Updated {new Date(data.updatedAt).toLocaleTimeString('en-GB', { timeZone: 'UTC' })} UTC
+            Updated{' '}
+            <time dateTime={data.updatedAt}>
+              {new Date(data.updatedAt).toLocaleTimeString('en-GB', { timeZone: 'UTC' })} UTC
+            </time>{' '}
             · {preview ? 'Preview snapshot' : 'Refreshes every 15s'}
           </small>
         </section>
@@ -178,7 +228,7 @@ export function StatusView({
             <h2>Maintenance</h2>
             {data.maintenance.map((w) => (
               <article key={w.id}>
-                <span className="incident-state">
+                <span className="incident-state maintenance">
                   {stale
                     ? 'Schedule (last known)'
                     : Date.parse(w.endsAt) <= Date.now()
@@ -229,7 +279,7 @@ export function StatusView({
                 ))
             ) : (
               <div className="public-empty">
-                <ShieldCheck size={20} />
+                <ShieldCheck size={20} strokeWidth={1.5} aria-hidden="true" />
                 No incidents reported.
               </div>
             )
@@ -246,12 +296,29 @@ export function StatusView({
               ))
           )}
         </section>
-        <footer>
-          {brand?.showPoweredBy !== false && (
-            <span className="status-attribution">Powered by StillUp</span>
-          )}
-          <span>{brand?.footerText ?? 'Know before your users do.'}</span>
-        </footer>
+        {(brand?.showPoweredBy !== false || brand?.footerText !== '') && (
+          <footer>
+            {brand?.showPoweredBy !== false && (
+              <span className="status-attribution">
+                <span className="eyebrow">Powered by</span>
+                {(['cream', 'ink'] as const).map((tone) => (
+                  <Image
+                    key={tone}
+                    className={`status-endorsed status-endorsed-${tone}`}
+                    unoptimized
+                    src={`/brand/stillup-endorsed-${tone}.svg`}
+                    width={146}
+                    height={53}
+                    alt="StillUp by REC"
+                  />
+                ))}
+              </span>
+            )}
+            {brand?.footerText !== '' && (
+              <span>{brand?.footerText ?? 'Know before your users do.'}</span>
+            )}
+          </footer>
+        )}
       </main>
     </div>
   );

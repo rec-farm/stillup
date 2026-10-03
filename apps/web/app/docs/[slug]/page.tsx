@@ -33,7 +33,10 @@ export default async function DocPage({ params }: { params: Promise<{ slug: stri
           {Math.max(1, Math.ceil(JSON.stringify(doc.sections).split(/\s+/).length / 220))} min read
         </span>
       </div>
-      <h1>{doc.title}</h1>
+      <h1>
+        {doc.title}
+        <span className="period">.</span>
+      </h1>
       <p className="docs-lead">{doc.description}</p>
       <div className="docs-reading-layout">
         <DocsToc sections={doc.sections.map(({ id, title }) => ({ id, title }))} />

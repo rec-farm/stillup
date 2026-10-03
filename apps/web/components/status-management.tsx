@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import {
   statusSettingsSchema,
@@ -8,9 +8,10 @@ import {
   type Monitor,
   type Maintenance,
   type CommunicationIncident,
+  type PublicStatus,
 } from '@stillup/core';
 import { StatusView } from './status-view';
-import { StatusDesignFields } from './status-design-fields';
+import { StatusDesignFields, isWebLink } from './status-design-fields';
 import { notificationApi } from './notifications';
 const time = (s: string) => new Date(s).toLocaleString('en-GB', { timeZone: 'UTC' }) + ' UTC';
 const localTime = (s: string) => {
@@ -95,7 +96,7 @@ export function StatusManagementDialog({
   return (
     <dialog
       ref={dialog}
-      className="check-dialog notification-dialog"
+      className={`check-dialog notification-dialog${tab === 'page' ? ' status-editor-dialog' : ''}`}
       aria-labelledby="status-editor-title"
       onCancel={(e) => {
         e.preventDefault();
@@ -117,10 +118,9 @@ export function StatusManagementDialog({
         </button>
       </header>
       <div className="dialog-content">
-        <nav className="notification-actions" aria-label="Status page sections">
+        <nav className="detail-tabs section-tabs" aria-label="Status page sections">
           {(['page', 'maintenance', 'incidents'] as const).map((t) => (
             <button
-              className={`button ${tab === t ? 'primary' : 'secondary'}`}
               key={t}
               aria-pressed={tab === t}
               disabled={busy}
@@ -478,6 +478,73 @@ function ComponentChoices({
     </fieldset>
   );
 }
+const sampleNames = ['Website', 'API', 'Webhooks'];
+function previewStatus(
+  settings: StatusSettings,
+  monitors: Monitor[],
+  sample: 'up' | 'down' | 'maintenance',
+): PublicStatus {
+  const now = new Date();
+  const published = monitors.filter((m) => m.config.public && !m.archivedAt);
+  const components = (
+    published.length
+      ? published.map((m) => ({ id: m.id, name: m.config.name }))
+      : sampleNames.map((name, index) => ({ id: `sample-${index}`, name }))
+  ).map((c, index) => ({
+    ...c,
+    health: index === 0 && sample !== 'up' ? sample : ('up' as const),
+    lastObservedAt: null,
+    groupId: settings.groups.find((g) => g.monitorIds.includes(c.id))?.id,
+  }));
+  const first = components[0]!;
+  const minutesAgo = (n: number) => new Date(now.getTime() - n * 60000).toISOString();
+  return {
+    title: settings.title,
+    branding: settings,
+    groups: settings.groups.filter((g) => components.some((c) => c.groupId === g.id)),
+    updatedAt: now.toISOString(),
+    incidents: [],
+    communications:
+      sample === 'down'
+        ? [
+            {
+              id: 'sample-incident',
+              name: `${first.name} errors`,
+              monitorIds: [first.id],
+              source: 'manual',
+              openedAt: minutesAgo(18),
+              resolvedAt: null,
+              revision: 1,
+              stage: 'identified',
+              updates: [
+                {
+                  id: 'sample-update',
+                  stage: 'identified',
+                  body: 'We found the cause and are rolling out a fix.',
+                  createdAt: minutesAgo(6),
+                },
+              ],
+            },
+          ]
+        : [],
+    maintenance:
+      sample === 'maintenance'
+        ? [
+            {
+              id: 'sample-maintenance',
+              revision: 1,
+              title: 'Database upgrade',
+              description: 'Short interruptions are possible while we upgrade.',
+              monitorIds: [first.id],
+              startsAt: minutesAgo(10),
+              endsAt: new Date(now.getTime() + 50 * 60000).toISOString(),
+              cancelled: false,
+            },
+          ]
+        : [],
+    components,
+  };
+}
 function BrandingEditor({
   data,
   monitors,
@@ -489,28 +556,37 @@ function BrandingEditor({
   busy: boolean;
   onSave: (config: StatusSettings) => Promise<void>;
 }) {
-  const [groups, setGroups] = useState(data.settings.groups);
-  const [links, setLinks] = useState(data.settings.links);
-  const [content, setContent] = useState(data.settings.content);
-  const [preview, setPreview] = useState<StatusSettings | null>(null);
-  function readDraft(form: HTMLFormElement) {
-    const values = Object.fromEntries(new FormData(form));
-    return statusSettingsSchema.safeParse({
-      ...values,
-      groups,
-      links,
-      content,
-      cornerRadius: Number(values.cornerRadius),
-      showPoweredBy: values.showPoweredBy === 'on',
-      showIncidentHistory: values.showIncidentHistory === 'on',
-    });
-  }
+  const [draft, setDraft] = useState<StatusSettings>(data.settings);
   const [error, setError] = useState('');
+  const [previewTheme, setPreviewTheme] = useState<'light' | 'dark'>('light');
+  const [sample, setSample] = useState<'up' | 'down' | 'maintenance'>('up');
+  const patch = (change: Partial<StatusSettings>) =>
+    setDraft((current) => ({ ...current, ...change }));
+  const dirty = JSON.stringify(draft) !== JSON.stringify(data.settings);
+  // Preview what can be shown while the draft is mid-edit: half-typed URLs are left out.
+  const previewSettings = useMemo(() => {
+    const parsed = statusSettingsSchema.safeParse(draft);
+    if (parsed.success) return parsed.data;
+    const link = (value: string) => (isWebLink(value) ? value : '');
+    return {
+      ...draft,
+      logoUrl: link(draft.logoUrl),
+      homepageUrl: link(draft.homepageUrl),
+      faviconUrl: link(draft.faviconUrl),
+      links: draft.links.filter((l) => l.label && isWebLink(l.url)),
+    };
+  }, [draft]);
+  const preview = useMemo(
+    () => previewStatus(previewSettings, monitors, sample),
+    [previewSettings, monitors, sample],
+  );
+  const shownTheme = draft.theme === 'auto' ? previewTheme : draft.theme;
   return (
     <form
+      className="status-editor"
       onSubmit={(e) => {
         e.preventDefault();
-        const parsed = readDraft(e.currentTarget);
+        const parsed = statusSettingsSchema.safeParse(draft);
         if (!parsed.success) {
           setError(parsed.error.issues.map((i) => i.message).join('; '));
           return;
@@ -519,181 +595,81 @@ function BrandingEditor({
         void onSave(parsed.data);
       }}
     >
-      <h3 className="notification-heading">Branding</h3>
-      <label htmlFor="status-title">Page title</label>
-      <input
-        id="status-title"
-        name="title"
-        required
-        maxLength={100}
-        defaultValue={data.settings.title}
-      />
-      <label htmlFor="brand-name">Brand name</label>
-      <input
-        id="brand-name"
-        name="brandName"
-        required
-        maxLength={80}
-        defaultValue={data.settings.brandName}
-      />
-      <label htmlFor="status-description">Introduction</label>
-      <textarea
-        id="status-description"
-        name="description"
-        maxLength={1000}
-        rows={3}
-        defaultValue={data.settings.description}
-      />
-      <label htmlFor="brand-accent">Accent color</label>
-      <input
-        id="brand-accent"
-        name="accentColor"
-        type="color"
-        defaultValue={data.settings.accentColor}
-      />
-      <label htmlFor="brand-logo">Logo URL (optional, public image)</label>
-      <input id="brand-logo" name="logoUrl" type="url" defaultValue={data.settings.logoUrl} />
-      <label htmlFor="brand-home">Website URL (optional)</label>
-      <input
-        id="brand-home"
-        name="homepageUrl"
-        type="url"
-        defaultValue={data.settings.homepageUrl}
-      />
-      <StatusDesignFields
-        settings={data.settings}
-        links={links}
-        setLinks={setLinks}
-        content={content}
-        setContent={setContent}
-      />
-      <h3 className="notification-heading">Component groups</h3>
-      {groups.map((g) => (
-        <div className="notification-card" key={g.id}>
-          <label htmlFor={`group-${g.id}`}>Group name</label>
-          <input
-            id={`group-${g.id}`}
-            value={g.name}
-            maxLength={80}
-            required
-            onChange={(e) =>
-              setGroups((current) =>
-                current.map((row) => (row.id === g.id ? { ...row, name: e.target.value } : row)),
-              )
-            }
-          />
-          <button
-            type="button"
-            className="button secondary"
-            onClick={() => setGroups((current) => current.filter((row) => row.id !== g.id))}
-          >
-            Remove {g.name || 'group'}
-          </button>
-        </div>
-      ))}
-      <button
-        type="button"
-        className="button secondary"
-        disabled={groups.length >= 30}
-        onClick={() =>
-          setGroups((current) => [
-            ...current,
-            { id: crypto.randomUUID(), name: '', monitorIds: [] },
-          ])
-        }
-      >
-        Add component group
-      </button>
-      {monitors
-        .filter((m) => !m.archivedAt || groups.some((g) => g.monitorIds.includes(m.id)))
-        .map((m) => (
-          <div key={m.id}>
-            <label htmlFor={`group-assignment-${m.id}`}>
-              {m.config.name}
-              {m.config.public && !m.archivedAt ? '' : ' (private or archived)'}
-            </label>
-            <select
-              id={`group-assignment-${m.id}`}
-              value={groups.find((g) => g.monitorIds.includes(m.id))?.id ?? ''}
-              onChange={(e) =>
-                setGroups((current) =>
-                  current.map((g) => ({
-                    ...g,
-                    monitorIds:
-                      g.id === e.target.value
-                        ? [...g.monitorIds.filter((id) => id !== m.id), m.id]
-                        : g.monitorIds.filter((id) => id !== m.id),
-                  })),
-                )
-              }
-            >
-              <option value="">Ungrouped</option>
-              {groups.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.name || 'Unnamed group'}
-                </option>
+      <div className="status-editor-fields">
+        <StatusDesignFields draft={draft} patch={patch} monitors={monitors} />
+      </div>
+      <aside className="status-editor-preview" aria-label="Live preview">
+        <div className="status-preview-toolbar">
+          <span className="eyebrow">Live preview</span>
+          <div className="status-preview-controls">
+            <div className="detail-tabs" role="group" aria-label="Preview theme">
+              {(['light', 'dark'] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  aria-pressed={shownTheme === t}
+                  disabled={draft.theme !== 'auto'}
+                  title={
+                    draft.theme === 'auto'
+                      ? undefined
+                      : 'Set the theme to follow the visitor’s system to preview both'
+                  }
+                  onClick={() => setPreviewTheme(t)}
+                >
+                  {t === 'light' ? 'Light' : 'Dark'}
+                </button>
               ))}
-            </select>
+            </div>
+            <div className="detail-tabs" role="group" aria-label="Sample status">
+              {(
+                [
+                  ['up', 'Operational'],
+                  ['down', 'Incident'],
+                  ['maintenance', 'Maintenance'],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={sample === value}
+                  onClick={() => setSample(value)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
-        ))}
-      <p className="field-hint">
-        Groups appear only when they contain a published component. Grouping a private check does
-        not publish it.
-      </p>
-      {error && (
-        <p className="error-message" role="alert">
-          {error}
-        </p>
-      )}
-      <div className="notification-actions">
+        </div>
+        <div className="status-preview">
+          <StatusView preview previewTheme={previewTheme} initial={preview} />
+        </div>
+        <p className="field-hint">Sample health only, not your live service status.</p>
+      </aside>
+      <footer className="status-editor-footer">
+        {error ? (
+          <p className="error-message" role="alert">
+            {error}
+          </p>
+        ) : (
+          <span className="status-editor-state" role="status">
+            {dirty ? 'Unsaved changes' : 'All changes saved'}
+          </span>
+        )}
         <button
           type="button"
           className="button secondary"
-          onClick={(e) => {
-            const result = readDraft(e.currentTarget.form!);
-            if (!result.success) {
-              setError(result.error.issues.map((issue) => issue.message).join('; '));
-              return;
-            }
+          disabled={busy || !dirty}
+          onClick={() => {
+            setDraft(data.settings);
             setError('');
-            setPreview(result.data);
           }}
         >
-          Preview changes
+          Discard changes
         </button>
-        <button className="button primary" disabled={busy}>
-          Save public page
+        <button className="button primary" disabled={busy || !dirty}>
+          {busy ? 'Saving…' : 'Save public page'}
         </button>
-      </div>
-      {preview && (
-        <section className="status-preview" aria-label="Unsaved page preview">
-          <p className="field-hint">
-            Unsaved preview · sample health, not live service status. Select Preview changes to
-            refresh.
-          </p>
-          <StatusView
-            preview
-            initial={{
-              title: preview.title,
-              branding: preview,
-              groups: preview.groups,
-              updatedAt: new Date().toISOString(),
-              incidents: [],
-              communications: [],
-              maintenance: [],
-              components: monitors
-                .filter((m) => m.config.public && !m.archivedAt)
-                .map((m) => ({
-                  id: m.id,
-                  name: m.config.name,
-                  health: 'up',
-                  lastObservedAt: null,
-                  groupId: preview.groups.find((g) => g.monitorIds.includes(m.id))?.id,
-                })),
-            }}
-          />
-        </section>
-      )}
+      </footer>
     </form>
   );
 }

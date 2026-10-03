@@ -10,7 +10,9 @@ export default async function Page() {
   } catch {
     return (
       <main className="unavailable">
-        <h1>StillUp is reconnecting</h1>
+        <h1>
+          StillUp is reconnecting<span className="period">.</span>
+        </h1>
         <p>The API service is unavailable. Start the API and database, then reload this page.</p>
         <a href="/">Try again</a>
       </main>

@@ -8,10 +8,10 @@ export default function DocsHome() {
     <>
       <div className="docs-cover">
         <div>
-          <div className="eyebrow">THE STILLUP HANDBOOK</div>
+          <div className="eyebrow">The StillUp handbook</div>
           <h1>
             A little guidance.
-            <br />A lot of peace of mind.
+            <br />A lot of peace of mind<span className="period">.</span>
           </h1>
           <p className="docs-lead">
             Set up your first check, understand an outage, or bring your monitoring into version
@@ -22,14 +22,14 @@ export default function DocsHome() {
       </div>
       <div className="docs-start-grid">
         <Link href="/docs/getting-started" className="docs-start-card">
-          <span className="eyebrow">START WITH THE DASHBOARD</span>
+          <span className="eyebrow">Start with the dashboard</span>
           <h2>
             Your first check <span>↗</span>
           </h2>
           <p>From an endpoint to your first observation in a few steps.</p>
         </Link>
         <Link href="/docs/monitoring-as-code" className="docs-start-card">
-          <span className="eyebrow">START WITH YOUR REPOSITORY</span>
+          <span className="eyebrow">Start with your repository</span>
           <h2>
             Monitoring as code <span>↗</span>
           </h2>
