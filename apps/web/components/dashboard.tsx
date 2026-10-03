@@ -243,7 +243,13 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
               StillUp <span className="mono">v0.1.0</span> · by
             </span>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img className="rec-chain" src="/brand/rec-mark-cream.svg" width={28} height={28} alt="R.E.C." />
+            <img
+              className="rec-chain"
+              src="/brand/rec-mark-cream.svg"
+              width={28}
+              height={28}
+              alt="R.E.C."
+            />
           </div>
         </div>
       </aside>
