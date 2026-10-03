@@ -1,5 +1,5 @@
-/* REC Design System v1.2.0 tokens (RECIAM SAS), copied from the OpenDesign brand project
-   "RECIAM Design System" (colors_and_type.css). Keep values in sync with the source;
+/* REC Design System v1.4.1 tokens (RECIAM SAS), copied from the reciam-brand repo
+   (DESIGN.md, front matter and §14). Keep values in sync with the source;
    app-specific rules belong in globals.css, not here.
    Usage: <html data-theme="dark|light" data-product="stillup">. Dark is the default. */
 @import '@fontsource-variable/archivo/wdth.css';
@@ -159,7 +159,7 @@
   --info-text: var(--lilac-400);
   --tile-fg: var(--cream);
   --tile-fg-muted: var(--stone-400);
-  --danger-solid: #d93f5e;
+  --danger-solid: #d23758;
   --overlay: rgb(10 11 12 / 0.72);
   --shadow-pop: 0 12px 32px -8px rgb(0 0 0 / 0.45);
   --accent: var(--purple-500);
