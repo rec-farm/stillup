@@ -40,6 +40,8 @@ export function safeNext(next: unknown) {
     return '/';
   const base = 'http://app.invalid';
   const url = new URL(next, base);
-  if (url.origin !== base || url.pathname.startsWith('/login')) return '/';
+  // Dot segments normalise away ("/.//evil.example" becomes "//evil.example"), so check again after.
+  if (url.origin !== base || url.pathname.startsWith('//') || url.pathname.startsWith('/login'))
+    return '/';
   return url.pathname + url.search + url.hash;
 }
