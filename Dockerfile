@@ -35,8 +35,10 @@ ENTRYPOINT ["/usr/local/bin/stillup-probe"]
 
 FROM dependencies AS api
 ENV NODE_ENV=production
+# Run tsx directly: pnpm writes to /app on startup, which the node user can't.
+WORKDIR /app/apps/api
 USER node
-CMD ["pnpm", "--filter", "@stillup/api", "start"]
+CMD ["./node_modules/.bin/tsx", "src/main.ts"]
 
 FROM dependencies AS web-build
 RUN pnpm --filter @stillup/web build

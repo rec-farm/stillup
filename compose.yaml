@@ -33,7 +33,7 @@ services:
     build:
       context: .
       target: api
-    command: ['pnpm', '--filter', '@stillup/api', 'worker']
+    command: ['./node_modules/.bin/tsx', 'src/worker-main.ts']
     env_file: .env
     environment:
       DATABASE_URL: postgres://stillup:${POSTGRES_PASSWORD:-stillup}@db:5432/stillup
