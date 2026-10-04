@@ -52,7 +52,7 @@ services:
       HOSTNAME: 0.0.0.0
       PORT: 3000
     ports:
-      - '127.0.0.1:3000:3000'
+      - '127.0.0.1:${STILLUP_WEB_PORT:-3000}:3000'
     depends_on: [api]
     restart: unless-stopped
 volumes:

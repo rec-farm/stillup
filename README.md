@@ -68,7 +68,7 @@ Create `.env` as above, set a strong `POSTGRES_PASSWORD` and `ADMIN_TOKEN`, and 
 docker compose --profile app up --build -d
 ```
 
-The web port is bound to loopback. Put a TLS reverse proxy in front of port 3000 for remote access, and keep the API and database private. `APP_ORIGIN=https://...` enables secure session cookies and controls allowed browser write origins. The API requires a token independently of the frontend.
+The web port is bound to loopback (`STILLUP_WEB_PORT`, default 3000, sets the host port). Put a TLS reverse proxy in front of it for remote access, and keep the API and database private. `APP_ORIGIN=https://...` enables secure session cookies and controls allowed browser write origins. The API requires a token independently of the frontend.
 
 The default deployment hosts monitoring and public status together. If that host fails, the public page will also be unavailable. Independent status hosting is on the roadmap.
 
