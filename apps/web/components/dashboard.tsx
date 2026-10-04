@@ -168,8 +168,9 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
   }
   async function signOut() {
     try {
-      await api('session', { method: 'DELETE' });
-      window.location.assign('/login');
+      const { logoutUrl } = await api<{ logoutUrl?: string }>('session', { method: 'DELETE' });
+      // Sessions from single sign-on also end at the provider, which then returns to /login.
+      window.location.assign(logoutUrl ?? '/login');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Sign out failed');
     }

@@ -2394,6 +2394,23 @@ small {
 .login-panel .field-hint {
   margin-bottom: 24px;
 }
+.login-panel .secondary {
+  min-height: var(--control-lg);
+  font-size: 15px;
+}
+.login-panel .login-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 24px 0;
+  font-size: 13px;
+}
+.login-divider::before,
+.login-divider::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--border);
+}
 .wide {
   width: 100%;
   justify-content: space-between;

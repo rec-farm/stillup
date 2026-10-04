@@ -1,7 +1,8 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
-import Fastify, { type FastifyRequest } from 'fastify';
+import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
+import * as oidc from 'openid-client';
 import { z } from 'zod';
 import {
   checkSchema,
@@ -11,6 +12,8 @@ import {
 } from '@stillup/core';
 import { codeConfigSchema } from '@stillup/core/code-config';
 import { env } from './env';
+import { oidcConfig, oidcEnabled, postLogoutRedirectUri, redirectUri } from './oidc';
+import { flowLifetimeMs, openFlow, safeNext, sealFlow } from './oidc-state';
 import type { Service } from './service';
 
 function equal(a: string, b: string) {
@@ -29,6 +32,24 @@ function validSession(value?: string) {
     !!expires && !!signature && Number(expires) > Date.now() && equal(sign(expires), signature)
   );
 }
+const secure = env.APP_ORIGIN.startsWith('https:');
+const flowCookie = 'stillup_oidc_flow';
+// Present only on sessions that came from OIDC: the ID token, kept as the end-session hint.
+const idTokenCookie = 'stillup_oidc_idt';
+function startSession(reply: FastifyReply, sameSite: 'strict' | 'lax') {
+  const expires = String(Date.now() + 86400000);
+  const options = { httpOnly: true, secure, path: '/', maxAge: 86400 };
+  reply.setCookie('stillup_session', `${expires}.${sign(expires)}`, { ...options, sameSite });
+  return options;
+}
+const loginError = (key: string) => new URL(`/login?error=${key}`, env.APP_ORIGIN).href;
+const publicRoutes = new Set([
+  'GET /v1/auth/config',
+  'GET /v1/auth/oidc/start',
+  'GET /v1/auth/oidc/callback',
+  'POST /v1/session',
+  'DELETE /v1/session',
+]);
 export async function createServer(service: Service) {
   const app = Fastify({
     logger: { redact: ['req.headers.authorization', 'req.headers.cookie'] },
@@ -51,7 +72,7 @@ export async function createServer(service: Service) {
       path === '/health' ||
       path === '/v1/public/status' ||
       (path === '/v1/public/workspace' && ['GET', 'HEAD'].includes(request.method)) ||
-      (path === '/v1/session' && request.method === 'POST')
+      publicRoutes.has(`${request.method === 'HEAD' ? 'GET' : request.method} ${path}`)
     )
       return;
     if (path?.startsWith('/v1/probe/')) return; // These routes authenticate scoped probe credentials below.
@@ -150,20 +171,95 @@ export async function createServer(service: Service) {
       const { token } = z.object({ token: z.string().max(1024) }).parse(request.body);
       if (!equal(token, env.ADMIN_TOKEN))
         return reply.code(401).send({ error: 'The administrator token is incorrect' });
-      const expires = String(Date.now() + 86400000);
-      reply.setCookie('stillup_session', `${expires}.${sign(expires)}`, {
-        httpOnly: true,
-        sameSite: 'strict',
-        secure: env.APP_ORIGIN.startsWith('https:'),
-        path: '/',
-        maxAge: 86400,
-      });
+      startSession(reply, 'strict');
+      reply.clearCookie(idTokenCookie, { path: '/' });
       return { ok: true };
     },
   );
-  app.delete('/v1/session', async (_request, reply) => {
-    reply.clearCookie('stillup_session', { path: '/' });
-    return { ok: true };
+  app.delete('/v1/session', async (request, reply) => {
+    const idToken = request.cookies[idTokenCookie];
+    reply.clearCookie('stillup_session', { path: '/' }).clearCookie(idTokenCookie, { path: '/' });
+    if (!oidcEnabled || !idToken) return { ok: true };
+    try {
+      const logoutUrl = oidc.buildEndSessionUrl(await oidcConfig(), {
+        id_token_hint: idToken,
+        post_logout_redirect_uri: postLogoutRedirectUri,
+      }).href;
+      return { ok: true, logoutUrl };
+    } catch (error) {
+      request.log.warn(error, 'OIDC end-session URL unavailable');
+      return { ok: true };
+    }
+  });
+  const authLimit = { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } };
+  app.get('/v1/auth/config', authLimit, () => ({
+    oidc: oidcEnabled,
+    displayName: env.OIDC_DISPLAY_NAME,
+  }));
+  app.get('/v1/auth/oidc/start', authLimit, async (request, reply) => {
+    if (!oidcEnabled) return reply.redirect(loginError('oidc_disabled'));
+    try {
+      const config = await oidcConfig();
+      const flow = {
+        state: oidc.randomState(),
+        nonce: oidc.randomNonce(),
+        verifier: oidc.randomPKCECodeVerifier(),
+        next: safeNext((request.query as { next?: unknown }).next),
+        expires: Date.now() + flowLifetimeMs,
+      };
+      // Lax, not Strict: the callback arrives as a top-level navigation from the provider.
+      reply.setCookie(flowCookie, sealFlow(flow, env.ADMIN_TOKEN), {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure,
+        path: '/',
+        maxAge: flowLifetimeMs / 1000,
+      });
+      const url = oidc.buildAuthorizationUrl(config, {
+        redirect_uri: redirectUri,
+        scope: env.OIDC_SCOPES,
+        state: flow.state,
+        nonce: flow.nonce,
+        code_challenge: await oidc.calculatePKCECodeChallenge(flow.verifier),
+        code_challenge_method: 'S256',
+      });
+      return reply.redirect(url.href);
+    } catch (error) {
+      request.log.error(error, 'OIDC discovery failed');
+      return reply.redirect(loginError('oidc_unavailable'));
+    }
+  });
+  app.get('/v1/auth/oidc/callback', authLimit, async (request, reply) => {
+    const flow = openFlow(request.cookies[flowCookie], env.ADMIN_TOKEN);
+    reply.clearCookie(flowCookie, { path: '/' });
+    const query = new URLSearchParams(request.url.split('?')[1] ?? '');
+    if (query.get('error'))
+      return reply.redirect(
+        loginError(query.get('error') === 'access_denied' ? 'oidc_denied' : 'oidc_failed'),
+      );
+    if (!oidcEnabled || !flow) return reply.redirect(loginError('oidc_expired'));
+    try {
+      const tokens = await oidc.authorizationCodeGrant(
+        await oidcConfig(),
+        new URL(`${redirectUri}?${query}`),
+        {
+          pkceCodeVerifier: flow.verifier,
+          expectedState: flow.state,
+          expectedNonce: flow.nonce,
+          idTokenExpected: true,
+        },
+      );
+      // Who may sign in is Handstamp's decision, so anyone it lets through is the administrator.
+      // Lax so the redirect chain that started at the provider still carries the session.
+      const options = startSession(reply, 'lax');
+      if (tokens.id_token && tokens.id_token.length < 3800)
+        reply.setCookie(idTokenCookie, tokens.id_token, { ...options, sameSite: 'strict' });
+      else reply.clearCookie(idTokenCookie, { path: '/' });
+      return reply.redirect(new URL(flow.next, env.APP_ORIGIN).href);
+    } catch (error) {
+      request.log.warn(error, 'OIDC sign-in failed');
+      return reply.redirect(loginError('oidc_failed'));
+    }
   });
   app.post('/v1/code/plan', async (request) =>
     service.code.plan(codeConfigSchema.parse(request.body)),

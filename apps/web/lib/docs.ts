@@ -802,6 +802,16 @@ export const docs: Doc[] = [
         code: 'docker compose --profile app up --build -d',
       },
       {
+        id: 'sign-in',
+        title: 'Sign in with Handstamp',
+        paragraphs: [
+          'Besides the administrator token, StillUp can sign the administrator in through an OpenID Connect provider such as Handstamp. Register a client with the redirect URI APP_ORIGIN/api/v1/auth/oidc/callback, the post-logout redirect URI APP_ORIGIN/login, client_secret_basic and PKCE, then set the OIDC variables on the API and restart it. The button appears only when OIDC_ISSUER and OIDC_CLIENT_ID are set.',
+          'Everyone the provider lets through becomes the administrator, so decide who may sign in at the provider, for example with a required stillup-admins group in Handstamp. Signing out also ends the provider session.',
+        ],
+        language: 'shell',
+        code: 'OIDC_ISSUER=https://id.example.com\nOIDC_CLIENT_ID=stillup\nOIDC_CLIENT_SECRET=hs_sec_...\nOIDC_SCOPES="openid profile email groups"\nOIDC_DISPLAY_NAME=Handstamp',
+      },
+      {
         id: 'networks',
         title: 'Monitor a private network',
         paragraphs: [
@@ -813,7 +823,7 @@ export const docs: Doc[] = [
         id: 'troubleshooting',
         title: 'When something looks wrong',
         steps: [
-          'Cannot sign in: confirm the current ADMIN_TOKEN, APP_ORIGIN, HTTPS setup, and that the API is running.',
+          'Cannot sign in: confirm the current ADMIN_TOKEN, APP_ORIGIN, HTTPS setup, and that the API is running. For single sign-on, check that the registered redirect URI is exactly APP_ORIGIN/api/v1/auth/oidc/callback and that the API can reach OIDC_ISSUER.',
           'Checks stay unknown: inspect worker health, probe coverage, secret references, and network policy; inspect the latest execution result.',
           'Alerts do not arrive: confirm routing and enabled channels, then inspect delivery attempts and send a test.',
           'A code apply conflicts: another apply, pause, resume, or archive changed the project. Rerun diff and review before applying again.',

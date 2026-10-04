@@ -13,13 +13,14 @@
     "build": "tsc"
   },
   "dependencies": {
+    "@fastify/cookie": "^11.1.2",
+    "@fastify/rate-limit": "^10.3.0",
     "@stillup/core": "workspace:*",
     "@stillup/db": "workspace:*",
     "fastify": "5.12.4",
-    "@fastify/cookie": "^11.1.2",
-    "@fastify/rate-limit": "^10.3.0",
+    "openid-client": "^6.8.8",
     "pg-boss": "12.31.0",
-    "zod": "4.6.2",
-    "tsx": "^4.20.0"
+    "tsx": "^4.20.0",
+    "zod": "4.6.2"
   }
 }

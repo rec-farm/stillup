@@ -4,8 +4,9 @@ import { ThemeSwitcher } from './theme-switcher';
 
 /**
  * Top-bar account menu, same pattern as Paramtune: 32px square avatar, then identity, the theme
- * setting and sign out. StillUp signs in with the installation's ADMIN_TOKEN, so the identity
- * is the administrator rather than a named user.
+ * setting and sign out. StillUp has a single administrator, reached with the installation's
+ * ADMIN_TOKEN or through single sign-on (OIDC, e.g. Handstamp), so the identity is the
+ * administrator rather than a named user.
  */
 export function UserMenu({ onSignOut }: { onSignOut: () => void }) {
   const [open, setOpen] = useState(false);
@@ -48,7 +49,7 @@ export function UserMenu({ onSignOut }: { onSignOut: () => void }) {
         <div role="menu" className="user-menu-popover">
           <div className="user-menu-section">
             <strong>Administrator</strong>
-            <small className="mono">ADMIN_TOKEN</small>
+            <small>Signed in to this installation</small>
           </div>
           <div className="user-menu-section">
             <span className="label-stamp">Theme</span>

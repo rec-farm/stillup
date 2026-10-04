@@ -14,5 +14,20 @@ export const env = z
     STATUS_PAGE_TITLE: z.string().default('Service status'),
     ALERT_WEBHOOK_URL: z.union([z.literal(''), webhookDestinationSchema]).default(''),
     RUN_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(30),
+    // Sign in with an OpenID Connect provider such as Handstamp; off while issuer or client is empty.
+    OIDC_ISSUER: z
+      .union([z.literal(''), z.url()])
+      .default('')
+      .transform((v) => v.replace(/\/+$/, '')),
+    OIDC_CLIENT_ID: z.string().default(''),
+    OIDC_CLIENT_SECRET: z.string().default(''),
+    OIDC_SCOPES: z
+      .string()
+      .default('')
+      .transform((v) => v.trim() || 'openid profile email groups'),
+    OIDC_DISPLAY_NAME: z
+      .string()
+      .default('')
+      .transform((v) => v.trim() || 'Handstamp'),
   })
   .parse(process.env);

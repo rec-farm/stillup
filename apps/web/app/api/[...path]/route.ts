@@ -26,6 +26,10 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
     });
     const output = new Headers({ 'content-type': 'application/json', 'cache-control': 'no-store' });
     for (const value of response.headers.getSetCookie()) output.append('set-cookie', value);
+    // Sign-in with OIDC is a chain of redirects through the API (start, then callback).
+    const location = response.headers.get('location');
+    if (location && response.status >= 300 && response.status < 400)
+      output.set('location', location);
     return new Response(response.body, { status: response.status, headers: output });
   } catch {
     return Response.json(

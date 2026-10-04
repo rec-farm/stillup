@@ -70,6 +70,26 @@ docker compose --profile app up --build -d
 
 The web port is bound to loopback (`STILLUP_WEB_PORT`, default 3000, sets the host port). Put a TLS reverse proxy in front of it for remote access, and keep the API and database private. `APP_ORIGIN=https://...` enables secure session cookies and controls allowed browser write origins. The API requires a token independently of the frontend.
 
+### Sign in with Handstamp (optional)
+
+StillUp can also sign the administrator in through an OpenID Connect provider such as Handstamp. Register a client with:
+
+- Redirect URI: `$APP_ORIGIN/api/v1/auth/oidc/callback`
+- Post-logout redirect URI: `$APP_ORIGIN/login`
+- Client authentication: `client_secret_basic`, PKCE required, scopes `openid profile email groups`
+
+Then set the API's environment:
+
+| Variable             | Example                       | Meaning                                                            |
+| -------------------- | ----------------------------- | ------------------------------------------------------------------ |
+| `OIDC_ISSUER`        | `https://id.rec.farm`         | Issuer; discovery is read from `/.well-known/openid-configuration` |
+| `OIDC_CLIENT_ID`     | `stillup`                     | Client ID                                                          |
+| `OIDC_CLIENT_SECRET` | `hs_sec_…`                    | Client secret                                                      |
+| `OIDC_SCOPES`        | `openid profile email groups` | Requested scopes (default shown)                                   |
+| `OIDC_DISPLAY_NAME`  | `Handstamp`                   | Button label: “Sign in with Handstamp” (default shown)             |
+
+The login page shows the button only when `OIDC_ISSUER` and `OIDC_CLIENT_ID` are set; the token form keeps working either way. StillUp has one administrator, so **everyone the provider lets through gets the same session the token gives**: restrict who may sign in at the provider (in Handstamp, “Who may sign in”, e.g. the `stillup-admins` group). StillUp does not check groups itself. Signing out of a single sign-on session also ends it at the provider and returns to `/login`.
+
 The default deployment hosts monitoring and public status together. If that host fails, the public page will also be unavailable. Independent status hosting is on the roadmap.
 
 ## Configure a check
@@ -160,6 +180,7 @@ Management endpoints accept `Authorization: Bearer <ADMIN_TOKEN>` or the dashboa
 | ------------- | --------------------- | ------------------------------------------ |
 | GET           | `/health`             | Database readiness                         |
 | POST / DELETE | `/v1/session`         | Sign in / sign out                         |
+| GET           | `/v1/auth/config`     | Whether single sign-on is configured       |
 | GET           | `/v1/dashboard`       | Checks, recent incidents, worker heartbeat |
 | POST          | `/v1/checks`          | Create a validated check                   |
 | PATCH         | `/v1/checks/:id`      | Set `{ "enabled": false }` or `true`       |

@@ -1,78 +1,35 @@
-'use client';
-import { useState } from 'react';
-import { ArrowRight, ShieldCheck } from 'lucide-react';
-import { useWorkspace } from '../../components/workspace-provider';
-import { Brand } from '../../components/brand';
-import { WatchfulArt } from '../../components/watchful-art';
-export default function LoginPage() {
-  const { settings } = useWorkspace();
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
-  async function login(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setBusy(true);
-    setError('');
-    const token = new FormData(event.currentTarget).get('token');
-    try {
-      const res = await fetch('/api/v1/session', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ token }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      window.location.assign('/');
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Unable to sign in');
-      setBusy(false);
-    }
-  }
+import { serverApi } from '../../lib/api';
+import { LoginForm } from './login-form';
+export const dynamic = 'force-dynamic';
+
+async function readAuthConfig() {
+  try {
+    const response = await serverApi('auth/config', false);
+    const data = response.ok ? await response.json() : null;
+    if (data?.oidc === true && typeof data.displayName === 'string')
+      return { oidc: true, displayName: data.displayName as string };
+  } catch {}
+  return { oidc: false, displayName: '' };
+}
+// Keys the API's OIDC callback redirects back with; anything else is ignored.
+const messages: Record<string, (name: string) => string> = {
+  oidc_denied: (name) => `${name} did not let this sign-in through.`,
+  oidc_expired: () => 'The sign-in took too long or started in another browser. Try again.',
+  oidc_failed: (name) => `Signing in with ${name} did not complete. Try again.`,
+  oidc_unavailable: (name) => `${name} cannot be reached right now. Try again shortly.`,
+  oidc_disabled: () => 'Single sign-on is not set up on this installation.',
+};
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string | string[] }>;
+}) {
+  const [config, { error }] = await Promise.all([readAuthConfig(), searchParams]);
+  const message = typeof error === 'string' ? messages[error] : undefined;
   return (
-    <main className="login-page">
-      <section className="login-story">
-        <Brand workspace />
-        <div>
-          <span className="eyebrow">Open-source API monitoring</span>
-          <h1>
-            Good APIs deserve
-            <br />a watchful eye<span className="period">.</span>
-          </h1>
-          <p>{settings.tagline || 'Know before your users do.'}</p>
-          <WatchfulArt />
-        </div>
-        <span className="login-footer">Your infrastructure. Your data. Your peace of mind.</span>
-      </section>
-      <section className="login-panel">
-        <form onSubmit={login}>
-          <div className="icon-tile">
-            <ShieldCheck size={24} />
-          </div>
-          <h2>Welcome to {settings.name}</h2>
-          <p>Sign in to your monitoring workspace.</p>
-          <label htmlFor="token">Administrator token</label>
-          <input
-            id="token"
-            name="token"
-            type="password"
-            autoComplete="current-password"
-            placeholder="Enter your installation’s token"
-            required
-          />
-          <p className="field-hint">Use the ADMIN_TOKEN from your installation’s .env file.</p>
-          {error && (
-            <p className="error-message" role="alert">
-              {error}
-            </p>
-          )}
-          <button className="button primary wide" disabled={busy}>
-            {busy ? 'Signing in…' : 'Open workspace'}
-            <ArrowRight size={17} />
-          </button>
-          <a className="subtle-link" href="/status">
-            View public service status ↗
-          </a>
-        </form>
-      </section>
-    </main>
+    <LoginForm
+      oidc={config.oidc ? config.displayName : null}
+      initialError={message?.(config.displayName || 'The identity provider') ?? ''}
+    />
   );
 }

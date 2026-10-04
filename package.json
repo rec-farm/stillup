@@ -11,7 +11,7 @@
     "dev": "pnpm --parallel --filter './apps/*' dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
-    "test": "vitest run packages/core",
+    "test": "vitest run packages/core apps/api/src/oidc-state.test.ts",
     "db:migrate": "pnpm --filter @stillup/api db:migrate",
     "check": "pnpm typecheck && pnpm test && pnpm build",
     "test:integration": "node --env-file=.env ./node_modules/vitest/vitest.mjs run apps/api/src/integration.test.ts",
