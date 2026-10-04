@@ -145,8 +145,11 @@ suite('protects management, validates inputs, and rejects cross-origin writes', 
   ).toBe(401);
   const login = await app.inject({ url: '/v1/session', method: 'POST', payload: { token } });
   expect(login.statusCode).toBe(200);
-  expect(login.headers['set-cookie']).toContain('HttpOnly');
-  const session = (login.headers['set-cookie'] as string).split(';')[0]!;
+  const sessionCookie = [login.headers['set-cookie'] ?? []]
+    .flat()
+    .find((value) => value.startsWith('stillup_session='));
+  expect(sessionCookie).toContain('HttpOnly');
+  const session = sessionCookie!.split(';')[0]!;
   expect(
     (await app.inject({ url: '/v1/dashboard', headers: { cookie: session } })).statusCode,
   ).toBe(200);
