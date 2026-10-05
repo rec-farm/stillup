@@ -56,7 +56,7 @@ The current API representation audit is recorded in [api-compatibility.md](api-c
 - [ ] Public status: published monitors only, current observations, manual incidents, maintenance, branding, server-generated metadata, favicon and theme-color tags; public host root and credentials isolated.
 - [ ] Docs: all routes, search, copy, anchors, keyboard controls, mobile layout and meaningful unknown-route HTTP status. Preserve static/prerendered docs as needed.
 - [ ] Deployment: Rust executable(s), static Vite output, Docker/Compose, environment variables, reverse proxy, CI and README; remove obsolete Node server packages/configuration.
-- [ ] Real PostgreSQL migration tests on a fresh database and an existing schema, including rollback/idempotency and retained historical data.
+- [x] Real PostgreSQL migration tests on a fresh database and an existing schema, including rollback/idempotency and retained historical data. The current-legacy-schema test applies all eight original files independently, seeds every legacy table, snapshots full rows (including migration timestamps), and verifies unchanged contents after two native migration runs. The ninth ledger entry and empty native queue are checked. Earlier tests cover initial-schema backfill, fresh migration and transactional rollback.
 - [ ] Contract/integration parity against existing tests, real HTTP smoke tests and authenticated desktop/mobile browser flows.
 - [ ] Measure comparable build, payload, startup, memory and request latency against the original baseline; report results without assuming Vite/Rust alone proves improvement.
 - [ ] Review diff, commit/push one branch, open/update one PR and verify its remote state and CI.

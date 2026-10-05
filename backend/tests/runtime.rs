@@ -370,6 +370,106 @@ async fn upgrade_existing_initial_schema_keeps_monitor_ids_and_backfills_history
     database::migrate(&fixture.pool).await.unwrap();
     fixture.close().await;
 }
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL"]
+async fn upgrade_current_legacy_schema_preserves_every_existing_table_and_ledger_entry() {
+    let fixture = Fixture::empty().await;
+    sqlx::query("CREATE TABLE stillup_migrations (name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())").execute(&fixture.pool).await.unwrap();
+    let directory =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../packages/db/migrations");
+    let mut migrations: Vec<_> = std::fs::read_dir(directory)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| {
+            path.extension().is_some_and(|extension| extension == "sql")
+                && path.file_name().unwrap() != "008_rust_check_jobs.sql"
+        })
+        .collect();
+    migrations.sort();
+    assert_eq!(migrations.len(), 8);
+    for path in migrations {
+        sqlx::raw_sql(&std::fs::read_to_string(&path).unwrap())
+            .execute(&fixture.pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO stillup_migrations(name) VALUES($1)")
+            .bind(path.file_name().unwrap().to_str().unwrap())
+            .execute(&fixture.pool)
+            .await
+            .unwrap();
+    }
+    sqlx::raw_sql(r#"DO $$
+    DECLARE m uuid := gen_random_uuid(); r uuid := gen_random_uuid(); i uuid := gen_random_uuid(); c uuid := gen_random_uuid(); d uuid := gen_random_uuid(); p uuid := gen_random_uuid(); si uuid := gen_random_uuid();
+    BEGIN
+      INSERT INTO monitors(id,config,code_project,code_key,config_revision,execution_epoch) VALUES(m,'{"name":"Retained","url":"https://example.com","intervalSeconds":60,"public":true}','legacy','api',2,7);
+      INSERT INTO check_revisions(monitor_id,revision,config) VALUES(m,1,'{"name":"Original"}'),(m,2,'{"name":"Retained"}');
+      INSERT INTO runs(id,monitor_id,outcome,status_code,duration_ms,failures,checked_at,config_revision,assertions) VALUES(r,m,'fail',503,12,'["HTTP 503"]','2026-10-01T01:02:03.123456Z',2,'[]');
+      INSERT INTO incidents(id,monitor_id,name,opened_at) VALUES(i,m,'Retained incident','2026-10-01T01:02:03.123456Z');
+      INSERT INTO worker_health(id) VALUES('worker');
+      INSERT INTO notification_channels(id,name,url,is_default) VALUES(c,'Retained channel','https://example.com/hook',true);
+      INSERT INTO notification_deliveries(id,channel_id,channel_name,incident_id,event,target_url,dedupe_key,status,attempts,cycle_attempts) VALUES(d,c,'Retained channel',i,'{"type":"incident.opened"}','https://example.com/hook','retained-delivery','retrying',2,2);
+      INSERT INTO notification_attempts(id,delivery_id,number,status_code,error) VALUES(gen_random_uuid(),d,1,503,'HTTP 503');
+      INSERT INTO incident_events(incident_id,type,at,run_id,config_revision,result) VALUES(i,'incident.opened','2026-10-01T01:02:03.123456Z',r,2,'{"outcome":"fail"}');
+      INSERT INTO managed_secrets(name,encrypted_value,revision) VALUES('RETAINED','{"iv":"retained","tag":"retained","ciphertext":"retained"}',3);
+      INSERT INTO status_settings(id,config,revision) VALUES(1,'{"title":"Retained status"}',4);
+      INSERT INTO maintenance_windows(title,monitor_ids,starts_at,ends_at) VALUES('Retained maintenance',ARRAY[m],'2026-10-02T00:00:00Z','2026-10-02T01:00:00Z');
+      INSERT INTO status_incidents(id,title,monitor_ids) VALUES(si,'Retained manual incident',ARRAY[m]);
+      INSERT INTO status_updates(incident_id,source,stage,body) VALUES(si,'manual','investigating','Retained update');
+      INSERT INTO probe_locations(id,name,region,token_hash) VALUES('retained-region','Retained region','test','retained-token-hash');
+      INSERT INTO probe_rounds(id,monitor_id,config_revision,execution_epoch,deadline) VALUES(p,m,2,7,'2026-10-02T00:00:00Z');
+      INSERT INTO probe_jobs(id,round_id,location_id,result) VALUES(gen_random_uuid(),p,'retained-region','{"outcome":"pass"}');
+      INSERT INTO workspace_settings(id,config,revision) VALUES(1,'{"name":"Retained workspace"}',5);
+    END $$"#).execute(&fixture.pool).await.unwrap();
+    let tables: Vec<String> = sqlx::query_scalar(
+        "SELECT tablename FROM pg_tables WHERE schemaname=current_schema() ORDER BY tablename",
+    )
+    .fetch_all(&fixture.pool)
+    .await
+    .unwrap();
+    let mut snapshots = Vec::new();
+    for table in &tables {
+        let query = format!(
+            "SELECT jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text) FROM \"{}\" t",
+            table.replace('"', "\"\"")
+        );
+        let data: Value = sqlx::query_scalar(&query)
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap();
+        assert!(
+            data.as_array().is_some_and(|rows| !rows.is_empty()),
+            "unseeded table {table}"
+        );
+        snapshots.push((table.clone(), query, data));
+    }
+    for _ in 0..2 {
+        database::migrate(&fixture.pool).await.unwrap();
+        for (table, query, before) in &snapshots {
+            let query = if table == "stillup_migrations" {
+                "SELECT jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text) FROM stillup_migrations t WHERE name <> '008_rust_check_jobs.sql'"
+            } else {
+                query.as_str()
+            };
+            let after: Value = sqlx::query_scalar(query)
+                .fetch_one(&fixture.pool)
+                .await
+                .unwrap();
+            assert_eq!(&after, before, "changed legacy table {table}");
+        }
+        let count: i64 = sqlx::query_scalar("SELECT count(*) FROM stillup_migrations")
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap();
+        assert_eq!(count, 9);
+        let jobs: i64 = sqlx::query_scalar("SELECT count(*) FROM check_jobs")
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap();
+        assert_eq!(jobs, 0);
+    }
+    fixture.close().await;
+}
 #[tokio::test]
 #[ignore = "requires TEST_DATABASE_URL"]
 async fn migration_failure_rolls_back_schema_and_ledger_changes() {
