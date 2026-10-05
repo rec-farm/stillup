@@ -78,6 +78,7 @@ impl Fixture {
     fn state_configure(&self, configure: impl FnOnce(&mut Config)) -> AppState {
         let mut config = Config {
             alert_webhook_url: String::new(),
+            run_retention_days: 30,
             oidc: Default::default(),
             secrets: Default::default(),
             allow_private_networks: false,
@@ -240,7 +241,7 @@ async fn migrations_preserve_data_and_workspace_revisions_are_atomic() {
         .fetch_one(&fixture.pool)
         .await
         .unwrap();
-    assert_eq!(count, 8);
+    assert_eq!(count, 9);
     let response = app
         .oneshot(
             Request::builder()
@@ -1528,5 +1529,555 @@ async fn native_alerts_deliver_managed_webhooks_and_cancel_obsolete_reminders() 
     assert_eq!(receipts.lock().unwrap().len(), 1);
     server.abort();
     assert!(server.await.unwrap_err().is_cancelled());
+    fixture.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL"]
+async fn native_queue_executes_http_and_records_incident_lifecycle_atomically() {
+    use sqlx::Row;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicU16, AtomicUsize, Ordering},
+    };
+    use stillup_api::monitoring;
+    use uuid::Uuid;
+    let fixture = Fixture::new().await;
+    let code = Arc::new(AtomicU16::new(500));
+    let requests = Arc::new(AtomicUsize::new(0));
+    let response_code = code.clone();
+    let received = requests.clone();
+    let target = Router::new().route(
+        "/",
+        axum::routing::get(move || {
+            let code = response_code.clone();
+            let received = received.clone();
+            async move {
+                received.fetch_add(1, Ordering::SeqCst);
+                StatusCode::from_u16(code.load(Ordering::SeqCst)).unwrap()
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move { axum::serve(listener, target).await.unwrap() });
+    let state = fixture.state_configure(|config| {
+        config.allow_private_networks = true;
+        config.secrets.encryption_key = "57".repeat(32);
+    });
+    let app = router(state.clone());
+    assert_eq!(
+        request(
+            app.clone(),
+            "POST",
+            "/v1/notification-channels",
+            json!({"name":"Alerts","url":"https://example.com/webhook","isDefault":true}),
+            true
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+    let (status,monitor,_) = request(app.clone(),"POST","/v1/checks",json!({"name":"HTTP","url":url,"failureThreshold":2,"recoveryThreshold":2,"headers":{"Authorization":"Bearer {{TOKEN}}"}}),true).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let monitor_id = Uuid::parse_str(monitor["id"].as_str().unwrap()).unwrap();
+    assert_eq!(
+        request(
+            app.clone(),
+            "POST",
+            "/v1/secrets",
+            json!({"name":"TOKEN","value":"managed-token"}),
+            true
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+    let run_path = format!("/v1/checks/{monitor_id}/run");
+    let mut observed = None;
+    for index in 0..5 {
+        if index == 2 {
+            assert_eq!(
+                request(
+                    app.clone(),
+                    "PUT",
+                    "/v1/secrets/TOKEN",
+                    json!({"expectedRevision":1,"enabled":false}),
+                    true
+                )
+                .await
+                .0,
+                StatusCode::OK
+            );
+        }
+        if index == 3 {
+            sqlx::query("UPDATE managed_secrets SET enabled=true WHERE name='TOKEN'")
+                .execute(&fixture.pool)
+                .await
+                .unwrap();
+            code.store(200, Ordering::SeqCst);
+        }
+        let (status, queued, _) = request(app.clone(), "POST", &run_path, Value::Null, true).await;
+        assert_eq!(status, StatusCode::ACCEPTED);
+        assert_eq!(queued["queued"], true);
+        assert_eq!(
+            request(app.clone(), "POST", &run_path, Value::Null, true)
+                .await
+                .1["queued"],
+            false
+        );
+        assert!(monitoring::run_one(&state).await.unwrap());
+        assert!(!monitoring::run_one(&state).await.unwrap());
+        let row = sqlx::query("SELECT * FROM monitors WHERE id=$1")
+            .bind(monitor_id)
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap();
+        assert_eq!(
+            row.get::<String, _>("status"),
+            if index == 0 {
+                "unknown"
+            } else if index == 4 {
+                "up"
+            } else {
+                "down"
+            }
+        );
+        if index == 1 {
+            observed = row.get::<Option<chrono::DateTime<chrono::Utc>>, _>("last_observed_at");
+        }
+        if index == 2 {
+            assert_eq!(
+                row.get::<Option<String>, _>("last_outcome").as_deref(),
+                Some("error")
+            );
+            assert_eq!(
+                row.get::<Option<chrono::DateTime<chrono::Utc>>, _>("last_observed_at"),
+                observed
+            );
+            assert_eq!(row.get::<i32, _>("failures"), 2);
+        }
+    }
+    assert_eq!(requests.load(Ordering::SeqCst), 4);
+    let incidents = sqlx::query("SELECT * FROM incidents WHERE monitor_id=$1")
+        .bind(monitor_id)
+        .fetch_all(&fixture.pool)
+        .await
+        .unwrap();
+    assert_eq!(incidents.len(), 1);
+    assert!(
+        incidents[0]
+            .get::<Option<chrono::DateTime<chrono::Utc>>, _>("resolved_at")
+            .is_some()
+    );
+    let incident_id: Uuid = incidents[0].get("id");
+    let (_, timeline, _) = request(
+        app.clone(),
+        "GET",
+        &format!("/v1/incidents/{incident_id}"),
+        Value::Null,
+        true,
+    )
+    .await;
+    assert_eq!(timeline["events"].as_array().unwrap().len(), 2);
+    assert_eq!(timeline["events"][0]["type"], "incident.opened");
+    assert_eq!(timeline["events"][1]["type"], "incident.resolved");
+    assert_eq!(timeline["observations"].as_array().unwrap().len(), 4);
+    let (_, deliveries, _) = request(
+        app.clone(),
+        "GET",
+        &format!("/v1/notification-deliveries?incidentId={incident_id}"),
+        Value::Null,
+        true,
+    )
+    .await;
+    assert_eq!(deliveries["deliveries"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM runs WHERE monitor_id=$1")
+            .bind(monitor_id)
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap(),
+        5
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT count(*) FROM check_jobs WHERE monitor_id=$1 AND status='completed'"
+        )
+        .bind(monitor_id)
+        .fetch_one(&fixture.pool)
+        .await
+        .unwrap(),
+        5
+    );
+    server.abort();
+    assert!(server.await.unwrap_err().is_cancelled());
+    fixture.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL"]
+async fn check_jobs_fence_changes_recover_leases_and_bound_database_retries() {
+    use sqlx::Row;
+    use stillup_api::monitoring;
+    use uuid::Uuid;
+    let fixture = Fixture::new().await;
+    let state = fixture.state_configure(|_| {});
+    let app = router(state.clone());
+    let (_, monitor, _) = request(
+        app.clone(),
+        "POST",
+        "/v1/checks",
+        json!({"name":"Fenced","url":"http://127.0.0.1/"}),
+        true,
+    )
+    .await;
+    let monitor_id = Uuid::parse_str(monitor["id"].as_str().unwrap()).unwrap();
+    let original = monitor["config"].clone();
+    for change in ["pause", "archive", "revision", "epoch", "stale", "regional"] {
+        sqlx::query("UPDATE monitors SET enabled=true,archived_at=NULL,config_revision=1,execution_epoch=1,config=$2,next_run_at=now() WHERE id=$1").bind(monitor_id).bind(&original).execute(&fixture.pool).await.unwrap();
+        let (a, b) = tokio::join!(
+            monitoring::enqueue(&state, None),
+            monitoring::enqueue(&state, None)
+        );
+        assert_eq!(a.unwrap() + b.unwrap(), 1);
+        let (a, b) = tokio::join!(monitoring::claim(&state), monitoring::claim(&state));
+        let (a, b) = (a.unwrap(), b.unwrap());
+        assert_ne!(a.is_some(), b.is_some());
+        let job = a.or(b).unwrap();
+        match change {
+            "pause" => {
+                sqlx::query("UPDATE monitors SET enabled=false WHERE id=$1")
+                    .bind(monitor_id)
+                    .execute(&fixture.pool)
+                    .await
+                    .unwrap();
+            }
+            "archive" => {
+                sqlx::query("UPDATE monitors SET archived_at=now() WHERE id=$1")
+                    .bind(monitor_id)
+                    .execute(&fixture.pool)
+                    .await
+                    .unwrap();
+            }
+            "revision" => {
+                sqlx::query("UPDATE monitors SET config_revision=2 WHERE id=$1")
+                    .bind(monitor_id)
+                    .execute(&fixture.pool)
+                    .await
+                    .unwrap();
+            }
+            "epoch" => {
+                sqlx::query("UPDATE monitors SET execution_epoch=2 WHERE id=$1")
+                    .bind(monitor_id)
+                    .execute(&fixture.pool)
+                    .await
+                    .unwrap();
+            }
+            "stale" => {
+                // execute_job rechecks the stored job, while scheduled_at comes from the
+                // committed claim. Refresh the claim after changing the fixture timestamp.
+                sqlx::query(
+                    "UPDATE check_jobs SET scheduled_at=now()-interval '121 seconds' WHERE id=$1",
+                )
+                .bind(job.get::<Uuid, _>("id"))
+                .execute(&fixture.pool)
+                .await
+                .unwrap();
+            }
+            "regional" => {
+                sqlx::query(
+                    "UPDATE monitors SET config=jsonb_set(config,'{locationIds}',$2) WHERE id=$1",
+                )
+                .bind(monitor_id)
+                .bind(json!([Uuid::new_v4()]))
+                .execute(&fixture.pool)
+                .await
+                .unwrap();
+            }
+            _ => unreachable!(),
+        }
+        let stored = sqlx::query("SELECT * FROM check_jobs WHERE id=$1")
+            .bind(job.get::<Uuid, _>("id"))
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap();
+        monitoring::execute_job(&state, &stored).await.unwrap();
+        monitoring::execute_job(&state, &stored).await.unwrap();
+        assert_eq!(
+            sqlx::query_scalar::<_, i64>("SELECT count(*) FROM runs")
+                .fetch_one(&fixture.pool)
+                .await
+                .unwrap(),
+            0,
+            "case {change}"
+        );
+    }
+    sqlx::query("UPDATE monitors SET config=$2,enabled=true,archived_at=NULL,config_revision=1,execution_epoch=1 WHERE id=$1").bind(monitor_id).bind(&original).execute(&fixture.pool).await.unwrap();
+    assert_eq!(
+        monitoring::enqueue(&state, Some(monitor_id)).await.unwrap(),
+        1
+    );
+    let first = monitoring::claim(&state).await.unwrap().unwrap();
+    let job_id: Uuid = first.get("id");
+    sqlx::query("UPDATE check_jobs SET available_at=now()-interval '1 second' WHERE id=$1")
+        .bind(job_id)
+        .execute(&fixture.pool)
+        .await
+        .unwrap();
+    let second = monitoring::claim(&state).await.unwrap().unwrap();
+    monitoring::execute_job(&state, &first).await.unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM runs")
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap(),
+        0
+    );
+    monitoring::execute_job(&state, &second).await.unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM runs")
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap(),
+        1
+    );
+    // Inject a database write failure to exercise retry behavior independently of an
+    // HTTP failure (HTTP failures are observations, not queue failures).
+    sqlx::raw_sql("CREATE FUNCTION reject_test_run() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fixture failure'; END $$; CREATE TRIGGER reject_run BEFORE INSERT ON runs FOR EACH ROW EXECUTE FUNCTION reject_test_run()")
+        .execute(&fixture.pool).await.unwrap();
+    assert_eq!(
+        monitoring::enqueue(&state, Some(monitor_id)).await.unwrap(),
+        1
+    );
+    for attempt in 1..=3 {
+        assert!(monitoring::run_one(&state).await.is_err());
+        let row = sqlx::query(
+            "SELECT * FROM check_jobs WHERE monitor_id=$1 ORDER BY created_at DESC LIMIT 1",
+        )
+        .bind(monitor_id)
+        .fetch_one(&fixture.pool)
+        .await
+        .unwrap();
+        assert_eq!(row.get::<i32, _>("attempts"), attempt);
+        assert_eq!(
+            row.get::<String, _>("status"),
+            if attempt == 3 { "failed" } else { "pending" }
+        );
+        if attempt < 3 {
+            assert!(
+                row.get::<chrono::DateTime<chrono::Utc>, _>("available_at") > chrono::Utc::now()
+            );
+            sqlx::query("UPDATE check_jobs SET available_at=now() WHERE id=$1")
+                .bind(row.get::<Uuid, _>("id"))
+                .execute(&fixture.pool)
+                .await
+                .unwrap();
+        }
+    }
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM runs")
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap(),
+        1
+    );
+    assert!(!monitoring::run_one(&state).await.unwrap());
+    fixture.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL and installed legacy test dependencies"]
+async fn handoff_preserves_real_pg_boss_jobs_and_refuses_live_claims_atomically() {
+    use stillup_api::{monitoring, notifications};
+    use uuid::Uuid;
+    let fixture = Fixture::new().await;
+    let state = fixture
+        .state_configure(|config| config.alert_webhook_url = "https://example.com/hook".into());
+    notifications::initialize(&fixture.pool, &state.config.alert_webhook_url)
+        .await
+        .unwrap();
+    let (_, monitor, _) = request(
+        router(state.clone()),
+        "POST",
+        "/v1/checks",
+        json!({"name":"Migrated","url":"http://127.0.0.1/"}),
+        true,
+    )
+    .await;
+    let monitor_id = monitor["id"].as_str().unwrap();
+    let output = std::process::Command::new("node")
+        .arg(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../scripts/seed-legacy-queue.mjs"),
+        )
+        .arg(&fixture.schema)
+        .arg(monitor_id)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "Legacy queue fixture failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let jobs: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let check_id = Uuid::parse_str(jobs["check"].as_str().unwrap()).unwrap();
+    let notify_id = Uuid::parse_str(jobs["notify"].as_str().unwrap()).unwrap();
+    sqlx::query("UPDATE job SET state='active',started_on=now() WHERE id=$1")
+        .bind(check_id)
+        .execute(&fixture.pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        monitoring::handoff(&state, &fixture.schema)
+            .await
+            .unwrap_err()
+            .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM check_jobs")
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM notification_deliveries")
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap(),
+        0
+    );
+    sqlx::query("UPDATE job SET started_on=now()-interval '91 seconds' WHERE id=$1")
+        .bind(check_id)
+        .execute(&fixture.pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        monitoring::handoff(&state, &fixture.schema).await.unwrap(),
+        2
+    );
+    assert_eq!(
+        monitoring::handoff(&state, &fixture.schema).await.unwrap(),
+        0
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i32>("SELECT attempts FROM check_jobs WHERE id=$1")
+            .bind(check_id)
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, String>(
+            "SELECT target_url FROM notification_deliveries WHERE id=$1"
+        )
+        .bind(notify_id)
+        .fetch_one(&fixture.pool)
+        .await
+        .unwrap(),
+        "https://example.com/hook"
+    );
+    assert_eq!(sqlx::query_scalar::<_,i64>("SELECT count(*) FROM job WHERE state::text='completed' AND output->>'migratedTo'='rust'").fetch_one(&fixture.pool).await.unwrap(),2);
+    assert!(monitoring::run_one(&state).await.unwrap());
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM runs WHERE id=$1")
+            .bind(check_id)
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap(),
+        1
+    );
+    assert!(!monitoring::run_one(&state).await.unwrap());
+    fixture.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL"]
+async fn native_worker_schedules_reports_health_retains_active_work_and_stops() {
+    use uuid::Uuid;
+    let fixture = Fixture::new().await;
+    let state = fixture.state_configure(|_| {});
+    let (_, monitor, _) = request(
+        router(state.clone()),
+        "POST",
+        "/v1/checks",
+        json!({"name":"Scheduled","url":"http://127.0.0.1/"}),
+        true,
+    )
+    .await;
+    let monitor_id = Uuid::parse_str(monitor["id"].as_str().unwrap()).unwrap();
+    let old_run = Uuid::new_v4();
+    sqlx::query("INSERT INTO runs(id,monitor_id,outcome,duration_ms,failures,checked_at) VALUES($1,$2,'pass',1,'[]',now()-interval '31 days')").bind(old_run).bind(monitor_id).execute(&fixture.pool).await.unwrap();
+    let old_job = Uuid::new_v4();
+    sqlx::query("INSERT INTO check_jobs(id,monitor_id,config_revision,execution_epoch,status,finished_at) VALUES($1,$2,1,998,'completed',now()-interval '2 days')").bind(old_job).bind(monitor_id).execute(&fixture.pool).await.unwrap();
+    let future_job = Uuid::new_v4();
+    sqlx::query("INSERT INTO check_jobs(id,monitor_id,config_revision,execution_epoch,available_at) VALUES($1,$2,1,999,now()+interval '1 day')").bind(future_job).bind(monitor_id).execute(&fixture.pool).await.unwrap();
+    let (stop, stopped) = tokio::sync::watch::channel(false);
+    let running = tokio::spawn(stillup_api::worker::run(state.clone(), stopped));
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            let count: i64 =
+                sqlx::query_scalar("SELECT count(*) FROM runs WHERE monitor_id=$1 AND id<>$2")
+                    .bind(monitor_id)
+                    .bind(old_run)
+                    .fetch_one(&fixture.pool)
+                    .await
+                    .unwrap();
+            let cleaned: bool =
+                sqlx::query_scalar("SELECT NOT EXISTS(SELECT 1 FROM runs WHERE id=$1)")
+                    .bind(old_run)
+                    .fetch_one(&fixture.pool)
+                    .await
+                    .unwrap();
+            if count == 1 && cleaned {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .expect("Worker did not schedule or clean up its cycle");
+    stop.send(true).unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(5), running)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM worker_health WHERE id='primary'")
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM check_jobs WHERE id=$1")
+            .bind(old_job)
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>(
+            "SELECT count(*) FROM check_jobs WHERE id=$1 AND status='pending'"
+        )
+        .bind(future_job)
+        .fetch_one(&fixture.pool)
+        .await
+        .unwrap(),
+        1
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM runs WHERE monitor_id=$1")
+            .bind(monitor_id)
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap(),
+        1
+    );
     fixture.close().await;
 }

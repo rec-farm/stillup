@@ -12,6 +12,7 @@ pub struct Config {
     pub secrets: crate::secrets::SecretConfig,
     pub allow_private_networks: bool,
     pub alert_webhook_url: String,
+    pub run_retention_days: i32,
 }
 impl Config {
     pub fn from_env() -> Result<Self, String> {
@@ -40,7 +41,14 @@ impl Config {
             ))
             .map_err(|_| "ALERT_WEBHOOK_URL must be a webhook URL or secret reference")?;
         }
+        let run_retention_days = env::var("RUN_RETENTION_DAYS")
+            .unwrap_or_else(|_| "30".into())
+            .parse::<i32>()
+            .ok()
+            .filter(|days| (1..=365).contains(days))
+            .ok_or("RUN_RETENTION_DAYS must be an integer between 1 and 365")?;
         Ok(Self {
+            run_retention_days,
             alert_webhook_url,
             database_url,
             admin_token,

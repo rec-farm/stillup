@@ -48,6 +48,10 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/auth/oidc/callback", get(crate::oidc::callback))
         .route("/v1/dashboard", get(dashboard))
         .route(
+            "/v1/incidents/{id}",
+            get(crate::monitoring::incident_timeline),
+        )
+        .route(
             "/v1/notification-channels",
             get(crate::notifications::list).post(crate::notifications::create),
         )
@@ -88,6 +92,7 @@ pub fn router(state: AppState) -> Router {
                 .put(checks::edit),
         )
         .route("/v1/checks/{id}/runs", get(checks::runs))
+        .route("/v1/checks/{id}/run", post(crate::monitoring::run_now))
         .route("/v1/checks/{id}/revisions", get(checks::revisions))
         .route(
             "/v1/checks/{id}/revisions/{revision}",

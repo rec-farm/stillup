@@ -125,6 +125,17 @@ pub async fn resolve(
     config: &SecretConfig,
     values: &[String],
 ) -> Result<HashMap<String, String>, sqlx::Error> {
+    if references(values).is_empty() {
+        return Ok(HashMap::new());
+    }
+    let mut connection = pool.acquire().await?;
+    resolve_connection(&mut connection, config, values).await
+}
+pub async fn resolve_connection(
+    connection: &mut sqlx::PgConnection,
+    config: &SecretConfig,
+    values: &[String],
+) -> Result<HashMap<String, String>, sqlx::Error> {
     let names = references(values);
     if names.is_empty() {
         return Ok(HashMap::new());
@@ -133,7 +144,7 @@ pub async fn resolve(
         "SELECT name,enabled,encrypted_value FROM managed_secrets WHERE name=ANY($1::text[])",
     )
     .bind(&names)
-    .fetch_all(pool)
+    .fetch_all(connection)
     .await?;
     let mut result = HashMap::new();
     for name in names {

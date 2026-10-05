@@ -54,3 +54,64 @@ mod tests {
         );
     }
 }
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct HealthState {
+    pub status: String,
+    pub failures: i32,
+    pub successes: i32,
+}
+pub fn evaluate(
+    previous: HealthState,
+    outcome: &str,
+    failure_threshold: i64,
+    recovery_threshold: i64,
+) -> HealthState {
+    if outcome == "error" {
+        return previous;
+    }
+    let failures = if outcome == "fail" {
+        previous.failures.saturating_add(1)
+    } else {
+        0
+    };
+    let successes = if outcome == "pass" {
+        previous.successes.saturating_add(1)
+    } else {
+        0
+    };
+    let status = if i64::from(failures) >= failure_threshold {
+        "down".into()
+    } else if i64::from(successes) >= recovery_threshold {
+        "up".into()
+    } else {
+        previous.status
+    };
+    HealthState {
+        status,
+        failures,
+        successes,
+    }
+}
+
+#[cfg(test)]
+mod transition_tests {
+    use super::*;
+    #[test]
+    fn errors_preserve_state_and_recovery_requires_consecutive_successes() {
+        let initial = HealthState {
+            status: "unknown".into(),
+            failures: 0,
+            successes: 0,
+        };
+        let first = evaluate(initial, "fail", 2, 2);
+        assert_eq!(first.status, "unknown");
+        let down = evaluate(first, "fail", 2, 2);
+        assert_eq!(down.status, "down");
+        assert_eq!(evaluate(down.clone(), "error", 2, 2), down);
+        let recovering = evaluate(down, "pass", 2, 2);
+        assert_eq!(recovering.status, "down");
+        assert_eq!(recovering.failures, 0);
+        assert_eq!(evaluate(recovering, "pass", 2, 2).status, "up");
+    }
+}

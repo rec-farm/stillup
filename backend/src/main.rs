@@ -21,6 +21,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     stillup_api::notifications::initialize(&pool, &config.alert_webhook_url).await?;
+    if std::env::args().nth(1).as_deref() == Some("handoff") {
+        let state = AppState::new(pool.clone(), config);
+        let count = stillup_api::monitoring::handoff(&state, "pgboss")
+            .await
+            .map_err(|error| std::io::Error::other(error.1))?;
+        tracing::info!(jobs = count, "Legacy queue handoff complete");
+        pool.close().await;
+        return Ok(());
+    }
+    if std::env::args().nth(1).as_deref() == Some("worker") {
+        let state = AppState::new(pool.clone(), config);
+        stillup_api::monitoring::handoff(&state, "pgboss")
+            .await
+            .map_err(|error| std::io::Error::other(error.1))?;
+        let (stop, stopped) = tokio::sync::watch::channel(false);
+        let running = stillup_api::worker::run(state, stopped);
+        tokio::pin!(running);
+        tracing::info!("StillUp Rust worker started");
+        tokio::select! {
+            result = &mut running => result?,
+            _ = shutdown() => {stop.send(true).ok(); running.await?;}
+        }
+        pool.close().await;
+        return Ok(());
+    }
     let listener = tokio::net::TcpListener::bind(&config.bind).await?;
     tracing::info!(address = %listener.local_addr()?, "StillUp Rust API listening");
     axum::serve(
