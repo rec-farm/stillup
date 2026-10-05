@@ -12,6 +12,7 @@ pub mod monitoring;
 pub mod network;
 pub mod notifications;
 pub mod oidc;
+pub mod probe_runner;
 pub mod probes;
 pub mod secrets;
 pub mod server;

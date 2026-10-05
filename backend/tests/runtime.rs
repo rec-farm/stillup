@@ -2617,3 +2617,164 @@ async fn probe_http_protocol_credentials_secrets_observations_and_epoch_fencing(
     stillup_api::worker::run(state, stopped).await.unwrap();
     fixture.close().await;
 }
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL; starts bounded test-only native listeners and probe child"]
+async fn standalone_rust_probe_enrolls_executes_and_drains_sigterm_report() {
+    use stillup_api::monitoring;
+    use uuid::Uuid;
+    let fixture = Fixture::new().await;
+    let state = fixture.state_configure(|config| {
+        config.secrets.encryption_key = "89".repeat(32);
+    });
+    let app = router(state.clone());
+    assert_eq!(
+        request(
+            app.clone(),
+            "POST",
+            "/v1/secrets",
+            json!({"name":"TOKEN","value":"fixture-private-token"}),
+            true
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+    let (_, created, _) = request(
+        app.clone(),
+        "POST",
+        "/v1/locations",
+        json!({"name":"Standalone","region":"test"}),
+        true,
+    )
+    .await;
+    let remote = created["id"].as_str().unwrap();
+    let (entered, started) = tokio::sync::oneshot::channel();
+    let (release, released) = tokio::sync::oneshot::channel();
+    let entered = std::sync::Arc::new(std::sync::Mutex::new(Some(entered)));
+    let released = std::sync::Arc::new(tokio::sync::Mutex::new(Some(released)));
+    let target = Router::new().route(
+        "/",
+        axum::routing::get(move |headers: axum::http::HeaderMap| {
+            let entered = entered.clone();
+            let released = released.clone();
+            async move {
+                assert_eq!(headers["authorization"], "Bearer fixture-private-token");
+                if let Some(sender) = entered.lock().unwrap().take() {
+                    sender.send(()).ok();
+                }
+                let receiver = released.lock().await.take();
+                if let Some(receiver) = receiver {
+                    receiver.await.ok();
+                }
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "private-body-must-not-be-sent",
+                )
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let target_url = format!("http://{}/", listener.local_addr().unwrap());
+    let target_server = tokio::spawn(async move { axum::serve(listener, target).await.unwrap() });
+    let (_,monitor,_)=request(app.clone(),"POST","/v1/checks",json!({"name":"Standalone HTTP","url":target_url,"locationIds":[remote],"failureThreshold":1,"headers":{"Authorization":"Bearer {{TOKEN}}"}}),true).await;
+    let monitor_id = Uuid::parse_str(monitor["id"].as_str().unwrap()).unwrap();
+    monitoring::enqueue(&state, Some(monitor_id)).await.unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+    let (api_stop, api_stopped) = tokio::sync::oneshot::channel();
+    let api_server = tokio::spawn(async move {
+        axum::serve(listener, app)
+            .with_graceful_shutdown(async {
+                api_stopped.await.ok();
+            })
+            .await
+            .unwrap()
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("identity");
+    let mut child = tokio::process::Command::new(env!("CARGO_BIN_EXE_stillup-probe"))
+        .env_clear()
+        .env("STILLUP_URL", &origin)
+        .env("STILLUP_PROBE_DATA", &data)
+        .env(
+            "STILLUP_ENROLLMENT_TOKEN",
+            created["enrollmentToken"].as_str().unwrap(),
+        )
+        .env("STILLUP_PROBE_ALLOW_HTTP", "true")
+        .env("STILLUP_PROBE_ALLOW_PRIVATE_NETWORKS", "true")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(10), started)
+        .await
+        .unwrap()
+        .unwrap();
+    let identity: Value =
+        serde_json::from_slice(&tokio::fs::read(data.join("identity.json")).await.unwrap())
+            .unwrap();
+    assert_eq!(identity["locationId"], remote);
+    assert!(identity.get("enrollmentToken").is_none());
+    assert_eq!(identity["token"].as_str().unwrap().len(), 64);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            std::fs::metadata(data.join("identity.json"))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+        assert_eq!(
+            std::fs::metadata(&data).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+        assert!(
+            std::process::Command::new("kill")
+                .arg("-TERM")
+                .arg(child.id().unwrap().to_string())
+                .status()
+                .unwrap()
+                .success()
+        );
+    }
+    #[cfg(not(unix))]
+    {
+        panic!("This signal test requires Unix");
+    }
+    // Ensure SIGTERM is handled while execution is still in flight.
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    release.send(()).unwrap();
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_secs(10), child.wait())
+            .await
+            .unwrap()
+            .unwrap()
+            .success()
+    );
+    let result: Value = sqlx::query_scalar("SELECT result FROM incident_events")
+        .fetch_one(&fixture.pool)
+        .await
+        .unwrap();
+    assert_eq!(result["outcome"], "fail");
+    assert!(!result.to_string().contains("private-body"));
+    assert!(!result.to_string().contains("fixture-private-token"));
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM runs WHERE monitor_id=$1")
+            .bind(monitor_id)
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap(),
+        1
+    );
+    api_stop.send(()).unwrap();
+    api_server.await.unwrap();
+    target_server.abort();
+    assert!(target_server.await.unwrap_err().is_cancelled());
+    fixture.close().await;
+}
