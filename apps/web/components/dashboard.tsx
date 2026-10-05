@@ -95,6 +95,22 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(initial.monitors.length <= 1);
+  useEffect(() => {
+    try {
+      if (localStorage.getItem('stillup:setup-dismissed') === 'true') setSetupOpen(false);
+    } catch {
+      // Setup remains usable when browser storage is unavailable.
+    }
+  }, []);
+  function toggleSetup(open: boolean) {
+    setSetupOpen(open);
+    try {
+      localStorage.setItem('stillup:setup-dismissed', String(!open));
+    } catch {
+      // Keep the preference for this visit even without persistent storage.
+    }
+  }
   const refresh = useCallback(async () => {
     const sequence = ++refreshSequence.current;
     try {
@@ -126,6 +142,10 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
       `${m.config.name} ${m.config.url}`.toLowerCase().includes(query.toLowerCase()),
   );
   const current = data.monitors.find((m) => m.id === selected);
+  const firstCheck = activeMonitors[0];
+  const observedCheck = activeMonitors.find((m) => m.lastObservedAt !== null);
+  const setupProgress =
+    Number(!!firstCheck) + Number(!!observedCheck) + Number(data.notificationsEnabled);
   async function action(monitor: Monitor, kind: 'run' | 'toggle' | 'archive' | 'restore') {
     setBusy(true);
     setNotice('');
@@ -207,6 +227,10 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
             <Activity size={20} />
             API checks<span className="nav-count">{activeMonitors.length}</span>
           </a>
+          <button className="nav-item" onClick={() => toggleSetup(true)}>
+            <Check size={20} />
+            Getting started
+          </button>
           <a href="#incidents" className="nav-item">
             <Radio size={20} />
             Incidents
@@ -304,6 +328,106 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
                 <X size={14} />
               </button>
             </div>
+          )}
+          {setupOpen && (
+            <section className="setup-guide" aria-labelledby="setup-title">
+              <div className="setup-heading">
+                <div>
+                  <span className="eyebrow">Getting started · {setupProgress} of 3 complete</span>
+                  <h2 id="setup-title">
+                    {setupProgress === 3
+                      ? 'You’re ready to keep watch.'
+                      : 'From your first check to your first alert.'}
+                  </h2>
+                  <p>
+                    Start with an endpoint you own. We’ll help you check it, see a result, and
+                    connect alerts.
+                  </p>
+                </div>
+                <button
+                  className="icon-button"
+                  aria-label="Dismiss getting started guide"
+                  onClick={() => toggleSetup(false)}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <ol className="setup-steps">
+                <li data-complete={!!firstCheck}>
+                  <span className="setup-number" aria-label={firstCheck ? 'Complete' : 'Step 1'}>
+                    {firstCheck ? <Check size={18} /> : '01'}
+                  </span>
+                  <h3>Create your first check</h3>
+                  <p>
+                    A health endpoint is a good start. Use GET and expect HTTP 200; you can add
+                    assertions later.
+                  </p>
+                  <button
+                    className={`button ${firstCheck ? 'secondary' : 'primary'}`}
+                    onClick={() => (firstCheck ? setSelected(firstCheck.id) : setCreate(true))}
+                  >
+                    {firstCheck ? 'View your check' : 'Create first check'}
+                    <ArrowRight size={16} />
+                  </button>
+                </li>
+                <li data-complete={!!observedCheck}>
+                  <span className="setup-number" aria-label={observedCheck ? 'Complete' : 'Step 2'}>
+                    {observedCheck ? <Check size={18} /> : '02'}
+                  </span>
+                  <h3>See your first result</h3>
+                  <p>
+                    {observedCheck
+                      ? 'Your endpoint has returned a result. Open the check to review its health and response time.'
+                      : !workerOnline
+                        ? 'Your monitoring worker is offline. Start it so saved checks can run on schedule.'
+                        : firstCheck
+                          ? 'Your check is waiting for an observation. Results refresh here automatically every 10 seconds.'
+                          : 'After saving, the worker runs your check on schedule. You can also request a run from its details.'}
+                  </p>
+                  {observedCheck || (firstCheck && workerOnline) ? (
+                    <button
+                      className="button secondary"
+                      onClick={() => setSelected((observedCheck ?? firstCheck)!.id)}
+                    >
+                      View results
+                      <ArrowRight size={16} />
+                    </button>
+                  ) : (
+                    <a className="button secondary" href="/docs/self-hosting">
+                      Worker setup
+                      <ArrowRight size={16} />
+                    </a>
+                  )}
+                </li>
+                <li data-complete={data.notificationsEnabled}>
+                  <span
+                    className="setup-number"
+                    aria-label={data.notificationsEnabled ? 'Complete' : 'Step 3'}
+                  >
+                    {data.notificationsEnabled ? <Check size={18} /> : '03'}
+                  </span>
+                  <h3>Connect incident alerts</h3>
+                  <p>
+                    {data.notificationsEnabled
+                      ? 'Notifications are configured. Send a test from channel settings to verify delivery.'
+                      : 'Add a notification channel for failures and recoveries, then send a test to verify delivery.'}
+                  </p>
+                  <button className="button secondary" onClick={() => setNotificationsOpen(true)}>
+                    {data.notificationsEnabled ? 'Review notifications' : 'Set up notifications'}
+                    <ArrowRight size={16} />
+                  </button>
+                </li>
+              </ol>
+              <div className="setup-footer">
+                <a href="/docs/getting-started">
+                  Read the getting started guide <ArrowUpRight size={14} />
+                </a>
+                <span>
+                  Optional: share selected checks on your{' '}
+                  <button onClick={() => setStatusEditorOpen(true)}>public status page</button>.
+                </span>
+              </div>
+            </section>
           )}
           <section
             className={`overview-banner ${counts.down ? 'attention' : !workerOnline || !counts.up ? 'neutral' : ''}`}
@@ -422,7 +546,7 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
                 />
               </label>
             </div>
-            {!activeMonitors.length && filter !== 'archived' ? (
+            {data.monitors.length === 0 && filter === 'all' && !query ? (
               <div className="empty-state">
                 <div className="empty-illustration bg-dot-grid">
                   <Illustration
@@ -436,16 +560,15 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
                   Meet your first API check<span className="period">.</span>
                 </h3>
                 <p>
-                  A healthy response is a great start.
-                  <br />
-                  Make sure it stays that way.
+                  Add a health endpoint you own. StillUp will check its response on a schedule and
+                  keep a history of failures and recoveries.
                 </p>
                 <button className="button primary" onClick={() => setCreate(true)}>
                   <Plus size={16} />
                   Create your first check
                 </button>
                 <span className="empty-footnote">
-                  HTTP requests · JSON assertions · Incident alerts
+                  Start with a name and URL · GET · HTTP 200 · Every minute
                 </span>
               </div>
             ) : visible.length === 0 ? (

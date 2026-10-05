@@ -150,6 +150,18 @@ export function CheckForm({
               history.{!monitor.enabled && ' This check will remain paused.'}
             </p>
           )}
+          {!monitor && (
+            <div className="check-start-hint">
+              <strong>Start with a name and a URL.</strong>
+              <p>
+                Use a health endpoint you own. The defaults send a GET request every minute and
+                expect HTTP 200. Test the request, then save to start scheduled monitoring.
+              </p>
+              <p>
+                Your check stays private unless you choose to show it on the public status page.
+              </p>
+            </div>
+          )}
           <div className="form-section-title">
             <Globe2 size={18} />
             <h3>Request</h3>

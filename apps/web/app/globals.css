@@ -1477,6 +1477,124 @@ small {
 .dialog-content {
   padding: 4px 24px 24px;
 }
+.setup-guide {
+  margin-bottom: 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  overflow: hidden;
+}
+.setup-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 24px;
+}
+.setup-heading h2 {
+  margin: 8px 0;
+  font-size: clamp(20px, 2vw, 26px);
+}
+.setup-heading p,
+.setup-steps p {
+  color: var(--fg-muted);
+  margin: 0;
+}
+.setup-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  border-top: 1px solid var(--border);
+}
+.setup-steps li {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 24px;
+  gap: 12px;
+  min-width: 0;
+}
+.setup-steps li + li {
+  border-left: 1px solid var(--border);
+}
+.setup-number {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.setup-steps [data-complete='true'] .setup-number {
+  color: var(--link);
+  background: var(--surface-2);
+}
+.setup-steps h3 {
+  margin: 0;
+  font-size: 16px;
+}
+.setup-steps .button {
+  margin-top: auto;
+  max-width: 100%;
+  white-space: normal;
+}
+.setup-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+.setup-footer a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.setup-footer a,
+.setup-footer button {
+  color: var(--link);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.setup-footer button {
+  padding: 0;
+  background: none;
+  border: 0;
+}
+.check-start-hint {
+  padding: 16px;
+  background: var(--surface-2);
+  border-left: 3px solid var(--link);
+  border-radius: var(--radius-xs);
+}
+.check-start-hint p {
+  color: var(--fg-muted);
+  margin: 8px 0 0;
+  font-size: 13px;
+}
+@media (max-width: 1000px) {
+  .setup-steps {
+    grid-template-columns: 1fr;
+  }
+  .setup-steps li + li {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+}
+@media (max-width: 600px) {
+  .setup-heading,
+  .setup-steps li,
+  .setup-footer {
+    padding: 18px;
+  }
+}
 .form-section-title {
   display: flex;
   gap: 8px;
