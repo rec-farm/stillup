@@ -16,7 +16,6 @@ export function Brand({ workspace = false }: { workspace?: boolean }) {
   if (!custom) {
     return (
       <span className="brand brand-official" title="StillUp">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           className="brand-lockup brand-lockup-cream"
           src="/brand/stillup-lockup-cream.svg"
@@ -24,7 +23,6 @@ export function Brand({ workspace = false }: { workspace?: boolean }) {
           height={36}
           alt="StillUp"
         />
-        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           className="brand-lockup brand-lockup-ink"
           src="/brand/stillup-lockup-ink.svg"
