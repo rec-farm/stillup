@@ -1,23 +1,12 @@
-import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { Link } from '../../../lib/navigation';
 import { docs } from '../../../lib/docs';
 import { Info, TriangleAlert, Hash, Clock3, ChevronRight } from 'lucide-react';
 import { DocsInline } from '../../../components/docs-inline';
 import { DocsToc } from '../../../components/docs-toc';
 import { DocsCode } from '../../../components/docs-code';
-export const dynamicParams = false;
-export function generateStaticParams() {
-  return docs.map(({ slug }) => ({ slug }));
-}
-export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params;
+export default function DocPage({ slug }: { slug: string }) {
   const doc = docs.find((p) => p.slug === slug);
-  return { title: doc?.title ?? 'Guide not found', description: doc?.description };
-}
-export default async function DocPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params;
-  const doc = docs.find((p) => p.slug === slug);
-  if (!doc) notFound();
+  if (!doc) return <h1>Guide not found.</h1>;
   const next = docs[(docs.indexOf(doc) + 1) % docs.length]!;
   return (
     <article className="docs-article">

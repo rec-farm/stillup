@@ -20,7 +20,7 @@ describe('public hostname routing', () => {
   it('permits the page and read-only public data while denying dashboard, login, and writes', () => {
     expect(statusDomainAction('/', 'GET')).toBe('rewrite');
     expect(statusDomainAction('/status', 'HEAD')).toBe('allow');
-    expect(statusDomainAction('/_next/static/chunks/example.js', 'GET')).toBe('allow');
+    expect(statusDomainAction('/assets/chunks/example.js', 'GET')).toBe('allow');
     expect(statusDomainAction('/api/v1/public/status', 'GET')).toBe('allow');
     for (const path of [
       '/login',

@@ -2,7 +2,6 @@
 import { WatchfulArt } from './watchful-art';
 import { EyeMark } from './eye-mark';
 import { useEffect, useRef, useState } from 'react';
-import Image from 'next/image';
 import { Check, Palette, RotateCcw, X } from 'lucide-react';
 import {
   defaultWorkspaceSettings,
@@ -168,12 +167,11 @@ export function AppearanceDialog({ onClose }: { onClose: () => void }) {
                 <div className="preview-rail">
                   <span className="preview-logo">
                     {safeLogo ? (
-                      <Image
+                      <img
                         src={draft.logoUrl}
                         width={26}
                         height={26}
                         alt=""
-                        unoptimized
                         onError={() => setFailedLogo(draft.logoUrl)}
                       />
                     ) : (

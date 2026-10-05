@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { Link } from '../../lib/navigation';
 import { Brand } from '../../components/brand';
 import { DocsNavigation } from '../../components/docs-navigation';
 import { docs } from '../../lib/docs';

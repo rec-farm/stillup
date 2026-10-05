@@ -15,7 +15,7 @@ export function statusDomainAction(path: string, method: string) {
     path === '/icon.svg' ||
     path === '/apple-icon.png' ||
     path === '/api/v1/public/status' ||
-    path.startsWith('/_next/static/')
+    path.startsWith('/assets/')
   )
     return 'allow';
   return 'deny';

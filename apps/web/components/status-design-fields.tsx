@@ -1,5 +1,4 @@
 import { useState, type ReactNode } from 'react';
-import Image from 'next/image';
 import { Check, TriangleAlert } from 'lucide-react';
 import {
   statusContrastIssues,
@@ -130,14 +129,7 @@ function LogoField({ value, onChange }: { value: string; onChange: (value: strin
       <div className="status-logo-field">
         <span className="status-logo-thumb">
           {showable && (
-            <Image
-              unoptimized
-              src={value}
-              width={32}
-              height={32}
-              alt=""
-              onError={() => setFailed(value)}
-            />
+            <img src={value} width={32} height={32} alt="" onError={() => setFailed(value)} />
           )}
         </span>
         <input

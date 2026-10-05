@@ -1,8 +1,6 @@
-import Link from 'next/link';
-import type { Metadata } from 'next';
+import { Link } from '../../lib/navigation';
 import { docs } from '../../lib/docs';
 import { WatchfulArt } from '../../components/watchful-art';
-export const metadata: Metadata = { title: 'Documentation' };
 export default function DocsHome() {
   return (
     <>

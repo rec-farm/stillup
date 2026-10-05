@@ -1,16 +1,8 @@
-import 'server-only';
-import { codeToTokens, type BundledLanguage } from 'shiki';
+import highlighted from 'virtual:docs-highlight';
 import { DocsCopyButton } from './docs-copy-button';
 import { FileCode2, Terminal } from 'lucide-react';
 
-const languages: Record<string, BundledLanguage> = {
-  shell: 'bash',
-  env: 'dotenv',
-  typescript: 'typescript',
-  javascript: 'javascript',
-  json: 'json',
-};
-export async function DocsCode({
+export function DocsCode({
   code,
   language,
   title,
@@ -19,12 +11,9 @@ export async function DocsCode({
   language?: string;
   title?: string;
 }) {
-  const { tokens } = await codeToTokens(code, {
-    lang: languages[language ?? ''] ?? 'text',
-    // Dual themes: each token carries --shiki-dark / --shiki-light; docs.css picks one per data-theme.
-    themes: { dark: 'github-dark', light: 'github-light' },
-    defaultColor: false,
-  });
+  const tokens =
+    highlighted[JSON.stringify([code, language ?? ''])] ??
+    code.split('\n').map((content) => [{ content }]);
   const Icon = language === 'shell' ? Terminal : FileCode2;
   return (
     <div className="docs-code">
@@ -45,7 +34,7 @@ export async function DocsCode({
               </span>
               <span>
                 {line.map((token, i) => (
-                  <span key={i} style={token.htmlStyle as React.CSSProperties}>
+                  <span key={i} style={token.style}>
                     {token.content}
                   </span>
                 ))}

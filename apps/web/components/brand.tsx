@@ -1,6 +1,5 @@
 'use client';
 import { useState } from 'react';
-import Image from 'next/image';
 import { useWorkspace } from './workspace-provider';
 import { EyeMark } from './eye-mark';
 
@@ -40,13 +39,12 @@ export function Brand({ workspace = false }: { workspace?: boolean }) {
   return (
     <span className="brand" title={name}>
       {logo && logo !== failedUrl ? (
-        <Image
+        <img
           className="brand-mark"
           src={logo}
           width={32}
           height={32}
           alt=""
-          unoptimized
           onError={() => setFailedUrl(logo)}
         />
       ) : (
