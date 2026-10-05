@@ -1,5 +1,5 @@
 // REC themes (BRAND §9 Settings): Dark (default) · Paper · System. The choice lives in a cookie
-// so the server renders Dark and Paper directly; only System is resolved in the browser.
+// and the pre-paint HTML script resolves the saved choice before React mounts.
 
 export type Theme = 'dark' | 'light';
 export type ThemeChoice = Theme | 'system';

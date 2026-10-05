@@ -63,6 +63,8 @@ The current API representation audit is recorded in [api-compatibility.md](api-c
 
 ## Reuse across REC products
 
+Inspected source references, version snapshots and extraction boundaries are recorded in [rec-reuse.md](rec-reuse.md), including a concrete theme-utility API that preserves each product's persistence policy. No shared package has been published by this migration.
+
 Paramtune provides the concrete reference for Vite React builds with manifests and backend-owned runtime configuration/static serving. StillUp needs PostgreSQL scheduling and public-host isolation beyond that reference.
 
 Candidates for a reusable REC system:
