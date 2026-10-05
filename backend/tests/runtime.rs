@@ -3625,6 +3625,84 @@ async fn revision_routes_coerce_numbers_and_reject_repeated_query_values() {
 
 #[tokio::test]
 #[ignore = "requires TEST_DATABASE_URL"]
+async fn wide_revision_guards_return_conflicts_instead_of_storage_range_errors() {
+    let fixture = Fixture::new().await;
+    let app = fixture.app_configure(|config| config.secrets.encryption_key = "11".repeat(32));
+    let monitor: uuid::Uuid = sqlx::query_scalar(
+        "INSERT INTO monitors(config) VALUES('{\"name\":\"Wide guard\"}') RETURNING id",
+    )
+    .fetch_one(&fixture.pool)
+    .await
+    .unwrap();
+    let channel: uuid::Uuid = sqlx::query_scalar("INSERT INTO notification_channels(name,url) VALUES('Wide guard','https://example.com/hook') RETURNING id").fetch_one(&fixture.pool).await.unwrap();
+    let window: uuid::Uuid = sqlx::query_scalar("INSERT INTO maintenance_windows(title,starts_at,ends_at) VALUES('Wide guard',now(),now()+interval '1 hour') RETURNING id").fetch_one(&fixture.pool).await.unwrap();
+    let incident: uuid::Uuid = sqlx::query_scalar(
+        "INSERT INTO status_incidents(title,monitor_ids) VALUES('Wide guard','{}') RETURNING id",
+    )
+    .fetch_one(&fixture.pool)
+    .await
+    .unwrap();
+    sqlx::query("INSERT INTO managed_secrets(name,encrypted_value) VALUES('WIDE_GUARD','{}')")
+        .execute(&fixture.pool)
+        .await
+        .unwrap();
+    for revision in [
+        2_147_483_648_i64,
+        stillup_api::check_config::MAX_SAFE_INTEGER,
+        stillup_api::check_config::MAX_SAFE_INTEGER + 1,
+    ] {
+        let expected = if revision <= stillup_api::check_config::MAX_SAFE_INTEGER {
+            StatusCode::CONFLICT
+        } else {
+            StatusCode::BAD_REQUEST
+        };
+        for (method, path, body) in [
+            (
+                "PATCH",
+                format!("/v1/checks/{monitor}"),
+                json!({"enabled":false,"expectedRevision":revision}),
+            ),
+            (
+                "PUT",
+                "/v1/workspace".into(),
+                json!({"config":{},"expectedRevision":revision}),
+            ),
+            (
+                "PUT",
+                "/v1/status-management/settings".into(),
+                json!({"config":{"title":"Wide guard"},"expectedRevision":revision}),
+            ),
+            (
+                "PUT",
+                format!("/v1/notification-channels/{channel}"),
+                json!({"name":"Wide guard","url":"https://example.com/hook","expectedRevision":revision}),
+            ),
+            (
+                "PUT",
+                "/v1/secrets/WIDE_GUARD".into(),
+                json!({"enabled":false,"expectedRevision":revision}),
+            ),
+            (
+                "PUT",
+                format!("/v1/status-management/maintenance/{window}"),
+                json!({"title":"Wide guard","startsAt":"2026-10-05T00:00:00Z","endsAt":"2026-10-05T01:00:00Z","expectedRevision":revision}),
+            ),
+            (
+                "POST",
+                format!("/v1/status-management/incidents/{incident}/updates"),
+                json!({"source":"manual","stage":"investigating","body":"Wide guard","expectedRevision":revision}),
+            ),
+        ] {
+            let (status, body, _) = request(app.clone(), method, &path, body, true).await;
+            assert_eq!(status, expected, "{method} {path}: {body}");
+            assert!(body["error"].is_string());
+        }
+    }
+    fixture.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL"]
 async fn native_pool_replaces_terminated_idle_connections() {
     let fixture = Fixture::empty().await;
     let url = std::env::var("TEST_DATABASE_URL").unwrap();

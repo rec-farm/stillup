@@ -198,9 +198,9 @@ async fn save(state: &AppState, input: &Value, existing: Option<&str>) -> Result
         Some(check_config::integer(
             &input["expectedRevision"],
             1,
-            i32::MAX as i64,
+            crate::check_config::MAX_SAFE_INTEGER,
             "expectedRevision",
-        )? as i32)
+        )?)
     } else {
         None
     };
@@ -231,7 +231,7 @@ async fn save(state: &AppState, input: &Value, existing: Option<&str>) -> Result
         .await?;
     if existing.is_some() {
         let row = row.ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "Secret not found".into()))?;
-        if expected != Some(row.try_get::<i32, _>("revision")?) {
+        if expected != Some(i64::from(row.try_get::<i32, _>("revision")?)) {
             return Err(ApiError::conflict(
                 "Secret changed elsewhere. Reopen it before saving.",
             ));

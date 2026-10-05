@@ -405,15 +405,13 @@ async fn save_workspace(
     let expected = crate::check_config::integer(
         &input["expectedRevision"],
         0,
-        i32::MAX as i64,
+        crate::check_config::MAX_SAFE_INTEGER,
         "expectedRevision",
     )?;
     let config = input
         .get("config")
         .ok_or_else(|| ApiError::bad("config: Required"))?;
-    Ok(Json(
-        workspace::save(&state.pool, config, expected as i32).await?,
-    ))
+    Ok(Json(workspace::save(&state.pool, config, expected).await?))
 }
 pub(crate) fn timestamp(row: &PgRow, name: &str) -> Result<Value, sqlx::Error> {
     Ok(row

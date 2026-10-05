@@ -111,7 +111,7 @@ async fn save(state: &AppState, input: &Value, id: Option<Uuid>) -> Result<Value
         Some(check_config::integer(
             &input["expectedRevision"],
             1,
-            i32::MAX.into(),
+            crate::check_config::MAX_SAFE_INTEGER,
             "expectedRevision",
         )?)
     } else {

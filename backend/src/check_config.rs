@@ -1,6 +1,7 @@
 use crate::error::ApiError;
 use serde_json::{Map, Value, json};
 use std::collections::HashSet;
+pub const MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
 pub fn text(value: &Value, min: usize, max: usize, field: &str) -> Result<String, ApiError> {
     let value = value
         .as_str()

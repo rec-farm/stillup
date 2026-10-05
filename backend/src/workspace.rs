@@ -68,7 +68,7 @@ pub async fn read(pool: &PgPool) -> Result<Value, ApiError> {
     }
 }
 
-pub async fn save(pool: &PgPool, input: &Value, expected: i32) -> Result<Value, ApiError> {
+pub async fn save(pool: &PgPool, input: &Value, expected: i64) -> Result<Value, ApiError> {
     let config = validate(input)?;
     let mut tx = pool.begin().await?;
     sqlx::query("SELECT pg_advisory_xact_lock(hashtext('stillup-workspace-settings'))")
@@ -79,7 +79,7 @@ pub async fn save(pool: &PgPool, input: &Value, expected: i32) -> Result<Value, 
             .fetch_optional(&mut *tx)
             .await?
             .unwrap_or(0);
-    if revision != expected {
+    if i64::from(revision) != expected {
         return Err(ApiError::conflict(
             "Appearance changed elsewhere. Close and reopen this editor to load the latest settings.",
         ));

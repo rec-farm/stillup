@@ -235,9 +235,9 @@ pub async fn save_settings(
     let revision = check_config::integer(
         &input["expectedRevision"],
         0,
-        i32::MAX.into(),
+        crate::check_config::MAX_SAFE_INTEGER,
         "expectedRevision",
-    )? as i32;
+    )?;
     let ids = config["groups"]
         .as_array()
         .unwrap()
@@ -254,7 +254,7 @@ pub async fn save_settings(
         .fetch_optional(&mut *tx)
         .await?
         .unwrap_or(0);
-    if current != revision {
+    if i64::from(current) != revision {
         return Err(ApiError::conflict(
             "Public page settings changed elsewhere. Reload before saving.",
         ));
@@ -353,10 +353,10 @@ async fn maintenance(state: &AppState, input: &Value, id: Option<Uuid>) -> Resul
         let revision = check_config::integer(
             &input["expectedRevision"],
             1,
-            i32::MAX.into(),
+            crate::check_config::MAX_SAFE_INTEGER,
             "expectedRevision",
-        )? as i32;
-        sqlx::query("UPDATE maintenance_windows SET title=$1,description=$2,monitor_ids=$3,starts_at=$4,ends_at=$5,cancelled=$6,revision=revision+1 WHERE id=$7 AND revision=$8 RETURNING *").bind(title).bind(description).bind(monitor_ids).bind(start).bind(end).bind(cancelled).bind(id).bind(revision).fetch_optional(&state.pool).await?.ok_or_else(||ApiError::conflict("Maintenance changed elsewhere or was removed. Reload before saving."))?
+        )?;
+        sqlx::query("UPDATE maintenance_windows SET title=$1,description=$2,monitor_ids=$3,starts_at=$4,ends_at=$5,cancelled=$6,revision=revision+1 WHERE id=$7 AND revision=$8::bigint RETURNING *").bind(title).bind(description).bind(monitor_ids).bind(start).bind(end).bind(cancelled).bind(id).bind(revision).fetch_optional(&state.pool).await?.ok_or_else(||ApiError::conflict("Maintenance changed elsewhere or was removed. Reload before saving."))?
     } else {
         sqlx::query("INSERT INTO maintenance_windows(title,description,monitor_ids,starts_at,ends_at,cancelled) VALUES($1,$2,$3,$4,$5,$6) RETURNING *").bind(title).bind(description).bind(monitor_ids).bind(start).bind(end).bind(cancelled).fetch_one(&state.pool).await?
     };
@@ -422,9 +422,9 @@ pub async fn update_incident(
     let revision = check_config::integer(
         &input["expectedRevision"],
         1,
-        i32::MAX.into(),
+        crate::check_config::MAX_SAFE_INTEGER,
         "expectedRevision",
-    )? as i32;
+    )?;
     let mut tx = state.pool.begin().await?;
     let query = if source == "manual" {
         "SELECT revision,resolved_at FROM status_incidents WHERE id=$1 FOR UPDATE"
@@ -436,7 +436,7 @@ pub async fn update_incident(
         .fetch_optional(&mut *tx)
         .await?
         .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "Incident not found".into()))?;
-    if row.get::<i32, _>("revision") != revision {
+    if i64::from(row.get::<i32, _>("revision")) != revision {
         return Err(ApiError::conflict(
             "Incident was updated elsewhere. Reload before publishing.",
         ));

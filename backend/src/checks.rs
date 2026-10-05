@@ -105,14 +105,15 @@ enum Change {
     Archive,
     Restore,
 }
-fn expected(input: &Value, required: bool) -> Result<Option<i32>, ApiError> {
+fn expected(input: &Value, required: bool) -> Result<Option<i64>, ApiError> {
     match input.get("expectedRevision") {
         None if !required => Ok(None),
-        Some(value) => {
-            Ok(Some(
-                crate::check_config::integer(value, 1, i32::MAX as i64, "expectedRevision")? as i32,
-            ))
-        }
+        Some(value) => Ok(Some(crate::check_config::integer(
+            value,
+            1,
+            crate::check_config::MAX_SAFE_INTEGER,
+            "expectedRevision",
+        )?)),
         _ => Err(ApiError::bad("expectedRevision: Required")),
     }
 }
@@ -120,7 +121,7 @@ async fn change(
     state: &AppState,
     id: Uuid,
     change: Change,
-    expected: Option<i32>,
+    expected: Option<i64>,
 ) -> Result<Value, ApiError> {
     if let Change::Edit(config) = &change {
         validate_routes(state, config).await?;
@@ -139,7 +140,7 @@ async fn change(
         ));
     }
     let revision: i32 = row.try_get("config_revision")?;
-    if expected.is_some_and(|expected| expected != revision) {
+    if expected.is_some_and(|expected| expected != i64::from(revision)) {
         return Err(ApiError::conflict(
             "This check was edited elsewhere. Reopen the editor to load the latest configuration. Your changes have not been saved.",
         ));
