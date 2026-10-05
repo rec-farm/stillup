@@ -44,4 +44,5 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://stillup:stillup@127.0.0.1:5437/stillup
       - run: pnpm build
+      - run: docker build --target api -t stillup-api:ci .
       - run: docker build --target probe -t stillup-probe:ci .

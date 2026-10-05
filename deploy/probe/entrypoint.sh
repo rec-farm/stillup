@@ -4,8 +4,8 @@ set -eu
 if [ "$(id -u)" = 0 ]; then
   probe_data="${STILLUP_PROBE_DATA:-/data}"
   mkdir -p "$probe_data"
-  chown node:node "$probe_data"
+  chown stillup:stillup "$probe_data"
   chmod 700 "$probe_data"
-  exec setpriv --reuid=node --regid=node --init-groups node --import tsx src/main.ts
+  exec setpriv --reuid=stillup --regid=stillup --init-groups /usr/local/bin/stillup-probe
 fi
-exec node --import tsx src/main.ts
+exec /usr/local/bin/stillup-probe
