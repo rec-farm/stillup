@@ -28,4 +28,8 @@ All nine guide routes rendered their expected headings at the mobile viewport wi
 
 Both browser contexts, native API and worker were stopped. The second fixture removed its unique database, and inventory showed no `rust_browser_*` database remained.
 
-These checks do not establish complete browser coverage. Remaining checks include archive/restore, complete appearance controls and custom-logo fallback, secret rotation persistence/usage after reload, location state persistence after reload, and documentation keyboard/failure paths beyond the tested search shortcut and chunk failure. Mobile viewport emulation does not establish physical-device behavior. Live Handstamp OIDC, production data migration and production delivery were not exercised.
+## Check lifecycle at `ce8fed6`
+
+A third isolated installation seeded one check through the native API, then used the authenticated browser to archive it with confirmation. After a fresh dashboard navigation, the Archived filter showed the retained check. Restoring returned it in the paused state with Run now disabled. Resume was invoked before another dashboard navigation; its persisted state was not separately inspected in this browser pass (native PostgreSQL tests cover that transition). The fixture and browser session were stopped and the unique database removed.
+
+These checks do not establish complete browser coverage. Remaining checks include complete appearance controls and custom-logo fallback, secret rotation persistence/usage after reload, location state persistence after reload, and documentation keyboard/failure paths beyond the tested search shortcut and chunk failure. Mobile viewport emulation does not establish physical-device behavior. Live Handstamp OIDC, production data migration and production delivery were not exercised.
