@@ -1,14 +1,11 @@
+use crate::json::ApiPath;
 use crate::{
     check_config,
     error::ApiError,
     json::ApiJson,
     server::{AppState, timestamp},
 };
-use axum::{
-    Json,
-    extract::{Path, State},
-    http::StatusCode,
-};
+use axum::{Json, extract::State, http::StatusCode};
 use chrono::{DateTime, Utc};
 use serde_json::{Map, Value, json};
 use sqlx::{Row, postgres::PgRow};
@@ -376,7 +373,7 @@ pub async fn create_maintenance(
 }
 pub async fn edit_maintenance(
     State(state): State<AppState>,
-    Path(value): Path<String>,
+    ApiPath(value): ApiPath<String>,
     ApiJson(input): ApiJson,
 ) -> Result<Json<Value>, ApiError> {
     Ok(Json(
@@ -405,7 +402,7 @@ pub async fn create_incident(
 }
 pub async fn update_incident(
     State(state): State<AppState>,
-    Path(value): Path<String>,
+    ApiPath(value): ApiPath<String>,
     ApiJson(input): ApiJson,
 ) -> Result<Json<Value>, ApiError> {
     object(&input)?;

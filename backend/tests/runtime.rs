@@ -265,7 +265,7 @@ async fn checks_preserve_history_and_fence_execution_when_paused_or_archived() {
     let fixture = Fixture::new().await;
     let app = fixture.app();
     let id: uuid::Uuid = sqlx::query_scalar(
-        "INSERT INTO monitors(config,status,last_observed_at) VALUES($1,'down',now()) RETURNING id",
+        "INSERT INTO monitors(config,status,last_observed_at,created_at) VALUES($1,'down',now(),'2026-10-05T03:00:00.123456-03:00') RETURNING id",
     )
     .bind(json!({"name":"Fixture","intervalSeconds":60}))
     .fetch_one(&fixture.pool)
@@ -274,11 +274,9 @@ async fn checks_preserve_history_and_fence_execution_when_paused_or_archived() {
     sqlx::query("INSERT INTO check_revisions(monitor_id,revision,config) SELECT id,config_revision,config FROM monitors WHERE id=$1").bind(id).execute(&fixture.pool).await.unwrap();
     let (_, data, _) = request(app.clone(), "GET", "/v1/dashboard", Value::Null, true).await;
     assert_eq!(data["monitors"][0]["health"], "down");
-    assert!(
-        data["monitors"][0]["createdAt"]
-            .as_str()
-            .unwrap()
-            .ends_with('Z')
+    assert_eq!(
+        data["monitors"][0]["createdAt"],
+        "2026-10-05T06:00:00.123456Z"
     );
     let path = format!("/v1/checks/{id}");
     assert_eq!(
@@ -424,6 +422,35 @@ async fn malformed_and_oversized_json_keep_the_api_error_contract() {
                 .unwrap();
         assert!(data["error"].is_string());
     }
+    fixture.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL"]
+async fn malformed_paths_keep_json_errors_on_all_parameterized_route_families() {
+    let fixture = Fixture::new().await;
+    let app = fixture.app();
+    for prefix in ["/v1", "/api/v1"] {
+        for (method, suffix) in [
+            ("GET", "/checks/%FF"),
+            ("GET", "/checks/id/revisions/%FF"),
+            ("GET", "/notification-deliveries/%FF"),
+            ("PUT", "/notification-channels/%FF"),
+            ("PUT", "/status-management/maintenance/%FF"),
+            ("PUT", "/secrets/%FF"),
+            ("DELETE", "/locations/%FF"),
+            ("GET", "/incidents/%FF"),
+        ] {
+            let path = format!("{prefix}{suffix}");
+            let (status, body, headers) =
+                request(app.clone(), method, &path, json!({}), true).await;
+            assert_eq!(status, StatusCode::BAD_REQUEST, "{method} {path}");
+            assert_eq!(headers[header::CONTENT_TYPE], "application/json");
+            assert_eq!(body["error"], "Invalid route parameters");
+        }
+    }
+    let (status, _, _) = request(app, "GET", "/v1/checks/%FF", Value::Null, false).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
     fixture.close().await;
 }
 

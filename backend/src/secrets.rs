@@ -1,3 +1,4 @@
+use crate::json::ApiPath;
 use crate::{
     check_config,
     error::ApiError,
@@ -8,11 +9,7 @@ use aes_gcm::{
     Aes256Gcm, Nonce,
     aead::{Aead, AeadCore, KeyInit, OsRng, Payload},
 };
-use axum::{
-    Json,
-    extract::{Path, State},
-    http::StatusCode,
-};
+use axum::{Json, extract::State, http::StatusCode};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};
 use sqlx::{PgPool, Row};
@@ -291,7 +288,7 @@ pub async fn create(
 }
 pub async fn edit(
     State(state): State<AppState>,
-    Path(name): Path<String>,
+    ApiPath(name): ApiPath<String>,
     ApiJson(input): ApiJson,
 ) -> Result<Json<Value>, ApiError> {
     Ok(Json(save(&state, &input, Some(&name)).await?))

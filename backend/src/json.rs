@@ -1,11 +1,22 @@
 use crate::error::ApiError;
 use axum::{
     Json,
-    extract::{FromRequest, FromRequestParts, Query, Request},
+    extract::{FromRequest, FromRequestParts, Path, Query, Request},
     http::request::Parts,
 };
 use serde_json::Value;
 use std::collections::HashMap;
+
+pub struct ApiPath<T>(pub T);
+impl<S: Send + Sync, T: serde::de::DeserializeOwned + Send> FromRequestParts<S> for ApiPath<T> {
+    type Rejection = ApiError;
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        Path::<T>::from_request_parts(parts, state)
+            .await
+            .map(|Path(value)| Self(value))
+            .map_err(|_| ApiError::bad("Invalid route parameters"))
+    }
+}
 
 pub struct ApiQuery<const INCIDENT_FILTER: bool = false>(pub HashMap<String, String>);
 impl<S: Send + Sync, const INCIDENT_FILTER: bool> FromRequestParts<S>
@@ -82,6 +93,48 @@ impl<S: Send + Sync> FromRequest<S> for ApiJson {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::{Router, body::Body, http::StatusCode, routing::get};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn invalid_utf8_paths_keep_json_errors_and_valid_paths_decode() {
+        let app = Router::new()
+            .route(
+                "/single/{value}",
+                get(|ApiPath(value): ApiPath<String>| async move { Json(value) }),
+            )
+            .route(
+                "/pair/{id}/{revision}",
+                get(|ApiPath(pair): ApiPath<(String, String)>| async move { Json(pair) }),
+            );
+        for path in ["/single/%FF", "/pair/id/%FF", "/pair/%C3%28/1"] {
+            let response = app
+                .clone()
+                .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{path}");
+            assert_eq!(response.headers()["content-type"], "application/json");
+            let body = response.into_body().collect().await.unwrap().to_bytes();
+            let value: Value = serde_json::from_slice(&body).unwrap();
+            assert_eq!(value["error"], "Invalid route parameters");
+        }
+        for (path, expected) in [
+            ("/single/caf%C3%A9", serde_json::json!("café")),
+            ("/pair/id/1%20", serde_json::json!(["id", "1 "])),
+        ] {
+            let response = app
+                .clone()
+                .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            let body = response.into_body().collect().await.unwrap().to_bytes();
+            assert_eq!(serde_json::from_slice::<Value>(&body).unwrap(), expected);
+        }
+    }
+
     #[test]
     fn coerced_integers_match_original_route_validator() {
         let cases: Vec<Value> = serde_json::from_str(include_str!(

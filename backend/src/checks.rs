@@ -1,13 +1,10 @@
+use crate::json::ApiPath;
 use crate::{
     error::ApiError,
     json::{ApiJson, ApiQuery, positive_route_integer},
     server::{AppState, monitor, timestamp},
 };
-use axum::{
-    Json,
-    extract::{Path, State},
-    http::StatusCode,
-};
+use axum::{Json, extract::State, http::StatusCode};
 use chrono::{DateTime, Utc};
 use serde_json::{Value, json};
 use sqlx::{Row, postgres::PgRow};
@@ -27,13 +24,13 @@ async fn require(state: &AppState, id: Uuid) -> Result<PgRow, ApiError> {
 }
 pub async fn read(
     State(state): State<AppState>,
-    Path(value): Path<String>,
+    ApiPath(value): ApiPath<String>,
 ) -> Result<Json<Value>, ApiError> {
     Ok(Json(monitor(&require(&state, id(&value)?).await?)?))
 }
 pub async fn runs(
     State(state): State<AppState>,
-    Path(value): Path<String>,
+    ApiPath(value): ApiPath<String>,
 ) -> Result<Json<Value>, ApiError> {
     let id = id(&value)?;
     require(&state, id).await?;
@@ -57,7 +54,7 @@ fn revision(row: &PgRow) -> Result<Value, sqlx::Error> {
 }
 pub async fn revisions(
     State(state): State<AppState>,
-    Path(value): Path<String>,
+    ApiPath(value): ApiPath<String>,
     ApiQuery(query): ApiQuery,
 ) -> Result<Json<Value>, ApiError> {
     let id = id(&value)?;
@@ -84,7 +81,7 @@ pub async fn revisions(
 }
 pub async fn read_revision(
     State(state): State<AppState>,
-    Path((value, number)): Path<(String, String)>,
+    ApiPath((value, number)): ApiPath<(String, String)>,
 ) -> Result<Json<Value>, ApiError> {
     let number = positive_route_integer(&number)
         .ok_or_else(|| ApiError::bad("revision: Expected a positive integer"))?;
@@ -201,7 +198,7 @@ async fn change(
 }
 pub async fn set_enabled(
     State(state): State<AppState>,
-    Path(value): Path<String>,
+    ApiPath(value): ApiPath<String>,
     ApiJson(input): ApiJson,
 ) -> Result<Json<Value>, ApiError> {
     let enabled = input
@@ -220,7 +217,7 @@ pub async fn set_enabled(
 }
 pub async fn archive(
     State(state): State<AppState>,
-    Path(value): Path<String>,
+    ApiPath(value): ApiPath<String>,
     ApiJson(input): ApiJson,
 ) -> Result<Json<Value>, ApiError> {
     Ok(Json(
@@ -235,7 +232,7 @@ pub async fn archive(
 }
 pub async fn restore(
     State(state): State<AppState>,
-    Path(value): Path<String>,
+    ApiPath(value): ApiPath<String>,
     ApiJson(input): ApiJson,
 ) -> Result<Json<Value>, ApiError> {
     Ok(Json(
@@ -302,7 +299,7 @@ pub async fn create(
 }
 pub async fn edit(
     State(state): State<AppState>,
-    Path(value): Path<String>,
+    ApiPath(value): ApiPath<String>,
     ApiJson(input): ApiJson,
 ) -> Result<Json<Value>, ApiError> {
     let config = crate::check_config::validate(input.get("config").unwrap_or(&Value::Null))?;

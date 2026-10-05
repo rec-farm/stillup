@@ -1,14 +1,11 @@
+use crate::json::ApiPath;
 use crate::{
     check_config,
     error::ApiError,
     json::ApiJson,
     server::{AppState, timestamp},
 };
-use axum::{
-    Json,
-    extract::{Path, State},
-    http::StatusCode,
-};
+use axum::{Json, extract::State, http::StatusCode};
 use serde_json::{Value, json};
 use sqlx::{PgPool, Row, postgres::PgRow};
 use uuid::Uuid;
@@ -92,7 +89,7 @@ pub async fn create(
 }
 pub async fn edit(
     State(state): State<AppState>,
-    Path(value): Path<String>,
+    ApiPath(value): ApiPath<String>,
     ApiJson(input): ApiJson,
 ) -> Result<Json<Value>, ApiError> {
     Ok(Json(save(&state, &input, Some(id(&value)?)).await?))
@@ -202,7 +199,7 @@ pub async fn queue_event(
 
 pub async fn test_channel(
     State(state): State<AppState>,
-    Path(value): Path<String>,
+    ApiPath(value): ApiPath<String>,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
     let channel_id = id(&value)?;
     let mut tx = state.pool.begin().await?;
@@ -258,7 +255,7 @@ pub async fn history(
 }
 pub async fn attempts(
     State(state): State<AppState>,
-    Path(value): Path<String>,
+    ApiPath(value): ApiPath<String>,
 ) -> Result<Json<Value>, ApiError> {
     let delivery_id = id(&value)?;
     let row = sqlx::query("SELECT * FROM notification_deliveries WHERE id=$1")
@@ -277,7 +274,7 @@ pub async fn attempts(
 }
 pub async fn retry(
     State(state): State<AppState>,
-    Path(value): Path<String>,
+    ApiPath(value): ApiPath<String>,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
     let delivery_id = id(&value)?;
     let mut tx = state.pool.begin().await?;

@@ -1,3 +1,4 @@
+use crate::json::ApiPath;
 use crate::{
     error::ApiError,
     executor,
@@ -5,11 +6,7 @@ use crate::{
     notifications,
     server::AppState,
 };
-use axum::{
-    Json,
-    extract::{Path, State},
-    http::StatusCode,
-};
+use axum::{Json, extract::State, http::StatusCode};
 use chrono::{DateTime, Utc};
 use serde_json::{Value, json};
 use sqlx::{Row, postgres::PgRow};
@@ -66,7 +63,7 @@ pub async fn enqueue(state: &AppState, requested: Option<Uuid>) -> Result<i64, A
 }
 pub async fn run_now(
     State(state): State<AppState>,
-    Path(value): Path<String>,
+    ApiPath(value): ApiPath<String>,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
     let count = enqueue(&state, Some(notifications::id(&value)?)).await?;
     Ok((
@@ -252,7 +249,7 @@ pub async fn run_one(state: &AppState) -> Result<bool, ApiError> {
 
 pub async fn incident_timeline(
     State(state): State<AppState>,
-    Path(value): Path<String>,
+    ApiPath(value): ApiPath<String>,
     crate::json::ApiQuery(query): crate::json::ApiQuery,
 ) -> Result<Json<Value>, ApiError> {
     let incident_id = notifications::id(&value)?;

@@ -42,6 +42,8 @@ Branch: `feat/vite-rust-migration`. Deliver one PR replacing the runtime, retain
 
 ## Completion gates
 
+The current API representation audit is recorded in [api-compatibility.md](api-compatibility.md). Malformed path parameters now retain JSON errors throughout native route families, with valid percent-decoding and authentication order covered. Database reads preserve microsecond timestamps instead of truncating them. Twenty-eight native unit tests, the standalone HTTP/probe tests, twenty-eight PostgreSQL tests and Clippy pass. Initial authenticated desktop/mobile evidence and remaining browser coverage are recorded in [browser-verification.md](browser-verification.md).
+
 - [ ] Native Rust API implements every existing route in `tests/legacy-api/src/server.ts`, including validation and response/error contracts.
 - [ ] Authentication: token sign-in/out, cookies, expiration, CSRF, rate limits, OIDC discovery/PKCE/state/callback/logout and safe redirects. Existing sessions continue to work.
 - [ ] Checks: create/edit/revision history, revision guards, pause/archive/restore, ad hoc execution and run history.
@@ -79,7 +81,7 @@ Keep REC brand tokens and guidance authoritative in `reciam-brand`; keep product
 - `cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings`.
 - `cargo run --manifest-path backend/Cargo.toml --bin stillup-probe`: run the standalone probe with `STILLUP_URL`, `STILLUP_PROBE_DATA`, first-run `STILLUP_ENROLLMENT_TOKEN` and the existing explicit HTTP/private-network flags. Keep its data volume across restarts.
 - `cargo run --manifest-path backend/Cargo.toml -- handoff`: transfer pending legacy queue jobs after stopping the old runtime. Rejects active unexpired claims; leaves completed legacy rows for audit. This command mutates the configured database.
-- `cargo run --manifest-path backend/Cargo.toml -- worker`: initialize channels, hand off legacy work, and start native worker loops. Regional rounds and local probe execution are included. The remaining API ports and deployment replacement are pending, so this is a development target.
+- `cargo run --manifest-path backend/Cargo.toml -- worker`: initialize channels, hand off legacy work, and start native worker loops. Regional rounds and local probe execution are included. Use the release executable or container for deployment after the migration's remaining completion gates pass.
 - `cargo run --manifest-path backend/Cargo.toml -- migrate`: apply the existing migration ledger and exit. The executable reads `.env` plus process environment; never use this on a database you did not intend to migrate.
 
 Until the completion gates pass, the Rust executable is a migration development target, not the production deployment entrypoint.

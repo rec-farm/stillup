@@ -414,7 +414,7 @@ async fn save_workspace(
 pub(crate) fn timestamp(row: &PgRow, name: &str) -> Result<Value, sqlx::Error> {
     Ok(row
         .try_get::<Option<DateTime<Utc>>, _>(name)?
-        .map(|date| Value::String(date.to_rfc3339_opts(SecondsFormat::Millis, true)))
+        .map(|date| Value::String(date.to_rfc3339_opts(SecondsFormat::AutoSi, true)))
         .unwrap_or(Value::Null))
 }
 pub fn monitor(row: &PgRow) -> Result<Value, sqlx::Error> {

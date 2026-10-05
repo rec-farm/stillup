@@ -1,3 +1,4 @@
+use crate::json::ApiPath;
 use crate::{
     check_config,
     error::ApiError,
@@ -5,11 +6,7 @@ use crate::{
     server::{AppState, timestamp},
 };
 use aes_gcm::aead::{OsRng, rand_core::RngCore};
-use axum::{
-    Json,
-    extract::{Path, State},
-    http::StatusCode,
-};
+use axum::{Json, extract::State, http::StatusCode};
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -85,7 +82,7 @@ pub async fn create(
 }
 pub async fn renew(
     State(state): State<AppState>,
-    Path(value): Path<String>,
+    ApiPath(value): ApiPath<String>,
 ) -> Result<Json<Value>, ApiError> {
     crate::notifications::id(&value)?;
     let id = value;
@@ -99,7 +96,7 @@ pub async fn renew(
 }
 pub async fn revoke(
     State(state): State<AppState>,
-    Path(value): Path<String>,
+    ApiPath(value): ApiPath<String>,
 ) -> Result<Json<Value>, ApiError> {
     crate::notifications::id(&value)?;
     let id = value;
@@ -489,7 +486,7 @@ pub async fn report_route(
 
 pub async fn observations(
     State(state): State<AppState>,
-    Path(value): Path<String>,
+    ApiPath(value): ApiPath<String>,
 ) -> Result<Json<Value>, ApiError> {
     let monitor_id = crate::notifications::id(&value)?;
     let monitor = sqlx::query("SELECT * FROM monitors WHERE id=$1")
