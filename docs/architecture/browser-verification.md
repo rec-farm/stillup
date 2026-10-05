@@ -18,4 +18,14 @@ Desktop viewport was 1280 pixels wide; mobile viewport was 390 × 844. Dashboard
 
 The fixture, API, worker and isolated browser session were stopped, and a database inventory confirmed no `rust_browser_*` database remained.
 
-These checks do not establish complete browser coverage. Appearance controls, secret management, remote-location administration, archive/restore, all documentation routes and keyboard/failure fallback paths remain to be checked. Mobile viewport emulation does not establish physical-device behavior. Live Handstamp OIDC, production data migration and production delivery were not exercised.
+## Additional pass at `d13e4f5`
+
+A second disposable installation verified the secret creation UI and submitted a replacement value through the rotation form. The saved overview displayed encrypted-secret metadata and a named reference, without showing the original value. Location administration created an enrollment, confirmed replacement, and confirmed revocation; the revoked entry no longer offered a revoke action.
+
+The public-page editor saved the Midnight preset with a custom title and brand name. A fresh public navigation displayed the saved identity, dark palette, matching document title and `#0b1020` theme-color. The inspected mobile screenshot remained readable at 390 pixels, with document width 390.
+
+All nine guide routes rendered their expected headings at the mobile viewport with no page overflow. The `/` keyboard shortcut focused the documentation search input. A separate fresh browser context aborted the documentation JavaScript chunk before navigation: the monitoring-as-code guide retained its static heading, navigation, prose and code (over 7,000 text characters). Its inspected screenshot and document width confirmed a readable mobile fallback. The first attempted abort reused a warmed context and rendered the interactive guide, so only the fresh-context result establishes chunk-failure behavior.
+
+Both browser contexts, native API and worker were stopped. The second fixture removed its unique database, and inventory showed no `rust_browser_*` database remained.
+
+These checks do not establish complete browser coverage. Remaining checks include archive/restore, complete appearance controls and custom-logo fallback, secret rotation persistence/usage after reload, location state persistence after reload, and documentation keyboard/failure paths beyond the tested search shortcut and chunk failure. Mobile viewport emulation does not establish physical-device behavior. Live Handstamp OIDC, production data migration and production delivery were not exercised.
