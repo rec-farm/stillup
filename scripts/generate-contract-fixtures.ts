@@ -355,3 +355,112 @@ await writeFixture(
     2,
   ) + '\n',
 );
+
+// Public status settings retain the saved pre-theme schema and browser contract.
+const { statusSettingsSchema, maintenanceSchema } = await import('../packages/core/src/status');
+const statusCases: { name: string; input: unknown }[] = [
+  { name: 'saved legacy defaults', input: { title: 'Status' } },
+  {
+    name: 'normalized text and unknown fields',
+    input: { title: ' Status ', brandName: ' Acme ', extra: true },
+  },
+  {
+    name: 'custom appearance and content',
+    input: {
+      title: 'Status',
+      theme: 'dark',
+      layout: 'wide',
+      font: 'mono',
+      cornerRadius: 0,
+      darkTextColor: '#ABCDEF',
+      showPoweredBy: false,
+      links: [{ label: ' Support ', url: 'https://example.com/#help' }],
+      content: [
+        {
+          id: '00000000-0000-4000-8000-000000000001',
+          title: ' Help ',
+          body: '<script>plain text</script>',
+          position: 'before-services',
+        },
+      ],
+      groups: [{ id: '00000000-0000-4000-8000-000000000002', name: ' Services ', monitorIds: [] }],
+    },
+  },
+];
+for (const [key, values] of Object.entries({
+  title: [null, '', ' ', 1, '😀'.repeat(100), '😀'.repeat(101)],
+  brandName: ['', null],
+  description: ['x'.repeat(1001), null],
+  cornerRadius: [-1, 33, 1.5, 16.0, '16'],
+  theme: ['auto', 'system', null],
+  font: ['serif', 'invalid'],
+  layout: ['compact', 'invalid'],
+  accentColor: ['#ABCDEF', '', '#fff'],
+  darkTextColor: ['', 'white'],
+  logoUrl: [
+    'javascript:alert(1)',
+    'https://user:secret@example.com',
+    'http://example.com/image.png',
+    '',
+  ],
+  showPoweredBy: [false, 'false', null],
+  links: [
+    Array(9).fill({ label: 'Link', url: 'https://example.com' }),
+    [{ label: 'Bad', url: '' }],
+  ],
+  groups: [{}, [{ id: '00000000-0000-4000-8000-000000000002', name: 'Group' }]],
+  content: [
+    Array(13).fill({
+      id: '00000000-0000-4000-8000-000000000001',
+      title: 'Help',
+      body: '',
+      position: 'after-services',
+    }),
+  ],
+})) {
+  values.forEach((value, index) =>
+    statusCases.push({ name: `${key} ${index}`, input: { title: 'Status', [key]: value } }),
+  );
+}
+await writeFixture(
+  new URL('../backend/tests/fixtures/status-contracts.json', import.meta.url),
+  JSON.stringify(
+    statusCases.map(({ name, input }) => {
+      try {
+        const result = statusSettingsSchema.safeParse(input);
+        return {
+          name,
+          input,
+          valid: result.success,
+          ...(result.success ? { output: result.data } : {}),
+        };
+      } catch {
+        return { name, input, valid: false };
+      }
+    }),
+    null,
+    2,
+  ) + '\n',
+);
+const dates = [
+  '2026-10-05T12:34:56Z',
+  '2026-10-05T12:34:56+02:00',
+  '2026-10-05T12:34:56.123456789123Z',
+  '2026-10-05T12:34Z',
+  '2026-10-05 12:34:56Z',
+  '2026-10-05t12:34:56z',
+  '2026-02-30T12:34:56Z',
+  '2026-10-05T12:34:60Z',
+  '2026-10-05T12:34:56+24:00',
+];
+await writeFixture(
+  new URL('../backend/tests/fixtures/status-date-contracts.json', import.meta.url),
+  JSON.stringify(
+    dates.map((date) => ({
+      date,
+      valid: maintenanceSchema.shape.startsAt.safeParse(date).success,
+    })),
+    null,
+    2,
+  ) + '\n',
+);

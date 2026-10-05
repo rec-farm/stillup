@@ -49,6 +49,28 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/auth/oidc/start", get(crate::oidc::start))
         .route("/v1/auth/oidc/callback", get(crate::oidc::callback))
         .route("/v1/dashboard", get(dashboard))
+        .route("/v1/public/status", get(crate::status::public_status))
+        .route("/v1/status-management", get(crate::status::admin))
+        .route(
+            "/v1/status-management/settings",
+            axum::routing::put(crate::status::save_settings),
+        )
+        .route(
+            "/v1/status-management/maintenance",
+            post(crate::status::create_maintenance),
+        )
+        .route(
+            "/v1/status-management/maintenance/{id}",
+            axum::routing::put(crate::status::edit_maintenance),
+        )
+        .route(
+            "/v1/status-management/incidents",
+            post(crate::status::create_incident),
+        )
+        .route(
+            "/v1/status-management/incidents/{id}/updates",
+            post(crate::status::update_incident),
+        )
         .route("/v1/probe/enroll", post(crate::probes::enroll_route))
         .route("/v1/probe/poll", post(crate::probes::poll_route))
         .route("/v1/probe/results", post(crate::probes::report_route))
@@ -281,7 +303,8 @@ async fn protect(State(state): State<AppState>, request: Request, next: Next) ->
     ) && matches!(method, "GET" | "HEAD"))
         || (path == "/health" && matches!(method, "GET" | "HEAD"))
         || (path == "/v1/session" && matches!(method, "POST" | "DELETE"))
-        || (path == "/v1/public/workspace" && matches!(method, "GET" | "HEAD"));
+        || (matches!(path, "/v1/public/workspace" | "/v1/public/status")
+            && matches!(method, "GET" | "HEAD"));
     if !public && !probe {
         let bearer = request
             .headers()

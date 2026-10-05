@@ -79,6 +79,7 @@ impl Fixture {
         let mut config = Config {
             alert_webhook_url: String::new(),
             run_retention_days: 30,
+            status_page_title: "Service status".into(),
             oidc: Default::default(),
             secrets: Default::default(),
             allow_private_networks: false,
@@ -2776,5 +2777,268 @@ async fn standalone_rust_probe_enrolls_executes_and_drains_sigterm_report() {
     api_server.await.unwrap();
     target_server.abort();
     assert!(target_server.await.unwrap_err().is_cancelled());
+    fixture.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL"]
+async fn native_status_management_guards_revisions_and_filters_public_components() {
+    use uuid::Uuid;
+    let fixture = Fixture::new().await;
+    let app = fixture.app();
+    let (_,published,_)=request(app.clone(),"POST","/v1/checks",json!({"name":"Public API","url":"https://example.com/private-path","headers":{"Authorization":"private-header"},"public":true}),true).await;
+    let (_,private,_)=request(app.clone(),"POST","/v1/checks",json!({"name":"Private-only-name","url":"https://example.com/private-check","public":false}),true).await;
+    let public_id = published["id"].as_str().unwrap();
+    let private_id = private["id"].as_str().unwrap();
+    let config = json!({"title":" My status ","groups":[{"id":Uuid::new_v4(),"name":"Public group","monitorIds":[public_id]},{"id":Uuid::new_v4(),"name":"Hidden group","monitorIds":[private_id]}],"content":[{"id":Uuid::new_v4(),"title":"Help","body":"<script>plain text</script>","position":"after-services"}]});
+    let input = json!({"config":config,"expectedRevision":0});
+    let (a, b) = tokio::join!(
+        request(
+            app.clone(),
+            "PUT",
+            "/v1/status-management/settings",
+            input.clone(),
+            true
+        ),
+        request(
+            app.clone(),
+            "PUT",
+            "/v1/status-management/settings",
+            input,
+            true
+        )
+    );
+    assert!([a.0, b.0].contains(&StatusCode::OK));
+    assert!([a.0, b.0].contains(&StatusCode::CONFLICT));
+    let now = chrono::Utc::now();
+    let start = (now - chrono::Duration::minutes(1)).to_rfc3339();
+    let end = (now + chrono::Duration::minutes(10)).to_rfc3339();
+    let (status, window, _) = request(
+        app.clone(),
+        "POST",
+        "/v1/status-management/maintenance",
+        json!({"title":"Deploy","monitorIds":[public_id],"startsAt":start,"endsAt":end}),
+        true,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(
+        request(
+            app.clone(),
+            "POST",
+            "/v1/status-management/maintenance",
+            json!({"title":"Private","monitorIds":[private_id],"startsAt":start,"endsAt":end}),
+            true
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    let window_path = format!(
+        "/v1/status-management/maintenance/{}",
+        window["id"].as_str().unwrap()
+    );
+    let edit = json!({"title":"Deploy","monitorIds":[public_id,private_id],"startsAt":start,"endsAt":end,"expectedRevision":1});
+    assert_eq!(
+        request(app.clone(), "PUT", &window_path, edit.clone(), true)
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        request(app.clone(), "PUT", &window_path, edit, true)
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        request(
+            app.clone(),
+            "POST",
+            "/v1/status-management/incidents",
+            json!({"title":"Private","monitorIds":[private_id],"body":"Body"}),
+            true
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    let (_, incident, _) = request(
+        app.clone(),
+        "POST",
+        "/v1/status-management/incidents",
+        json!({"title":"Investigating","monitorIds":[public_id],"body":"Initial update"}),
+        true,
+    )
+    .await;
+    let updates_path = format!(
+        "/v1/status-management/incidents/{}/updates",
+        incident["id"].as_str().unwrap()
+    );
+    let update =
+        json!({"source":"manual","stage":"resolved","body":"Recovered","expectedRevision":1});
+    assert_eq!(
+        request(app.clone(), "POST", &updates_path, update.clone(), true)
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        request(app.clone(), "POST", &updates_path, update, true)
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
+    let (status, public, _) = request(
+        app.clone(),
+        "GET",
+        "/api/v1/public/status",
+        Value::Null,
+        false,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(public["title"], "My status");
+    assert_eq!(public["components"].as_array().unwrap().len(), 1);
+    assert_eq!(public["components"][0]["health"], "maintenance");
+    assert_eq!(public["groups"].as_array().unwrap().len(), 1);
+    assert_eq!(public["maintenance"][0]["monitorIds"], json!([public_id]));
+    assert_eq!(public["communications"][0]["stage"], "resolved");
+    let serialized = public.to_string();
+    for secret in [
+        private_id,
+        "Private-only-name",
+        "Hidden group",
+        "private-path",
+        "private-header",
+    ] {
+        assert!(!serialized.contains(secret));
+    }
+    assert!(public["branding"].get("groups").is_none());
+    let cancelled = json!({"title":"Deploy","monitorIds":[public_id],"startsAt":start,"endsAt":end,"expectedRevision":2,"cancelled":true});
+    assert_eq!(
+        request(app.clone(), "PUT", &window_path, cancelled, true)
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        request(
+            app.clone(),
+            "POST",
+            &updates_path,
+            json!({"source":"manual","stage":"identified","body":"Reopened","expectedRevision":2}),
+            true
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let (_, public, _) = request(app.clone(), "GET", "/v1/public/status", Value::Null, false).await;
+    assert_eq!(public["components"][0]["health"], "down");
+    assert_eq!(public["communications"][0]["stage"], "identified");
+    let automatic: Uuid = sqlx::query_scalar(
+        "INSERT INTO incidents(monitor_id,name) VALUES($1,'Automatic API') RETURNING id",
+    )
+    .bind(Uuid::parse_str(public_id).unwrap())
+    .fetch_one(&fixture.pool)
+    .await
+    .unwrap();
+    let automatic_path = format!("/v1/status-management/incidents/{automatic}/updates");
+    let resolve =
+        json!({"source":"automatic","stage":"resolved","body":"Resolved","expectedRevision":1});
+    assert_eq!(
+        request(app.clone(), "POST", &automatic_path, resolve.clone(), true)
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
+    sqlx::query("UPDATE incidents SET resolved_at=now() WHERE id=$1")
+        .bind(automatic)
+        .execute(&fixture.pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        request(app.clone(), "POST", &automatic_path, resolve, true)
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let (_, admin, _) = request(
+        app.clone(),
+        "GET",
+        "/v1/status-management",
+        Value::Null,
+        true,
+    )
+    .await;
+    assert_eq!(admin["revision"], 1);
+    assert_eq!(admin["incidents"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        request(
+            app.clone(),
+            "GET",
+            "/v1/status-management",
+            Value::Null,
+            false
+        )
+        .await
+        .0,
+        StatusCode::UNAUTHORIZED
+    );
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/v1/public/status")
+                .header(header::HOST, "status.example.com")
+                .header(header::COOKIE, "stillup_session=invalid")
+                .header(header::AUTHORIZATION, "Bearer invalid")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/status-management/incidents")
+                .header(header::HOST, "status.example.com")
+                .header(
+                    header::AUTHORIZATION,
+                    "Bearer 01234567890123456789012345678901",
+                )
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    assert_eq!(
+        request(
+            app.clone(),
+            "POST",
+            &format!("/v1/checks/{public_id}/archive"),
+            json!({"expectedRevision":1}),
+            true
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let (_, empty, _) = request(app, "GET", "/v1/public/status", Value::Null, false).await;
+    for key in [
+        "components",
+        "groups",
+        "maintenance",
+        "incidents",
+        "communications",
+    ] {
+        assert!(empty[key].as_array().unwrap().is_empty(), "{key}");
+    }
     fixture.close().await;
 }

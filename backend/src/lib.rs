@@ -16,6 +16,7 @@ pub mod probe_runner;
 pub mod probes;
 pub mod secrets;
 pub mod server;
+pub mod status;
 pub mod status_domain;
 pub mod web;
 pub mod webhook;

@@ -13,6 +13,7 @@ pub struct Config {
     pub allow_private_networks: bool,
     pub alert_webhook_url: String,
     pub run_retention_days: i32,
+    pub status_page_title: String,
 }
 impl Config {
     pub fn from_env() -> Result<Self, String> {
@@ -48,6 +49,8 @@ impl Config {
             .filter(|days| (1..=365).contains(days))
             .ok_or("RUN_RETENTION_DAYS must be an integer between 1 and 365")?;
         Ok(Self {
+            status_page_title: env::var("STATUS_PAGE_TITLE")
+                .unwrap_or_else(|_| "Service status".into()),
             run_retention_days,
             alert_webhook_url,
             database_url,
