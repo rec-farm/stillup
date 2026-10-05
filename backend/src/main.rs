@@ -1,4 +1,3 @@
-use sqlx::postgres::PgPoolOptions;
 use stillup_api::{
     config::Config,
     database,
@@ -11,8 +10,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_env_filter(std::env::var("RUST_LOG").unwrap_or_else(|_| "stillup_api=info".into()))
         .init();
     let config = Config::from_env().map_err(std::io::Error::other)?;
-    let pool = PgPoolOptions::new()
-        .max_connections(15)
+    let pool = database::pool_options(15)
         .connect(&config.database_url)
         .await?;
     database::migrate(&pool).await?;

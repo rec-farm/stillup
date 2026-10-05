@@ -1,5 +1,22 @@
 use sqlx::PgPool;
 
+pub fn pool_options(max_connections: u32) -> sqlx::postgres::PgPoolOptions {
+    use sqlx::Connection;
+    sqlx::postgres::PgPoolOptions::new()
+        .max_connections(max_connections)
+        .test_before_acquire(false)
+        .before_acquire(|connection, metadata| {
+            Box::pin(async move {
+                // Validate idle connections while avoiding an extra database round trip
+                // for each query during an active request burst.
+                if metadata.idle_for >= std::time::Duration::from_secs(1) {
+                    connection.ping().await?;
+                }
+                Ok(true)
+            })
+        })
+}
+
 const MIGRATIONS: &[(&str, &str)] = &[
     (
         "001_initial.sql",

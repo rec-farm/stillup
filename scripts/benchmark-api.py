@@ -5,6 +5,7 @@ import http.client
 import hashlib
 import json
 import os
+import platform
 import signal
 import socket
 import statistics
@@ -30,7 +31,7 @@ def rss_tree(pid):
         if expanded == included:
             return sum(rss for child, _, rss in rows if child in included)
         included = expanded
-result = {'recorded_at': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'method': 'Native release API vs original Node/tsx API, sequential localhost requests with keep-alive, 100 checks (10 public), 10 warm-ups and 45 measured requests per endpoint, no workers. Startup includes fresh migrations; RSS includes descendants. Each process has a 40-second termination timer. Fixed test database credentials only; no .env is read.', 'variants': {}}
+result = {'platform': platform.platform(), 'node': subprocess.check_output(['node', '--version'], text=True).strip(), 'recorded_at': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'method': 'Native release API vs original Node/tsx API, sequential localhost requests with keep-alive, 100 checks (10 public), 10 warm-ups and 45 measured requests per endpoint, no workers. Startup includes fresh migrations; RSS includes descendants. Each process has a 40-second termination timer. Fixed test database credentials only; no .env is read.', 'variants': {}}
 for name, command, cwd in [('node', ['node', '--import', 'tsx', str(args.baseline / 'apps/api/src/main.ts')], args.baseline), ('rust', [str(root / 'backend/target/release/stillup-api')], None)]:
     database = 'rust_bench_' + uuid.uuid4().hex
     psql('CREATE DATABASE ' + database)

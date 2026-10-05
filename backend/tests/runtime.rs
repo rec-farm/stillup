@@ -36,8 +36,7 @@ impl Fixture {
             .await
             .unwrap();
         let search = format!("SET search_path TO {schema}");
-        let pool = PgPoolOptions::new()
-            .max_connections(5)
+        let pool = database::pool_options(5)
             .after_connect(move |connection, _| {
                 let search = search.clone();
                 Box::pin(async move {
@@ -3416,5 +3415,32 @@ async fn revision_routes_coerce_numbers_and_reject_repeated_query_values() {
             StatusCode::OK
         );
     }
+    fixture.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL"]
+async fn native_pool_replaces_terminated_idle_connections() {
+    let fixture = Fixture::empty().await;
+    let url = std::env::var("TEST_DATABASE_URL").unwrap();
+    let pool = database::pool_options(1).connect(&url).await.unwrap();
+    let original: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert!(
+        sqlx::query_scalar::<_, bool>("SELECT pg_terminate_backend($1)")
+            .bind(original)
+            .fetch_one(&fixture.admin)
+            .await
+            .unwrap()
+    );
+    tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+    let replacement: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_ne!(original, replacement);
+    pool.close().await;
     fixture.close().await;
 }
