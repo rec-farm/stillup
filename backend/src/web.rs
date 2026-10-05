@@ -19,6 +19,13 @@ pub struct WebConfig {
 // API routers are merged before this layer is installed. Unknown API paths must never
 // return the SPA document, and public hosts never carry dashboard credentials downstream.
 pub fn router(config: WebConfig) -> Router {
+    routes(config.clone()).layer(middleware::from_fn_with_state(
+        config,
+        headers_and_public_host,
+    ))
+}
+
+pub fn routes(config: WebConfig) -> Router {
     Router::new()
         .route("/", get(document))
         .route("/login", get(document))
@@ -31,11 +38,7 @@ pub fn router(config: WebConfig) -> Router {
             "/illustrations",
             ServeDir::new(config.client_dir.join("illustrations")),
         )
-        .with_state(config.clone())
-        .layer(middleware::from_fn_with_state(
-            config,
-            headers_and_public_host,
-        ))
+        .with_state(config)
 }
 
 async fn document(State(config): State<WebConfig>, request: Request) -> Response {

@@ -34,5 +34,12 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm test:integration
+      - run: rustup toolchain install 1.92.0 --profile minimal --component clippy,rustfmt
+      - run: cargo +1.92.0 fmt --manifest-path backend/Cargo.toml --check
+      - run: cargo +1.92.0 clippy --manifest-path backend/Cargo.toml --all-targets --locked -- -D warnings
+      - run: cargo +1.92.0 test --manifest-path backend/Cargo.toml --locked
+      - run: cargo +1.92.0 test --manifest-path backend/Cargo.toml --locked --test runtime -- --ignored
+        env:
+          TEST_DATABASE_URL: postgres://stillup:stillup@127.0.0.1:5437/stillup
       - run: pnpm build
       - run: docker build --target probe -t stillup-probe:ci .

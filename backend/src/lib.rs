@@ -1,4 +1,11 @@
 pub mod auth;
+pub mod checks;
+pub mod config;
 pub mod database;
+pub mod error;
+pub mod health;
+pub mod json;
+pub mod server;
 pub mod status_domain;
 pub mod web;
+pub mod workspace;

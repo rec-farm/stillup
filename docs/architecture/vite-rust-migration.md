@@ -9,7 +9,10 @@ Branch: `feat/vite-rust-migration`. Deliver one PR replacing the runtime, retain
 - Documentation highlighting runs at build time through a Vite plugin; syntax parsers and WASM do not ship to browsers.
 - Rust library implements compatibility with existing HMAC session cookies, constant-time administrator-token checks, Vite static serving and public-host isolation. Router tests cover public root selection, denied administration routes, credential stripping, API/asset 404s and caching.
 - Rust migrations embed every existing SQL migration, preserving filenames, `stillup_migrations`, advisory lock 782314 and one transaction. Both distinct `007` migrations remain. Database execution still needs an integration test.
-- Rust is not yet the running backend. TypeScript API, worker and probe remain until replacements are complete. Docker and deployment instructions still describe the old runtime.
+- Rust executable now loads configuration, connects to PostgreSQL, applies migrations, serves Vite assets and shuts down gracefully on SIGINT/SIGTERM. Native routes handle token sessions, workspace settings, dashboard reads, check/history/revision reads and pause/archive/restore transitions, under both `/v1` and `/api/v1`.
+- Native request guards enforce CSRF origin checks, signed session/bearer authorization, bounded per-peer rate limits and a 100,000-byte JSON body limit with JSON error responses.
+- PostgreSQL integration tests use disposable schemas on the existing DB: fresh migrations, migration reruns, upgrade from the initial legacy schema with retained monitor IDs/history, transactional migration rollback, concurrent workspace revision conflicts, signed sessions/CSRF/rate limits, check execution epochs/archive/restore, malformed/oversized JSON errors, and a real TCP HTTP listener with graceful shutdown.
+- Rust API is incomplete. TypeScript API, worker and probe remain until all replacements are complete. OIDC routes, check creation/edit/execution, notifications/probes/code management/status management still need ports. Docker and deployment instructions still describe the old runtime.
 
 ## Completion gates
 
@@ -42,3 +45,12 @@ Candidates for a reusable REC system:
 4. Shared contract fixtures: compare TypeScript SDK and Rust schemas/canonicalization without adding Node to the production server.
 
 Keep REC brand tokens and guidance authoritative in `reciam-brand`; keep product data/auth/scheduling outside a generic component library. Extract a package only after checking a concrete second consumer in Paramtune or Handstamp, and document its API and ownership. No changes to those repositories have been made by this migration.
+
+## Native verification commands
+
+- `pnpm test:rust`: native unit/router tests; PostgreSQL integration tests are explicitly ignored in this command.
+- `TEST_DATABASE_URL=<test database> pnpm test:rust:integration`: execute PostgreSQL tests in uniquely named temporary schemas, removing each schema after a successful test. Failed tests may leave `rust_test_*` schemas for diagnosis. Do not infer database coverage from the unit command alone.
+- `cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings`.
+- `cargo run --manifest-path backend/Cargo.toml -- migrate`: apply the existing migration ledger and exit. The executable reads `.env` plus process environment; never use this on a database you did not intend to migrate.
+
+Until the completion gates pass, the Rust executable is a migration development target, not the production deployment entrypoint.

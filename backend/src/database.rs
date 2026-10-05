@@ -1,4 +1,4 @@
-use sqlx::{PgPool, Row};
+use sqlx::PgPool;
 
 const MIGRATIONS: &[(&str, &str)] = &[
     (
@@ -59,21 +59,6 @@ pub async fn migrate(pool: &PgPool) -> Result<(), sqlx::Error> {
             .await?;
     }
     tx.commit().await
-}
-
-pub async fn workspace(
-    pool: &PgPool,
-    defaults: &serde_json::Value,
-) -> Result<serde_json::Value, sqlx::Error> {
-    let row = sqlx::query("SELECT config, revision FROM workspace_settings WHERE id=1")
-        .fetch_optional(pool)
-        .await?;
-    Ok(match row {
-        Some(row) => {
-            serde_json::json!({ "settings": row.try_get::<serde_json::Value, _>("config")?, "revision": row.try_get::<i32, _>("revision")? })
-        }
-        None => serde_json::json!({ "settings": defaults, "revision": 0 }),
-    })
 }
 
 #[cfg(test)]

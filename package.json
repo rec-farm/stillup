@@ -17,7 +17,9 @@
     "test:integration": "node --env-file=.env ./node_modules/vitest/vitest.mjs run apps/api/src/integration.test.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "stillup": "tsx apps/cli/src/main.ts"
+    "stillup": "tsx apps/cli/src/main.ts",
+    "test:rust": "cargo test --manifest-path backend/Cargo.toml",
+    "test:rust:integration": "cargo test --manifest-path backend/Cargo.toml --test runtime -- --ignored"
   },
   "devDependencies": {
     "typescript": "^6.0.2",
