@@ -14,7 +14,7 @@ The preceding native contract correction at `63b0e92` passed all 28 native Postg
 
 After this run, database inventory showed no `stillup_test_*` databases or `rust_test_*` schemas left by these checks. No user service was restarted.
 
-CI now has an explicit container smoke step after both images build. On its Linux runner it checks image contents, starts the native API against the CI PostgreSQL service, waits for health, reads login/prerendered docs and authenticates a dashboard request, then removes its named test container. This new CI step is not yet verified by a remote run. Previous local ARM64 HTTP-container evidence is described in the migration document.
+CI now has an explicit container smoke step after both images build. On its Linux runner it checks image contents, starts the native API against the CI PostgreSQL service, waits for health, reads login/prerendered docs and authenticates a dashboard request, then removes its named test container. The remote Linux runs below verified this step. Previous local ARM64 HTTP-container evidence is described in the migration document.
 
 Remaining browser scope is listed in [browser-verification.md](browser-verification.md); API audit boundaries in [api-compatibility.md](api-compatibility.md); performance measurements and their limits in [performance.md](performance.md). This record is evidence for the final review, not a claim that every migration gate is complete.
 
@@ -27,3 +27,9 @@ Added a dedicated PostgreSQL upgrade test after `cd683fe`. It independently exec
 [CI run 37273309752](https://github.com/RodrigoEspinosa/stillup/actions/runs/37273309752) passed at `d13e4f5`, including pinned Rust 1.92 checks, native/legacy tests, release build, both Linux Docker image builds and the native container runtime smoke step. This establishes Linux image/executable and API startup behavior for that revision; final-head CI is still required after subsequent changes.
 
 After `81fd7b9`, the real HTTP executor test additionally verifies all six supported methods. POST/PUT/PATCH/DELETE preserve the query and Content-Type, send a body containing the resolved test secret, and validate response headers/JSON. HEAD validates headers without requiring a response body. The expanded test and Clippy pass. OPTIONS is intentionally outside the existing check configuration method enum.
+
+## Latest source and CI audit
+
+[CI run 37328589046](https://github.com/RodrigoEspinosa/stillup/actions/runs/37328589046) passed on exact commit `f8913478141b23a4ab5e46fd06bc1fe744cd882a`: frozen install, format/type checks, TypeScript and legacy PostgreSQL suites, fixture regeneration without differences, Rust 1.92 formatting/Clippy/native tests, release build, both Linux image builds and native container runtime smoke checks.
+
+The subsequent source audit corrected effective dashboard notification availability after removing an environment webhook and JavaScript UTF-16 token length bounds. All 33 native PostgreSQL tests and Clippy passed locally after these corrections. Final-head CI remains required after this commit.

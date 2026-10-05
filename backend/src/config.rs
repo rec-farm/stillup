@@ -19,7 +19,7 @@ impl Config {
     pub fn from_env() -> Result<Self, String> {
         let database_url = env::var("DATABASE_URL").map_err(|_| "DATABASE_URL is required")?;
         let admin_token = env::var("ADMIN_TOKEN").map_err(|_| "ADMIN_TOKEN is required")?;
-        if admin_token.chars().count() < 32 {
+        if admin_token.encode_utf16().count() < 32 {
             return Err("ADMIN_TOKEN must contain at least 32 characters".into());
         }
         let origin = env::var("APP_ORIGIN").unwrap_or_else(|_| "http://localhost:3000".into());

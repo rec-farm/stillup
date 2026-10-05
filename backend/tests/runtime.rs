@@ -3727,3 +3727,39 @@ async fn native_pool_replaces_terminated_idle_connections() {
     pool.close().await;
     fixture.close().await;
 }
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL"]
+async fn login_utf16_limits_and_dashboard_effective_channels_match_legacy() {
+    let fixture = Fixture::new().await;
+    for (length, expected) in [
+        (512, StatusCode::UNAUTHORIZED),
+        (513, StatusCode::BAD_REQUEST),
+    ] {
+        let (status, _, _) = request(
+            fixture.app(),
+            "POST",
+            "/v1/session",
+            json!({"token":"🙂".repeat(length)}),
+            false,
+        )
+        .await;
+        assert_eq!(status, expected);
+    }
+    stillup_api::notifications::initialize(&fixture.pool, "https://example.com/hook")
+        .await
+        .unwrap();
+    for (url, enabled) in [("", false), ("https://example.com/hook", true)] {
+        let app = fixture.app_configure(|config| config.alert_webhook_url = url.into());
+        let (_, dashboard, _) =
+            request(app.clone(), "GET", "/v1/dashboard", Value::Null, true).await;
+        let (_, channels, _) =
+            request(app, "GET", "/v1/notification-channels", Value::Null, true).await;
+        assert_eq!(dashboard["notificationsEnabled"], enabled);
+        assert_eq!(channels[0]["enabled"], enabled);
+    }
+    sqlx::query("INSERT INTO notification_channels(name,url) VALUES('Managed','https://example.com/managed')").execute(&fixture.pool).await.unwrap();
+    let (_, dashboard, _) = request(fixture.app(), "GET", "/v1/dashboard", Value::Null, true).await;
+    assert_eq!(dashboard["notificationsEnabled"], true);
+    fixture.close().await;
+}

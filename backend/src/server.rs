@@ -344,7 +344,7 @@ async fn sign_in(
     let token = input
         .get("token")
         .and_then(Value::as_str)
-        .filter(|value| value.chars().count() <= 1024)
+        .filter(|value| value.encode_utf16().count() <= 1024)
         .ok_or_else(|| ApiError::bad("token: Expected a string of at most 1024 characters"))?;
     if !auth::token_matches(token, &state.config.admin_token) {
         return Err(ApiError(
@@ -454,8 +454,9 @@ async fn dashboard(State(state): State<AppState>) -> Result<Json<Value>, ApiErro
         sqlx::query_scalar::<_, Option<DateTime<Utc>>>("SELECT max(seen_at) FROM worker_health")
             .fetch_one(&state.pool),
         sqlx::query_scalar::<_, bool>(
-            "SELECT EXISTS(SELECT 1 FROM notification_channels WHERE enabled)"
+            "SELECT EXISTS(SELECT 1 FROM notification_channels WHERE enabled AND CASE WHEN source='environment' THEN $1<>'' ELSE COALESCE(url,'')<>'' END)"
         )
+        .bind(&state.config.alert_webhook_url)
         .fetch_one(&state.pool),
     )?;
     let monitors = monitors

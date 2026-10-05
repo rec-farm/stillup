@@ -1,8 +1,10 @@
 # Vite and Rust replacement
 
-Branch: `feat/vite-rust-migration`. Deliver one PR replacing the runtime, retaining existing data and features. This branch is in progress and is not deployable yet.
+Branch: `feat/vite-rust-migration`. The runtime replacement is delivered through [PR #2](https://github.com/RodrigoEspinosa/stillup/pull/2), retaining existing data and features. The implementation gates below are verified within their stated scope. The PR records final-head CI and delivery status; deployment follows the README backup, stop-writers, migration and handoff procedure.
 
-## Current evidence
+## Implementation history
+
+The entries below record evidence at successive implementation revisions. Their earlier pending scopes are superseded by the completion gates and companion audit records below.
 
 - Next dependency, configuration, server layouts, route handlers and development launcher removed from `apps/web`.
 - Vite builds React with separate dashboard, login, documentation and public-status chunks. Native links preserve normal browser navigation. Existing monitoring UI and documentation remain.
@@ -42,9 +44,9 @@ Branch: `feat/vite-rust-migration`. Deliver one PR replacing the runtime, retain
 
 ## Completion gates
 
-The current API representation audit is recorded in [api-compatibility.md](api-compatibility.md). Malformed path parameters now retain JSON errors throughout native route families, with valid percent-decoding and authentication order covered. Database reads preserve microsecond timestamps instead of truncating them. Twenty-eight native unit tests, the standalone HTTP/probe tests, twenty-eight PostgreSQL tests and Clippy pass. Initial authenticated desktop/mobile evidence and remaining browser coverage are recorded in [browser-verification.md](browser-verification.md).
+The API representation audit is recorded in [api-compatibility.md](api-compatibility.md), runtime evidence in [runtime-audit.md](runtime-audit.md), and authenticated desktop/mobile samples in [browser-verification.md](browser-verification.md). The latest local source pass has 33 native PostgreSQL tests; [verification.md](verification.md) distinguishes local checks, prior-head CI and final delivery verification.
 
-- [ ] Native Rust API implements every existing route in `tests/legacy-api/src/server.ts`, including validation and response/error contracts.
+- [x] Native Rust API implements every existing route in `tests/legacy-api/src/server.ts`, including validation and response/error contracts. The family-by-family source review, client flow, fixture coverage and intentional representation differences are documented in [api-compatibility.md](api-compatibility.md).
 - [x] Authentication: token sign-in/out, cookies, expiration, CSRF, rate limits, OIDC discovery/PKCE/state/callback/logout and safe redirects. Existing session compatibility and signed mock-provider verification are mapped in [runtime-audit.md](runtime-audit.md); live Handstamp verification is not claimed.
 - [x] Checks: create/edit/revision history, revision guards, pause/archive/restore, ad hoc execution and run history. Native PostgreSQL contract tests cover immutable revisions, stale guards, ownership and execution fencing; authenticated browser evidence covers creation/editing, pause, archive across reload, paused restoration, resume and native execution history.
 - [x] Monitoring executor: HTTP methods/bodies, timeout/body limits, private-network/SSRF protection across redirects and DNS, header/JSON/schema assertions, secrets and correct outage semantics. The real HTTP executor test covers GET/HEAD and every supported write method, with query preservation, content type and body-secret substitution. Configuration/assertion/network fixtures, pinned DNS/no-follow source review, native queue lifecycle and policy-error tests cover the remaining semantics.
@@ -55,11 +57,11 @@ The current API representation audit is recorded in [api-compatibility.md](api-c
 - [x] Appearance: schema validation, revision guards and existing settings; accessible themes, custom logos and fallback behavior. Cross-language workspace/status fixtures and concurrent revision tests cover saved contracts; dark/light preset and custom-font/layout/content browser samples, logo-failure fallback and mobile inspection are recorded in [browser-verification.md](browser-verification.md).
 - [x] Public status: published monitors only, current observations, manual incidents, maintenance, branding, server-generated metadata, favicon and theme-color tags; public host root and credentials isolated. Native status-management tests verify privacy, revisions, maintenance/incident overrides and communication; static-host/metadata tests and outage/recovery/branding browser evidence cover delivery and rendering.
 - [x] Docs: all routes, search, copy, anchors, keyboard controls, mobile layout and meaningful unknown-route HTTP status. Generated-content/native 404 tests and browser evidence cover all nine guide routes, search/copy/anchors, slash/Escape, readable mobile rendering, failed guide chunks and disabled scripting.
-- [ ] Deployment: Rust executable(s), static Vite output, Docker/Compose, environment variables, reverse proxy, CI and README; remove obsolete Node server packages/configuration.
+- [x] Deployment: Rust executable(s), static Vite output, Docker/Compose, environment variables, reverse proxy, CI and README; remove obsolete Node server packages/configuration. Source/configuration review and exact-head Linux CI at `f891347` verify both images and native HTTP startup; subsequent changes still require final-head CI.
 - [x] Real PostgreSQL migration tests on a fresh database and an existing schema, including rollback/idempotency and retained historical data. The current-legacy-schema test applies all eight original files independently, seeds every legacy table, snapshots full rows (including migration timestamps), and verifies unchanged contents after two native migration runs. The ninth ledger entry and empty native queue are checked. Earlier tests cover initial-schema backfill, fresh migration and transactional rollback.
-- [ ] Contract/integration parity against existing tests, real HTTP smoke tests and authenticated desktop/mobile browser flows.
+- [x] Contract/integration parity against existing tests, real HTTP smoke tests and authenticated desktop/mobile browser flows. [verification.md](verification.md) records native/legacy PostgreSQL suites, fixture regeneration and container checks; [browser-verification.md](browser-verification.md) records scoped authenticated samples and fallback checks.
 - [x] Measure comparable build, payload, startup, memory and request latency against the original baseline; report results without assuming Vite/Rust alone proves improvement. [performance.md](performance.md) records source revisions, raw data, scripts and scope: faster frontend builds, lower generated/navigation bytes and API memory/public-status median, with higher sampled dashboard latency/startup and unmeasured whole-stack/concurrent behavior explicitly retained.
-- [ ] Review diff, commit/push one branch, open/update one PR and verify its remote state and CI.
+      Final delivery requires reviewing the diff, committing/pushing this branch, updating the single PR and verifying its exact remote head and CI before marking it ready. The PR description and checks are the authoritative record for this final gate.
 
 ## Reuse across REC products
 
@@ -83,9 +85,9 @@ Keep REC brand tokens and guidance authoritative in `reciam-brand`; keep product
 - `cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings`.
 - `cargo run --manifest-path backend/Cargo.toml --bin stillup-probe`: run the standalone probe with `STILLUP_URL`, `STILLUP_PROBE_DATA`, first-run `STILLUP_ENROLLMENT_TOKEN` and the existing explicit HTTP/private-network flags. Keep its data volume across restarts.
 - `cargo run --manifest-path backend/Cargo.toml -- handoff`: transfer pending legacy queue jobs after stopping the old runtime. Rejects active unexpired claims; leaves completed legacy rows for audit. This command mutates the configured database.
-- `cargo run --manifest-path backend/Cargo.toml -- worker`: initialize channels, hand off legacy work, and start native worker loops. Regional rounds and local probe execution are included. Use the release executable or container for deployment after the migration's remaining completion gates pass.
+- `cargo run --manifest-path backend/Cargo.toml -- worker`: initialize channels, hand off legacy work, and start native worker loops. Regional rounds and local probe execution are included. Use the release executable or container with the README migration procedure.
 - `cargo run --manifest-path backend/Cargo.toml -- migrate`: apply the existing migration ledger and exit. The executable reads `.env` plus process environment; never use this on a database you did not intend to migrate.
 
-Until the completion gates pass, the Rust executable is a migration development target, not the production deployment entrypoint.
+The Rust release executable/container is the deployment entrypoint. Production migration, live queue handoff and live-provider verification were not performed in this development workspace.
 
 Contract fixture regeneration: `pnpm exec tsx scripts/generate-contract-fixtures.ts`. Fixtures are build/test evidence; the deployed Rust server runs without Node. Legacy URL refinement can throw on malformed URLs; the Rust API rejects malformed configurations with a JSON 400 response instead.
