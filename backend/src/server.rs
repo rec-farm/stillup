@@ -48,6 +48,15 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/auth/oidc/callback", get(crate::oidc::callback))
         .route("/v1/dashboard", get(dashboard))
         .route(
+            "/v1/locations",
+            get(crate::probes::list).post(crate::probes::create),
+        )
+        .route("/v1/locations/{id}/enrollment", post(crate::probes::renew))
+        .route(
+            "/v1/locations/{id}",
+            axum::routing::delete(crate::probes::revoke),
+        )
+        .route(
             "/v1/incidents/{id}",
             get(crate::monitoring::incident_timeline),
         )

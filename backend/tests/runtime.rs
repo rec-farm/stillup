@@ -2081,3 +2081,121 @@ async fn native_worker_schedules_reports_health_retains_active_work_and_stops() 
     );
     fixture.close().await;
 }
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL"]
+async fn probe_locations_hash_enrollment_rotate_credentials_and_preserve_scope() {
+    use stillup_api::probes;
+    let fixture = Fixture::new().await;
+    let state = fixture.state_configure(|_| {});
+    let app = router(state.clone());
+    let (status, created, _) = request(
+        app.clone(),
+        "POST",
+        "/v1/locations",
+        json!({"name":" Europe ","region":" eu-west "}),
+        true,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let id = created["id"].as_str().unwrap();
+    let enrollment = created["enrollmentToken"].as_str().unwrap();
+    let credential = "ab".repeat(32);
+    let stored: String =
+        sqlx::query_scalar("SELECT enrollment_hash FROM probe_locations WHERE id=$1")
+            .bind(id)
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap();
+    assert_ne!(stored, enrollment);
+    assert_eq!(stored.len(), 64);
+    let (_, locations, _) = request(app.clone(), "GET", "/v1/locations", Value::Null, true).await;
+    assert_eq!(locations[1]["status"], "pending");
+    assert_eq!(locations[1]["name"], "Europe");
+    assert!(!locations.to_string().contains(enrollment));
+    assert!(!locations.to_string().contains(&stored));
+    assert_eq!(
+        probes::enroll(&state, enrollment, &credential)
+            .await
+            .unwrap()["locationId"],
+        id
+    );
+    assert!(
+        probes::enroll(&state, enrollment, &credential)
+            .await
+            .is_ok()
+    );
+    assert_eq!(
+        probes::enroll(&state, enrollment, &"cd".repeat(32))
+            .await
+            .unwrap_err()
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(probes::authenticate(&state, &credential).await.unwrap(), id);
+    let (_, locations, _) = request(app.clone(), "GET", "/v1/locations", Value::Null, true).await;
+    assert_eq!(locations[1]["status"], "online");
+    let (status, renewed, _) = request(
+        app.clone(),
+        "POST",
+        &format!("/v1/locations/{id}/enrollment"),
+        Value::Null,
+        true,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_ne!(renewed["enrollmentToken"], enrollment);
+    assert_eq!(
+        probes::authenticate(&state, &credential)
+            .await
+            .unwrap_err()
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        probes::enroll(&state, enrollment, &credential)
+            .await
+            .unwrap_err()
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    let new_token = renewed["enrollmentToken"].as_str().unwrap();
+    probes::enroll(&state, new_token, &credential)
+        .await
+        .unwrap();
+    assert_eq!(
+        request(
+            app.clone(),
+            "DELETE",
+            &format!("/v1/locations/{id}"),
+            Value::Null,
+            true
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        probes::authenticate(&state, &credential)
+            .await
+            .unwrap_err()
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        probes::enroll(&state, new_token, &credential)
+            .await
+            .unwrap_err()
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    let (_, locations, _) = request(app.clone(), "GET", "/v1/locations", Value::Null, true).await;
+    assert_eq!(locations[1]["status"], "revoked");
+    assert_eq!(
+        request(app, "GET", "/v1/locations", Value::Null, false)
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    fixture.close().await;
+}
