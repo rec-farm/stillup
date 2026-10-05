@@ -43,13 +43,10 @@ pub async fn enqueue(state: &AppState, requested: Option<Uuid>) -> Result<i64, A
     for row in rows {
         let config: Value = row.get("config");
         if regional(&config) {
-            // Regional rounds are handled by the probe scheduler; never fall back to a
-            // local check and misrepresent regional coverage during the migration.
-            if requested.is_some() {
-                return Err(ApiError::conflict(
-                    "Regional scheduling is not available in the migration runtime yet",
-                ));
+            if crate::probes::schedule(&mut tx, &row).await? {
+                count += 1;
             }
+            sqlx::query("UPDATE monitors SET next_run_at=now()+($2::integer * interval '1 second') WHERE id=$1").bind(row.get::<Uuid,_>("id")).bind(config["intervalSeconds"].as_i64().unwrap_or(60) as i32).execute(&mut *tx).await?;
             continue;
         }
         let monitor_id: Uuid = row.get("id");

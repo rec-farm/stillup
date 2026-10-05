@@ -2199,3 +2199,421 @@ async fn probe_locations_hash_enrollment_rotate_credentials_and_preserve_scope()
     );
     fixture.close().await;
 }
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL"]
+async fn regional_rounds_scope_leases_sanitize_reports_and_expire_missing_coverage() {
+    use stillup_api::{monitoring, probes};
+    use uuid::Uuid;
+    let fixture = Fixture::new().await;
+    let state = fixture.state_configure(|_| {});
+    let app = router(state.clone());
+    let (_, created, _) = request(
+        app.clone(),
+        "POST",
+        "/v1/locations",
+        json!({"name":"Remote","region":"eu"}),
+        true,
+    )
+    .await;
+    let remote = created["id"].as_str().unwrap();
+    let credential = "ab".repeat(32);
+    probes::enroll(
+        &state,
+        created["enrollmentToken"].as_str().unwrap(),
+        &credential,
+    )
+    .await
+    .unwrap();
+    let (_,monitor,_)=request(app.clone(),"POST","/v1/checks",json!({"name":"Regional","url":"http://127.0.0.1/","locationIds":["local",remote],"locationFailureThreshold":2,"failureThreshold":1}),true).await;
+    let monitor_id = Uuid::parse_str(monitor["id"].as_str().unwrap()).unwrap();
+    assert_eq!(
+        monitoring::enqueue(&state, Some(monitor_id)).await.unwrap(),
+        1
+    );
+    assert_eq!(
+        monitoring::enqueue(&state, Some(monitor_id)).await.unwrap(),
+        0
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM check_jobs")
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap(),
+        0
+    );
+    let local = probes::claim(&state, "local", None).await.unwrap();
+    let first = probes::claim(&state, remote, Some(&credential))
+        .await
+        .unwrap();
+    assert!(
+        probes::claim(&state, remote, Some(&credential))
+            .await
+            .unwrap()["job"]
+            .is_null()
+    );
+    let job_id = Uuid::parse_str(first["job"]["id"].as_str().unwrap()).unwrap();
+    let old_lease = Uuid::parse_str(first["job"]["leaseToken"].as_str().unwrap()).unwrap();
+    sqlx::query("UPDATE probe_jobs SET lease_until=now()-interval '1 second' WHERE id=$1")
+        .bind(job_id)
+        .execute(&fixture.pool)
+        .await
+        .unwrap();
+    let replacement = probes::claim(&state, remote, Some(&credential))
+        .await
+        .unwrap();
+    let lease = Uuid::parse_str(replacement["job"]["leaseToken"].as_str().unwrap()).unwrap();
+    assert_ne!(lease, old_lease);
+    let failed = json!({"outcome":"fail","statusCode":503,"durationMs":8,"failures":["private-response"],"assertions":[{"passed":false,"message":"private-response"}]});
+    assert_eq!(
+        probes::complete(
+            &state,
+            remote,
+            job_id,
+            old_lease,
+            &failed,
+            Some(&credential)
+        )
+        .await
+        .unwrap_err()
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        probes::complete(&state, "local", job_id, lease, &failed, None)
+            .await
+            .unwrap_err()
+            .0,
+        StatusCode::NOT_FOUND
+    );
+    probes::complete(&state, remote, job_id, lease, &failed, Some(&credential))
+        .await
+        .unwrap();
+    probes::complete(&state, remote, job_id, lease, &failed, Some(&credential))
+        .await
+        .unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM runs")
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap(),
+        0
+    );
+    probes::complete(
+        &state,
+        "local",
+        Uuid::parse_str(local["job"]["id"].as_str().unwrap()).unwrap(),
+        Uuid::parse_str(local["job"]["leaseToken"].as_str().unwrap()).unwrap(),
+        &failed,
+        None,
+    )
+    .await
+    .unwrap();
+    let result: Value = sqlx::query_scalar("SELECT result FROM incident_events")
+        .fetch_one(&fixture.pool)
+        .await
+        .unwrap();
+    assert_eq!(result["outcome"], "fail");
+    assert_eq!(result["failures"][0], "2 locations failed; threshold is 2");
+    assert!(!result.to_string().contains("private-response"));
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM runs")
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        monitoring::enqueue(&state, Some(monitor_id)).await.unwrap(),
+        1
+    );
+    let local = probes::claim(&state, "local", None).await.unwrap();
+    probes::complete(
+        &state,
+        "local",
+        Uuid::parse_str(local["job"]["id"].as_str().unwrap()).unwrap(),
+        Uuid::parse_str(local["job"]["leaseToken"].as_str().unwrap()).unwrap(),
+        &json!({"outcome":"pass","statusCode":200,"durationMs":3}),
+        None,
+    )
+    .await
+    .unwrap();
+    sqlx::query(
+        "UPDATE probe_rounds SET deadline=now()-interval '1 second' WHERE finished_at IS NULL",
+    )
+    .execute(&fixture.pool)
+    .await
+    .unwrap();
+    probes::expire(&state).await.unwrap();
+    probes::expire(&state).await.unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM runs")
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap(),
+        2
+    );
+    // With threshold two, one successful location is enough to rule out two failures.
+    assert_eq!(
+        sqlx::query_scalar::<_, String>("SELECT status FROM monitors WHERE id=$1")
+            .bind(monitor_id)
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap(),
+        "up"
+    );
+    assert_eq!(
+        monitoring::enqueue(&state, Some(monitor_id)).await.unwrap(),
+        1
+    );
+    sqlx::query(
+        "UPDATE probe_rounds SET deadline=now()-interval '1 second' WHERE finished_at IS NULL",
+    )
+    .execute(&fixture.pool)
+    .await
+    .unwrap();
+    probes::expire(&state).await.unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, String>("SELECT last_outcome FROM monitors WHERE id=$1")
+            .bind(monitor_id)
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap(),
+        "error"
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, String>("SELECT status FROM monitors WHERE id=$1")
+            .bind(monitor_id)
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap(),
+        "up"
+    );
+    assert_eq!(
+        monitoring::enqueue(&state, Some(monitor_id)).await.unwrap(),
+        1
+    );
+    probes::local(&state).await.unwrap();
+    let local_result:Value=sqlx::query_scalar("SELECT j.result FROM probe_jobs j JOIN probe_rounds r ON r.id=j.round_id WHERE j.location_id='local' AND r.finished_at IS NULL").fetch_one(&fixture.pool).await.unwrap();
+    assert_eq!(local_result["outcome"], "error");
+    assert_eq!(
+        local_result["failures"][0],
+        "Probe could not execute this check"
+    );
+    fixture.close().await;
+}
+
+async fn probe_request(
+    app: Router,
+    path: &str,
+    input: Value,
+    credential: Option<&str>,
+) -> (StatusCode, Value) {
+    let mut request = Request::builder()
+        .method("POST")
+        .uri(path)
+        .header(header::HOST, "dashboard.example.com")
+        .header(header::CONTENT_TYPE, "application/json");
+    if let Some(credential) = credential {
+        request = request.header(header::AUTHORIZATION, format!("Bearer {credential}"));
+    }
+    let response = app
+        .oneshot(request.body(Body::from(input.to_string())).unwrap())
+        .await
+        .unwrap();
+    let status = response.status();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    (status, serde_json::from_slice(&bytes).unwrap())
+}
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL"]
+async fn probe_http_protocol_credentials_secrets_observations_and_epoch_fencing() {
+    use stillup_api::monitoring;
+    use uuid::Uuid;
+    let fixture = Fixture::new().await;
+    let state = fixture.state_configure(|config| {
+        config
+            .secrets
+            .environment
+            .insert("CHECK_SECRET_TOKEN".into(), "bound-secret".into());
+    });
+    let app = router(state.clone());
+    let (_, created, _) = request(
+        app.clone(),
+        "POST",
+        "/v1/locations",
+        json!({"name":"Remote","region":"eu"}),
+        true,
+    )
+    .await;
+    let remote = created["id"].as_str().unwrap();
+    let credential = "ab".repeat(32);
+    let enroll = json!({"protocolVersion":1,"enrollmentToken":created["enrollmentToken"],"credential":credential});
+    assert_eq!(
+        probe_request(app.clone(), "/api/v1/probe/enroll", enroll.clone(), None)
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        probe_request(app.clone(), "/v1/probe/enroll", enroll, None)
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let admin = "01234567890123456789012345678901";
+    assert_eq!(
+        probe_request(
+            app.clone(),
+            "/v1/probe/poll",
+            json!({"protocolVersion":1}),
+            Some(admin)
+        )
+        .await
+        .0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        probe_request(
+            app.clone(),
+            "/v1/probe/poll",
+            json!({"protocolVersion":2}),
+            Some(&credential)
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    let (_,monitor,_)=request(app.clone(),"POST","/v1/checks",json!({"name":"Remote check","url":"https://example.com","locationIds":[remote],"headers":{"Authorization":"Bearer {{TOKEN}}"},"failureThreshold":1}),true).await;
+    let monitor_id = Uuid::parse_str(monitor["id"].as_str().unwrap()).unwrap();
+    monitoring::enqueue(&state, Some(monitor_id)).await.unwrap();
+    let (status, poll) = probe_request(
+        app.clone(),
+        "/v1/probe/poll",
+        json!({"protocolVersion":1}),
+        Some(&credential),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(poll["job"]["secrets"]["CHECK_SECRET_TOKEN"], "bound-secret");
+    let report = json!({"protocolVersion":1,"jobId":poll["job"]["id"],"leaseToken":poll["job"]["leaseToken"],"result":{"outcome":"fail","statusCode":503,"durationMs":10,"failures":["bound-secret"]}});
+    assert_eq!(
+        probe_request(app.clone(), "/v1/probe/results", report.clone(), None)
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        probe_request(
+            app.clone(),
+            "/v1/probe/results",
+            report.clone(),
+            Some(&credential)
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        probe_request(app.clone(), "/v1/probe/results", report, Some(&credential))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let (_, observations, _) = request(
+        app.clone(),
+        "GET",
+        &format!("/v1/checks/{monitor_id}/locations"),
+        Value::Null,
+        true,
+    )
+    .await;
+    assert_eq!(observations[0]["outcome"], "fail");
+    assert_eq!(observations[0]["fresh"], true);
+    assert_eq!(observations[0]["probeStatus"], "online");
+    assert!(!observations.to_string().contains("bound-secret"));
+    monitoring::enqueue(&state, Some(monitor_id)).await.unwrap();
+    let (_, poll) = probe_request(
+        app.clone(),
+        "/v1/probe/poll",
+        json!({"protocolVersion":1}),
+        Some(&credential),
+    )
+    .await;
+    sqlx::query("UPDATE monitors SET execution_epoch=execution_epoch+1 WHERE id=$1")
+        .bind(monitor_id)
+        .execute(&fixture.pool)
+        .await
+        .unwrap();
+    let report = json!({"protocolVersion":1,"jobId":poll["job"]["id"],"leaseToken":poll["job"]["leaseToken"],"result":{"outcome":"pass","statusCode":200,"durationMs":2}});
+    assert_eq!(
+        probe_request(app.clone(), "/v1/probe/results", report, Some(&credential))
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
+    let (_, observations, _) = request(
+        app.clone(),
+        "GET",
+        &format!("/v1/checks/{monitor_id}/locations"),
+        Value::Null,
+        true,
+    )
+    .await;
+    assert!(observations[0]["outcome"].is_null());
+    assert_eq!(observations[0]["fresh"], false);
+    assert_eq!(
+        monitoring::enqueue(&state, Some(monitor_id)).await.unwrap(),
+        1
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM probe_rounds WHERE finished_at IS NULL")
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap(),
+        1
+    );
+    let dashboard = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/dashboard")
+                .header(header::HOST, "dashboard.example.com")
+                .header(header::AUTHORIZATION, format!("Bearer {credential}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(dashboard.status(), StatusCode::UNAUTHORIZED);
+    let limited = fixture.app();
+    for _ in 0..600 {
+        assert_eq!(
+            probe_request(
+                limited.clone(),
+                "/v1/probe/poll",
+                json!({"protocolVersion":2}),
+                Some(&credential)
+            )
+            .await
+            .0,
+            StatusCode::BAD_REQUEST
+        );
+    }
+    assert_eq!(
+        probe_request(
+            limited,
+            "/v1/probe/poll",
+            json!({"protocolVersion":2}),
+            Some(&credential)
+        )
+        .await
+        .0,
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    let (stop, stopped) = tokio::sync::watch::channel(false);
+    stop.send(true).unwrap();
+    stillup_api::worker::run(state, stopped).await.unwrap();
+    fixture.close().await;
+}

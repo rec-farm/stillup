@@ -17,6 +17,7 @@ pub async fn cleanup(state: &AppState) -> Result<(), ApiError> {
     Ok(())
 }
 async fn scheduler(state: &AppState) -> Result<(), ApiError> {
+    crate::probes::expire(state).await?;
     monitoring::enqueue(state, None).await?;
     notifications::reminders(state).await?;
     sqlx::query("INSERT INTO worker_health(id,seen_at) VALUES('primary',now()) ON CONFLICT(id) DO UPDATE SET seen_at=now()").execute(&state.pool).await?;
@@ -27,6 +28,7 @@ enum Task {
     Scheduler,
     Check,
     Notification,
+    Probe,
 }
 async fn task(state: AppState, mut stop: watch::Receiver<bool>, kind: Task) {
     let mut interval = tokio::time::interval(Duration::from_secs(1));
@@ -44,6 +46,7 @@ async fn task(state: AppState, mut stop: watch::Receiver<bool>, kind: Task) {
             break;
         }
         let result = match kind {
+            Task::Probe => crate::probes::local(&state).await,
             Task::Scheduler => scheduler(&state).await,
             Task::Check => monitoring::run_one(&state).await.map(|_| ()),
             Task::Notification => notifications::deliver_one(&state, None).await.map(|_| ()),
@@ -67,6 +70,7 @@ pub async fn run(state: AppState, stop: watch::Receiver<bool>) -> Result<(), Joi
     let mut tasks = JoinSet::new();
     tasks.spawn(task(state.clone(), stop.clone(), Task::Scheduler));
     for _ in 0..5 {
+        tasks.spawn(task(state.clone(), stop.clone(), Task::Probe));
         tasks.spawn(task(state.clone(), stop.clone(), Task::Check));
         tasks.spawn(task(state.clone(), stop.clone(), Task::Notification));
     }

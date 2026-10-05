@@ -25,6 +25,7 @@ pub struct AppState {
     pub config: Config,
     pub oidc: crate::oidc::Runtime,
     limits: Arc<Mutex<Buckets>>,
+    probe_limits: Arc<Mutex<HashMap<String, (Instant, u32)>>>,
     pub previews: Arc<tokio::sync::Semaphore>,
 }
 impl AppState {
@@ -34,6 +35,7 @@ impl AppState {
             config,
             oidc: Default::default(),
             limits: Arc::new(Mutex::new(HashMap::new())),
+            probe_limits: Arc::new(Mutex::new(HashMap::new())),
             previews: Arc::new(tokio::sync::Semaphore::new(2)),
         }
     }
@@ -47,6 +49,9 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/auth/oidc/start", get(crate::oidc::start))
         .route("/v1/auth/oidc/callback", get(crate::oidc::callback))
         .route("/v1/dashboard", get(dashboard))
+        .route("/v1/probe/enroll", post(crate::probes::enroll_route))
+        .route("/v1/probe/poll", post(crate::probes::poll_route))
+        .route("/v1/probe/results", post(crate::probes::report_route))
         .route(
             "/v1/locations",
             get(crate::probes::list).post(crate::probes::create),
@@ -101,6 +106,10 @@ pub fn router(state: AppState) -> Router {
                 .put(checks::edit),
         )
         .route("/v1/checks/{id}/runs", get(checks::runs))
+        .route(
+            "/v1/checks/{id}/locations",
+            get(crate::probes::observations),
+        )
         .route("/v1/checks/{id}/run", post(crate::monitoring::run_now))
         .route("/v1/checks/{id}/revisions", get(checks::revisions))
         .route(
@@ -152,7 +161,46 @@ async fn protect(State(state): State<AppState>, request: Request, next: Next) ->
         .get::<ConnectInfo<SocketAddr>>()
         .map(|info| info.0.ip())
         .unwrap_or(IpAddr::from([127, 0, 0, 1]));
-    {
+    let probe = method == "POST"
+        && matches!(
+            path,
+            "/v1/probe/enroll" | "/v1/probe/poll" | "/v1/probe/results"
+        );
+    if probe && path != "/v1/probe/enroll" {
+        let mut buckets = state
+            .probe_limits
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let now = Instant::now();
+        buckets.retain(|_, (start, _)| now.duration_since(*start) < Duration::from_secs(60));
+        let source = request
+            .headers()
+            .get(header::AUTHORIZATION)
+            .and_then(|h| h.to_str().ok())
+            .map(str::to_owned)
+            .unwrap_or_else(|| ip.to_string());
+        let key = crate::probes::hash(&source);
+        if buckets.len() >= 10000 && !buckets.contains_key(&key) {
+            return ApiError(
+                StatusCode::TOO_MANY_REQUESTS,
+                "Too many requests. Try again shortly.".into(),
+            )
+            .into_response();
+        }
+        let bucket = buckets.entry(key).or_insert((now, 0));
+        bucket.1 = bucket.1.saturating_add(1);
+        if bucket.1 > 600 {
+            let mut response = ApiError(
+                StatusCode::TOO_MANY_REQUESTS,
+                "Too many requests. Try again shortly.".into(),
+            )
+            .into_response();
+            response
+                .headers_mut()
+                .insert(header::RETRY_AFTER, "60".parse().unwrap());
+            return response;
+        }
+    } else {
         let mut buckets = state
             .limits
             .lock()
@@ -170,6 +218,8 @@ async fn protect(State(state): State<AppState>, request: Request, next: Next) ->
             && path.ends_with("/retry");
         let categories: &[(&str, u32)] = if signin {
             &[("global", 120), ("sign-in", 5)]
+        } else if probe {
+            &[("global", 120), ("probe-enrollment", 10)]
         } else if request_test {
             &[("global", 120), ("request-test", 10)]
         } else if notification_test {
@@ -232,7 +282,7 @@ async fn protect(State(state): State<AppState>, request: Request, next: Next) ->
         || (path == "/health" && matches!(method, "GET" | "HEAD"))
         || (path == "/v1/session" && matches!(method, "POST" | "DELETE"))
         || (path == "/v1/public/workspace" && matches!(method, "GET" | "HEAD"));
-    if !public {
+    if !public && !probe {
         let bearer = request
             .headers()
             .get(header::AUTHORIZATION)
