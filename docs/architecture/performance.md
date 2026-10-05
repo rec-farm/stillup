@@ -1,6 +1,6 @@
 # Migration performance evidence
 
-These measurements cover frontend production builds and the complete generated static asset set. API startup, process memory and sequential request latency are measured below. Whole-stack startup/memory, concurrent capacity and per-navigation browser transfers remain unmeasured. Functional browser verification is still required.
+These measurements cover frontend production builds and the complete generated static asset set. API startup, process memory and sequential request latency are measured below. Whole-stack startup/memory, concurrent capacity and per-navigation browser transfers remain unmeasured. Initial functional browser evidence and remaining coverage are recorded in [browser-verification.md](browser-verification.md).
 
 Measured on macOS 26.5.2 / ARM64 using Node v26.10.0 and pnpm 12.6.0. The baseline is the unchanged pre-migration commit `30c1b36f5f97236dc79ceff9c8f2e3f3c688407f` in a detached worktree. The migration build is `e1a7ec00312c617431b81486a1b7683e48135600`. Both installations use their committed frozen lockfiles. Dependency installation is excluded. One warm-up precedes three timed build commands for each variant. Builds ran sequentially on the same machine; this small local sample is not a production capacity estimate. Next keeps its build cache between samples; Vite also benefits from warm filesystem caches.
 
