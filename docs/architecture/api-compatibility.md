@@ -13,4 +13,6 @@ The malformed-path error wording is a stable native message; exact framework-spe
 
 ## Remaining audit
 
+The existing CLI and SDK were exercised over real HTTP against the gzip-enabled Rust release server in a disposable installation. `validate` and `test --yes` succeeded; `diff --check` returned 2 for a new check; `apply --yes` created it; the next diff returned 0 with revision 1. A subsequent name-only change produced an update containing only `name`, applied successfully, and returned an unchanged diff at revision 2. These checks used a local mock endpoint, a test-only administrator token and JSON configuration; they did not write to production or publish an SDK package. Local output is retained under ignored `artifacts/browser-fixture/cli-*-results.json`.
+
 Inspect all response projections and malformed-input branches beyond the already verified schema fixtures, cursor validation and JSON/path rejection behavior. Verify that intentional representation changes do not affect the CLI, SDK or browser, and document any additional differences before the final PR.
