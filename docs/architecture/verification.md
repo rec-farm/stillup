@@ -21,3 +21,9 @@ Remaining browser scope is listed in [browser-verification.md](browser-verificat
 ## Current legacy database upgrade
 
 Added a dedicated PostgreSQL upgrade test after `cd683fe`. It independently executes all eight pre-Rust migrations and creates records in every existing table: monitors/revisions/runs/incidents, worker heartbeat, channels/deliveries/attempts/events, opaque secret storage, status/maintenance/communications, regional rounds/jobs/credential hashes, workspace settings and the migration ledger. It compares full database JSON rows after the native migration and after a rerun, including microsecond timestamps and original ledger application times. Only the new migration ledger entry and empty `check_jobs` table are added. The test passes, and Clippy passes. This is a disposable-schema verification; no live database upgrade is claimed.
+
+## Linux container evidence
+
+[CI run 37273309752](https://github.com/RodrigoEspinosa/stillup/actions/runs/37273309752) passed at `d13e4f5`, including pinned Rust 1.92 checks, native/legacy tests, release build, both Linux Docker image builds and the native container runtime smoke step. This establishes Linux image/executable and API startup behavior for that revision; final-head CI is still required after subsequent changes.
+
+After `81fd7b9`, the real HTTP executor test additionally verifies all six supported methods. POST/PUT/PATCH/DELETE preserve the query and Content-Type, send a body containing the resolved test secret, and validate response headers/JSON. HEAD validates headers without requiring a response body. The expanded test and Clippy pass. OPTIONS is intentionally outside the existing check configuration method enum.

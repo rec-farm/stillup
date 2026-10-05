@@ -47,7 +47,7 @@ The current API representation audit is recorded in [api-compatibility.md](api-c
 - [ ] Native Rust API implements every existing route in `tests/legacy-api/src/server.ts`, including validation and response/error contracts.
 - [ ] Authentication: token sign-in/out, cookies, expiration, CSRF, rate limits, OIDC discovery/PKCE/state/callback/logout and safe redirects. Existing sessions continue to work.
 - [ ] Checks: create/edit/revision history, revision guards, pause/archive/restore, ad hoc execution and run history.
-- [ ] Monitoring executor: HTTP methods/bodies, timeout/body limits, private-network/SSRF protection across redirects and DNS, header/JSON/schema assertions, secrets and correct outage semantics.
+- [x] Monitoring executor: HTTP methods/bodies, timeout/body limits, private-network/SSRF protection across redirects and DNS, header/JSON/schema assertions, secrets and correct outage semantics. The real HTTP executor test covers GET/HEAD and every supported write method, with query preservation, content type and body-secret substitution. Configuration/assertion/network fixtures, pinned DNS/no-follow source review, native queue lifecycle and policy-error tests cover the remaining semantics.
 - [ ] Scheduler: due checks, retry/concurrency/idempotency, revision/execution-epoch fencing, worker heartbeat and retention. Define transition from pg-boss queues without losing or double-running work.
 - [ ] Notifications: channels, routing, incident lifecycle, delivery attempts/retries, diagnostics and secret-safe payloads.
 - [ ] Regional probes: enrollment, credential rotation/revocation, polling, reports, epochs, deduplication and coverage/staleness. Replace TypeScript probe runtime if included in the deployed backend image.
