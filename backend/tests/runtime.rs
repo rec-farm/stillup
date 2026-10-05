@@ -51,7 +51,7 @@ impl Fixture {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(
             dir.path().join("index.html"),
-            "<html data-product=\"stillup\"><body>SPA</body></html>",
+            "<html data-product=\"stillup\"><head><title>StillUp</title><meta name=\"description\" content=\"Default\" /><link rel=\"icon\" href=\"/brand/stillup-favicon.svg\" /></head><body>SPA</body></html>",
         )
         .unwrap();
         Self {
@@ -2810,6 +2810,28 @@ async fn native_status_management_guards_revisions_and_filters_public_components
     );
     assert!([a.0, b.0].contains(&StatusCode::OK));
     assert!([a.0, b.0].contains(&StatusCode::CONFLICT));
+    for (path, host) in [
+        ("/status", "dashboard.example.com"),
+        ("/", "status.example.com"),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(path)
+                    .header(header::HOST, host)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let html = std::str::from_utf8(&bytes).unwrap();
+        assert!(html.contains("<title>My status</title>"));
+        assert!(html.contains("name=\"theme-color\" content=\"#f6f8f7\""));
+        assert!(!html.contains("Private-only-name"));
+    }
     let now = chrono::Utc::now();
     let start = (now - chrono::Duration::minutes(1)).to_rfc3339();
     let end = (now + chrono::Duration::minutes(10)).to_rfc3339();
@@ -3030,7 +3052,7 @@ async fn native_status_management_guards_revisions_and_filters_public_components
         .0,
         StatusCode::OK
     );
-    let (_, empty, _) = request(app, "GET", "/v1/public/status", Value::Null, false).await;
+    let (_, empty, _) = request(app.clone(), "GET", "/v1/public/status", Value::Null, false).await;
     for key in [
         "components",
         "groups",
@@ -3040,6 +3062,25 @@ async fn native_status_management_guards_revisions_and_filters_public_components
     ] {
         assert!(empty[key].as_array().unwrap().is_empty(), "{key}");
     }
+    fixture.pool.close().await;
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/status")
+                .header(header::HOST, "dashboard.example.com")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    assert!(
+        std::str::from_utf8(&bytes)
+            .unwrap()
+            .contains("<title>Service status</title>")
+    );
     fixture.close().await;
 }
 

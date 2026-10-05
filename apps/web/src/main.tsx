@@ -50,4 +50,11 @@ function App() {
     </WorkspaceProvider>
   );
 }
-createRoot(document.getElementById('root')!).render(<App />);
+const root = document.getElementById('root')!;
+const mount = () => createRoot(root).render(<App />);
+if (root.dataset.prerendered === 'docs') {
+  // Keep readable static prose if the interactive guide chunk cannot load.
+  import('./docs-page').then(mount).catch(() => {});
+} else {
+  mount();
+}

@@ -151,7 +151,7 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .merge(api.clone())
         .nest("/api", api)
-        .merge(web::routes(state.config.web.clone()))
+        .merge(web::application_routes(state.clone()))
         .layer(middleware::from_fn_with_state(
             state.config.web.clone(),
             web::headers_and_public_host,

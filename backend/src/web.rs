@@ -1,3 +1,4 @@
+use crate::server::AppState;
 use crate::status_domain::{self, Action};
 use axum::{
     Router,
@@ -26,6 +27,24 @@ pub fn router(config: WebConfig) -> Router {
 }
 
 pub fn routes(config: WebConfig) -> Router {
+    page_routes(PageState { config, app: None })
+}
+
+pub fn application_routes(app: AppState) -> Router {
+    page_routes(PageState {
+        config: app.config.web.clone(),
+        app: Some(app),
+    })
+}
+
+#[derive(Clone)]
+struct PageState {
+    config: WebConfig,
+    app: Option<AppState>,
+}
+
+fn page_routes(state: PageState) -> Router {
+    let config = &state.config;
     Router::new()
         .route("/", get(document))
         .route("/login", get(document))
@@ -38,10 +57,22 @@ pub fn routes(config: WebConfig) -> Router {
             "/illustrations",
             ServeDir::new(config.client_dir.join("illustrations")),
         )
-        .with_state(config)
+        .with_state(state)
 }
 
-async fn document(State(config): State<WebConfig>, request: Request) -> Response {
+async fn document(State(state): State<PageState>, request: Request) -> Response {
+    let config = &state.config;
+    let path = request.uri().path();
+    let document = if path == "/docs" {
+        config.client_dir.join("docs/index.html")
+    } else if let Some(slug) = path.strip_prefix("/docs/") {
+        if slug.is_empty() || !slug.bytes().all(|c| c.is_ascii_lowercase() || c == b'-') {
+            return docs_not_found();
+        }
+        config.client_dir.join("docs").join(slug).join("index.html")
+    } else {
+        config.client_dir.join("index.html")
+    };
     let public = status_domain::is_status_domain(
         request
             .headers()
@@ -50,8 +81,23 @@ async fn document(State(config): State<WebConfig>, request: Request) -> Response
             .unwrap_or(""),
         &config.status_domains,
     );
-    match tokio::fs::read_to_string(config.client_dir.join("index.html")).await {
-        Ok(html) => {
+    match tokio::fs::read_to_string(document).await {
+        Ok(mut html) => {
+            if public || path == "/status" {
+                let settings = if let Some(app) = &state.app {
+                    match crate::status::settings(app).await {
+                        Ok(value) => value["settings"].clone(),
+                        Err(_) => crate::status::settings_schema(&serde_json::json!({
+                            "title": app.config.status_page_title
+                        }))
+                        .unwrap(),
+                    }
+                } else {
+                    crate::status::settings_schema(&serde_json::json!({"title":"Service status"}))
+                        .unwrap()
+                };
+                html = status_metadata(html, &settings);
+            }
             let html = if public {
                 html.replace(
                     "data-product=\"stillup\"",
@@ -62,12 +108,83 @@ async fn document(State(config): State<WebConfig>, request: Request) -> Response
             };
             Html(html).into_response()
         }
+        Err(error) if path.starts_with("/docs") && error.kind() == std::io::ErrorKind::NotFound => {
+            docs_not_found()
+        }
         Err(_) => (
             StatusCode::SERVICE_UNAVAILABLE,
             "Frontend build is unavailable",
         )
             .into_response(),
     }
+}
+
+fn escape(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}
+
+fn replace_tag(html: &mut String, start: &str, end: &str, replacement: &str) {
+    if let Some(from) = html.find(start)
+        && let Some(length) = html[from..].find(end)
+    {
+        html.replace_range(from..from + length + end.len(), replacement);
+    }
+}
+
+fn status_metadata(mut html: String, settings: &serde_json::Value) -> String {
+    let text = |key: &str| settings[key].as_str().unwrap_or("");
+    replace_tag(
+        &mut html,
+        "<title>",
+        "</title>",
+        &format!("<title>{}</title>", escape(text("title"))),
+    );
+    replace_tag(
+        &mut html,
+        "<meta name=\"description\"",
+        ">",
+        &format!(
+            "<meta name=\"description\" content=\"{}\" />",
+            escape(text("description"))
+        ),
+    );
+    let favicon = if text("faviconUrl").is_empty() {
+        "/brand/stillup-favicon.svg"
+    } else {
+        text("faviconUrl")
+    };
+    replace_tag(
+        &mut html,
+        "<link rel=\"icon\"",
+        ">",
+        &format!("<link rel=\"icon\" href=\"{}\" />", escape(favicon)),
+    );
+    let light = text("backgroundColor");
+    let dark = if text("darkBackgroundColor").is_empty() {
+        "#0a0b0c"
+    } else {
+        text("darkBackgroundColor")
+    };
+    let colors = match text("theme") {
+        "auto" => format!(
+            "<meta name=\"theme-color\" content=\"{light}\" media=\"(prefers-color-scheme: light)\" /><meta name=\"theme-color\" content=\"{dark}\" media=\"(prefers-color-scheme: dark)\" />"
+        ),
+        "dark" => format!("<meta name=\"theme-color\" content=\"{dark}\" />"),
+        _ => format!("<meta name=\"theme-color\" content=\"{light}\" />"),
+    };
+    html.replace("</head>", &format!("{colors}</head>"))
+}
+
+fn docs_not_found() -> Response {
+    (
+        StatusCode::NOT_FOUND,
+        Html("<!doctype html><html lang=\"en\"><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Guide not found · StillUp</title></head><body><main><h1>Guide not found</h1><p>This documentation page does not exist.</p><a href=\"/docs\">Browse documentation</a></main></body></html>"),
+    ).into_response()
 }
 
 pub async fn headers_and_public_host(
@@ -119,6 +236,30 @@ mod tests {
     use axum::body::Body;
     use http_body_util::BodyExt;
     use tower::ServiceExt;
+    #[test]
+    fn status_metadata_escapes_branding_and_matches_theme_modes() {
+        let template = "<head><title>StillUp</title><meta name=\"description\" content=\"Default\" /><link rel=\"icon\" href=\"/brand/stillup-favicon.svg\" /></head>";
+        let settings = crate::status::settings_schema(&serde_json::json!({
+            "title":"API <status> & uptime",
+            "description":"\"Live\" <script> text",
+            "faviconUrl":"https://example.com/icon?a=1&b=2",
+            "theme":"auto","backgroundColor":"#abcdef","darkBackgroundColor":"#123456"
+        }))
+        .unwrap();
+        let html = status_metadata(template.into(), &settings);
+        assert!(html.contains("<title>API &lt;status&gt; &amp; uptime</title>"));
+        assert!(html.contains("content=\"&quot;Live&quot; &lt;script&gt; text\""));
+        assert!(html.contains("href=\"https://example.com/icon?a=1&amp;b=2\""));
+        assert!(html.contains("content=\"#abcdef\" media=\"(prefers-color-scheme: light)\""));
+        assert!(html.contains("content=\"#123456\" media=\"(prefers-color-scheme: dark)\""));
+        let default =
+            crate::status::settings_schema(&serde_json::json!({"title":"Default","theme":"dark"}))
+                .unwrap();
+        let html = status_metadata(template.into(), &default);
+        assert!(html.contains("href=\"/brand/stillup-favicon.svg\""));
+        assert!(html.contains("content=\"#0a0b0c\""));
+        assert!(!html.contains("prefers-color-scheme"));
+    }
     fn setup() -> (tempfile::TempDir, WebConfig) {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(
@@ -217,5 +358,36 @@ mod tests {
             response.headers()[header::CACHE_CONTROL],
             "public, max-age=31536000, immutable"
         );
+    }
+
+    #[tokio::test]
+    async fn docs_serve_static_prose_and_unknown_guides_return_html_404() {
+        let (dir, config) = setup();
+        std::fs::create_dir_all(dir.path().join("docs/getting-started")).unwrap();
+        std::fs::write(dir.path().join("docs/index.html"), "<h1>Documentation</h1>").unwrap();
+        std::fs::write(
+            dir.path().join("docs/getting-started/index.html"),
+            "<h1>Your first check</h1><p>Static guide prose.</p>",
+        )
+        .unwrap();
+        let app = router(config);
+        for (path, text) in [
+            ("/docs", "Documentation"),
+            ("/docs/getting-started", "Static guide prose."),
+        ] {
+            let response = call(app.clone(), path, "dashboard.example.com").await;
+            assert_eq!(response.status(), StatusCode::OK);
+            let body = response.into_body().collect().await.unwrap().to_bytes();
+            assert!(std::str::from_utf8(&body).unwrap().contains(text));
+        }
+        for path in ["/docs/missing", "/docs/%2e%2e", "/docs/%2findex"] {
+            let response = call(app.clone(), path, "dashboard.example.com").await;
+            assert_eq!(response.status(), StatusCode::NOT_FOUND);
+            assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+            assert_eq!(
+                response.headers()[header::CONTENT_TYPE],
+                "text/html; charset=utf-8"
+            );
+        }
     }
 }
