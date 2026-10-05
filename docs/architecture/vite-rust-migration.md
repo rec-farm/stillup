@@ -36,6 +36,8 @@ Branch: `feat/vite-rust-migration`. Deliver one PR replacing the runtime, retain
 
 - The route validation audit corrected revision cursor coercion (decimal/exponent/radix notation and ECMAScript whitespace), positive safe-integer bounds, validation before monitor lookup, and repeated known query parameters. Repeated unknown fields remain ignored. Forty-three fixtures come from the original Zod route validator and are regenerated in CI. Revision queries now bind wide integers so schema-valid cursors above PostgreSQL integer range work without overflow. PostgreSQL tests exercise revision reads/cursors, JSON errors, duplicate delivery/incident filters and ignored unknown fields. Twenty-seven unit tests, standalone HTTP/probe tests and twenty-six PostgreSQL tests pass; the broader API contract audit remains open.
 
+- Frontend performance baseline captured from unchanged pre-migration commit `30c1b36` in a detached worktree using identical Node/pnpm versions and sequential warmed builds. Median frontend build time was 3.420 seconds for Next and 0.667 seconds for Vite; total generated gzip JavaScript was 334,886 versus 152,792 bytes. These are whole-output totals, not browser-navigation payloads. Reproducible script, raw timings and limitations are documented in `performance.md`. Runtime startup/RSS/API latency and browser transfers remain pending.
+
 ## Completion gates
 
 - [ ] Native Rust API implements every existing route in `tests/legacy-api/src/server.ts`, including validation and response/error contracts.
