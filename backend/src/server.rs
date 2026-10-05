@@ -155,6 +155,7 @@ pub fn router(state: AppState) -> Router {
         .merge(api.clone())
         .nest("/api", api)
         .merge(web::application_routes(state.clone()))
+        .layer(tower_http::compression::CompressionLayer::new())
         .layer(middleware::from_fn_with_state(
             state.config.web.clone(),
             web::headers_and_public_host,

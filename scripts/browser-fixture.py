@@ -13,6 +13,7 @@ from pathlib import Path
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--seconds', type=int, default=600)
+parser.add_argument('--baseline', type=Path, help='Optional prebuilt original Next checkout for frontend comparison')
 args = parser.parse_args()
 if not 30 <= args.seconds <= 900: parser.error('Duration must be 30–900 seconds')
 root = Path(__file__).resolve().parents[1]
@@ -58,6 +59,18 @@ try:
         log = open(artifact / f'{name}.log', 'w')
         logs.append(log)
         processes.append(subprocess.Popen([str(root / 'backend/target/release/stillup-api'), *command], cwd=artifact, env=env, stdout=log, stderr=log, start_new_session=True))
+    if args.baseline:
+        baseline = args.baseline.resolve()
+        with socket.socket() as reservation:
+            reservation.bind(('127.0.0.1', 0))
+            baseline_port = reservation.getsockname()[1]
+        config['baseline_origin'] = f'http://127.0.0.1:{baseline_port}'
+        config['baseline_revision'] = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=baseline, text=True).strip()
+        baseline_env = {**env, 'NODE_ENV': 'production', 'PORT': str(baseline_port), 'API_URL': origin, 'APP_ORIGIN': config['baseline_origin']}
+        log = open(artifact / 'baseline-web.log', 'w')
+        logs.append(log)
+        processes.append(subprocess.Popen(['node', str(baseline / 'apps/web/node_modules/next/dist/bin/next'), 'start', '--hostname', '127.0.0.1', '--port', str(baseline_port)], cwd=baseline / 'apps/web', env=baseline_env, stdout=log, stderr=log, start_new_session=True))
+        (artifact / 'session.json').write_text(json.dumps(config, indent=2))
     print(json.dumps(config), flush=True)
     stop.wait(args.seconds)
 finally:

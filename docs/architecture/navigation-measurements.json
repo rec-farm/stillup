@@ -1,0 +1,1304 @@
+{
+  "recorded_at": "2026-10-05T12:16:14.225239+00:00",
+  "baseline_revision": "30c1b36f5f97236dc79ceff9c8f2e3f3c688407f",
+  "native_revision": "abfd9b6c6eaeb671a034534bc02c2858a3450c74",
+  "method": "One cold isolated Chromium context per route, same native API and empty disposable database for both frontends, built production servers, network-idle capture before periodic polling. Resource Timing transferSize includes browser-estimated headers; encoded/decoded body bytes reflect actual negotiated HTTP responses. Server processes/filesystem may be warm. Not a timing/capacity benchmark.",
+  "variants": {
+    "next": {
+      "/login": {
+        "entries": [
+          {
+            "decodedBodySize": 12789,
+            "encodedBodySize": 5135,
+            "initiatorType": "navigation",
+            "name": "http://127.0.0.1:64264/login",
+            "transferSize": 5435
+          },
+          {
+            "decodedBodySize": 73920,
+            "encodedBodySize": 13946,
+            "initiatorType": "link",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/3aschj14s314k.css",
+            "transferSize": 14246
+          },
+          {
+            "decodedBodySize": 7485,
+            "encodedBodySize": 3091,
+            "initiatorType": "link",
+            "name": "http://127.0.0.1:64264/brand/stillup-lockup-cream.svg",
+            "transferSize": 3391
+          },
+          {
+            "decodedBodySize": 7483,
+            "encodedBodySize": 3088,
+            "initiatorType": "link",
+            "name": "http://127.0.0.1:64264/brand/stillup-lockup-ink.svg",
+            "transferSize": 3388
+          },
+          {
+            "decodedBodySize": 2944,
+            "encodedBodySize": 847,
+            "initiatorType": "link",
+            "name": "http://127.0.0.1:64264/illustrations/header-stillup-light.svg",
+            "transferSize": 1147
+          },
+          {
+            "decodedBodySize": 2718,
+            "encodedBodySize": 780,
+            "initiatorType": "link",
+            "name": "http://127.0.0.1:64264/illustrations/header-stillup-dark.svg",
+            "transferSize": 1080
+          },
+          {
+            "decodedBodySize": 12886,
+            "encodedBodySize": 3590,
+            "initiatorType": "link",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/38jh0plrvsxvn.js",
+            "transferSize": 3890
+          },
+          {
+            "decodedBodySize": 26825,
+            "encodedBodySize": 7625,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/1sl6uln--8pwx.js",
+            "transferSize": 7925
+          },
+          {
+            "decodedBodySize": 14381,
+            "encodedBodySize": 3667,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/0n4xgz6-xuyd8.js",
+            "transferSize": 3967
+          },
+          {
+            "decodedBodySize": 10946,
+            "encodedBodySize": 4308,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/turbopack-19q18viqbpe8a.js",
+            "transferSize": 4608
+          },
+          {
+            "decodedBodySize": 22615,
+            "encodedBodySize": 8321,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/3rsw_d2n5wg4h.js",
+            "transferSize": 8621
+          },
+          {
+            "decodedBodySize": 160632,
+            "encodedBodySize": 43734,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/3qph-yzhx4hl_.js",
+            "transferSize": 44034
+          },
+          {
+            "decodedBodySize": 228916,
+            "encodedBodySize": 71597,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/0vxbsq2o698k5.js",
+            "transferSize": 71897
+          },
+          {
+            "decodedBodySize": 398488,
+            "encodedBodySize": 91229,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/1fk64ksdi98eo.js",
+            "transferSize": 91529
+          },
+          {
+            "decodedBodySize": 20156,
+            "encodedBodySize": 20156,
+            "initiatorType": "css",
+            "name": "http://127.0.0.1:64264/_next/static/media/figtree-latin-wght-normal.08sr_7r2rzxl4.woff2",
+            "transferSize": 20456
+          },
+          {
+            "decodedBodySize": 90104,
+            "encodedBodySize": 90104,
+            "initiatorType": "css",
+            "name": "http://127.0.0.1:64264/_next/static/media/archivo-latin-wdth-normal.1h4hl0m83hjjz.woff2",
+            "transferSize": 90404
+          },
+          {
+            "decodedBodySize": 520,
+            "encodedBodySize": 520,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/2ovize0oq67d7.js",
+            "transferSize": 820
+          },
+          {
+            "decodedBodySize": 558,
+            "encodedBodySize": 558,
+            "initiatorType": "other",
+            "name": "http://127.0.0.1:64264/icon.svg?icon.02c-sox5inhq8.svg",
+            "transferSize": 858
+          }
+        ],
+        "path": "/login",
+        "title": "StillUp \u00b7 API monitoring",
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+        "viewport": {
+          "height": 900,
+          "width": 1280
+        },
+        "totals": {
+          "transferSize": 377696,
+          "encodedBodySize": 372296,
+          "decodedBodySize": 1094366
+        }
+      },
+      "/": {
+        "entries": [
+          {
+            "decodedBodySize": 30900,
+            "encodedBodySize": 8952,
+            "initiatorType": "navigation",
+            "name": "http://127.0.0.1:64264/",
+            "transferSize": 9252
+          },
+          {
+            "decodedBodySize": 73920,
+            "encodedBodySize": 13946,
+            "initiatorType": "link",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/3aschj14s314k.css",
+            "transferSize": 14246
+          },
+          {
+            "decodedBodySize": 12886,
+            "encodedBodySize": 3590,
+            "initiatorType": "link",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/38jh0plrvsxvn.js",
+            "transferSize": 3890
+          },
+          {
+            "decodedBodySize": 26825,
+            "encodedBodySize": 7625,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/1sl6uln--8pwx.js",
+            "transferSize": 7925
+          },
+          {
+            "decodedBodySize": 10946,
+            "encodedBodySize": 4308,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/turbopack-19q18viqbpe8a.js",
+            "transferSize": 4608
+          },
+          {
+            "decodedBodySize": 14381,
+            "encodedBodySize": 3667,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/0n4xgz6-xuyd8.js",
+            "transferSize": 3967
+          },
+          {
+            "decodedBodySize": 30726,
+            "encodedBodySize": 10953,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/2rmkila__f-hm.js",
+            "transferSize": 11253
+          },
+          {
+            "decodedBodySize": 160632,
+            "encodedBodySize": 43734,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/3qph-yzhx4hl_.js",
+            "transferSize": 44034
+          },
+          {
+            "decodedBodySize": 228916,
+            "encodedBodySize": 71597,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/0vxbsq2o698k5.js",
+            "transferSize": 71897
+          },
+          {
+            "decodedBodySize": 398488,
+            "encodedBodySize": 91229,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/1fk64ksdi98eo.js",
+            "transferSize": 91529
+          },
+          {
+            "decodedBodySize": 109315,
+            "encodedBodySize": 28400,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/3r3_aov8gki2o.js",
+            "transferSize": 28700
+          },
+          {
+            "decodedBodySize": 2944,
+            "encodedBodySize": 847,
+            "initiatorType": "link",
+            "name": "http://127.0.0.1:64264/illustrations/header-stillup-light.svg",
+            "transferSize": 1147
+          },
+          {
+            "decodedBodySize": 7485,
+            "encodedBodySize": 3091,
+            "initiatorType": "link",
+            "name": "http://127.0.0.1:64264/brand/stillup-lockup-cream.svg",
+            "transferSize": 3391
+          },
+          {
+            "decodedBodySize": 7483,
+            "encodedBodySize": 3088,
+            "initiatorType": "link",
+            "name": "http://127.0.0.1:64264/brand/stillup-lockup-ink.svg",
+            "transferSize": 3388
+          },
+          {
+            "decodedBodySize": 6373,
+            "encodedBodySize": 1731,
+            "initiatorType": "link",
+            "name": "http://127.0.0.1:64264/brand/rec-mark-cream.svg",
+            "transferSize": 2031
+          },
+          {
+            "decodedBodySize": 2718,
+            "encodedBodySize": 780,
+            "initiatorType": "link",
+            "name": "http://127.0.0.1:64264/illustrations/header-stillup-dark.svg",
+            "transferSize": 1080
+          },
+          {
+            "decodedBodySize": 11144,
+            "encodedBodySize": 3625,
+            "initiatorType": "link",
+            "name": "http://127.0.0.1:64264/illustrations/empty-state-stillup-light.svg",
+            "transferSize": 3925
+          },
+          {
+            "decodedBodySize": 11433,
+            "encodedBodySize": 3742,
+            "initiatorType": "link",
+            "name": "http://127.0.0.1:64264/illustrations/empty-state-stillup-dark.svg",
+            "transferSize": 4042
+          },
+          {
+            "decodedBodySize": 20156,
+            "encodedBodySize": 20156,
+            "initiatorType": "css",
+            "name": "http://127.0.0.1:64264/_next/static/media/figtree-latin-wght-normal.08sr_7r2rzxl4.woff2",
+            "transferSize": 20456
+          },
+          {
+            "decodedBodySize": 23128,
+            "encodedBodySize": 23128,
+            "initiatorType": "css",
+            "name": "http://127.0.0.1:64264/_next/static/media/geist-mono-latin-wght-normal.1t7tphccnfzmb.woff2",
+            "transferSize": 23428
+          },
+          {
+            "decodedBodySize": 90104,
+            "encodedBodySize": 90104,
+            "initiatorType": "css",
+            "name": "http://127.0.0.1:64264/_next/static/media/archivo-latin-wdth-normal.1h4hl0m83hjjz.woff2",
+            "transferSize": 90404
+          },
+          {
+            "decodedBodySize": 520,
+            "encodedBodySize": 520,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/2ovize0oq67d7.js",
+            "transferSize": 820
+          },
+          {
+            "decodedBodySize": 558,
+            "encodedBodySize": 558,
+            "initiatorType": "other",
+            "name": "http://127.0.0.1:64264/icon.svg?icon.02c-sox5inhq8.svg",
+            "transferSize": 858
+          }
+        ],
+        "path": "/",
+        "title": "StillUp \u00b7 API monitoring",
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+        "viewport": {
+          "height": 900,
+          "width": 1280
+        },
+        "totals": {
+          "transferSize": 446271,
+          "encodedBodySize": 439371,
+          "decodedBodySize": 1281981
+        }
+      },
+      "/status": {
+        "entries": [
+          {
+            "decodedBodySize": 14703,
+            "encodedBodySize": 5447,
+            "initiatorType": "navigation",
+            "name": "http://127.0.0.1:64264/status",
+            "transferSize": 5747
+          },
+          {
+            "decodedBodySize": 73920,
+            "encodedBodySize": 13946,
+            "initiatorType": "link",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/3aschj14s314k.css",
+            "transferSize": 14246
+          },
+          {
+            "decodedBodySize": 7485,
+            "encodedBodySize": 3091,
+            "initiatorType": "link",
+            "name": "http://127.0.0.1:64264/brand/stillup-lockup-cream.svg",
+            "transferSize": 3391
+          },
+          {
+            "decodedBodySize": 7483,
+            "encodedBodySize": 3088,
+            "initiatorType": "link",
+            "name": "http://127.0.0.1:64264/brand/stillup-lockup-ink.svg",
+            "transferSize": 3388
+          },
+          {
+            "decodedBodySize": 12886,
+            "encodedBodySize": 3590,
+            "initiatorType": "link",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/38jh0plrvsxvn.js",
+            "transferSize": 3890
+          },
+          {
+            "decodedBodySize": 26825,
+            "encodedBodySize": 7625,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/1sl6uln--8pwx.js",
+            "transferSize": 7925
+          },
+          {
+            "decodedBodySize": 228916,
+            "encodedBodySize": 71597,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/0vxbsq2o698k5.js",
+            "transferSize": 71897
+          },
+          {
+            "decodedBodySize": 10946,
+            "encodedBodySize": 4308,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/turbopack-19q18viqbpe8a.js",
+            "transferSize": 4608
+          },
+          {
+            "decodedBodySize": 14381,
+            "encodedBodySize": 3667,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/0n4xgz6-xuyd8.js",
+            "transferSize": 3967
+          },
+          {
+            "decodedBodySize": 160632,
+            "encodedBodySize": 43734,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/3qph-yzhx4hl_.js",
+            "transferSize": 44034
+          },
+          {
+            "decodedBodySize": 398488,
+            "encodedBodySize": 91229,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/1fk64ksdi98eo.js",
+            "transferSize": 91529
+          },
+          {
+            "decodedBodySize": 29765,
+            "encodedBodySize": 10640,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/1qv60vr6a6sq7.js",
+            "transferSize": 10940
+          },
+          {
+            "decodedBodySize": 20156,
+            "encodedBodySize": 20156,
+            "initiatorType": "css",
+            "name": "http://127.0.0.1:64264/_next/static/media/figtree-latin-wght-normal.08sr_7r2rzxl4.woff2",
+            "transferSize": 20456
+          },
+          {
+            "decodedBodySize": 23128,
+            "encodedBodySize": 23128,
+            "initiatorType": "css",
+            "name": "http://127.0.0.1:64264/_next/static/media/geist-mono-latin-wght-normal.1t7tphccnfzmb.woff2",
+            "transferSize": 23428
+          },
+          {
+            "decodedBodySize": 90104,
+            "encodedBodySize": 90104,
+            "initiatorType": "css",
+            "name": "http://127.0.0.1:64264/_next/static/media/archivo-latin-wdth-normal.1h4hl0m83hjjz.woff2",
+            "transferSize": 90404
+          },
+          {
+            "decodedBodySize": 16316,
+            "encodedBodySize": 5575,
+            "initiatorType": "img",
+            "name": "http://127.0.0.1:64264/brand/stillup-endorsed-ink.svg",
+            "transferSize": 5875
+          },
+          {
+            "decodedBodySize": 520,
+            "encodedBodySize": 520,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/2ovize0oq67d7.js",
+            "transferSize": 820
+          },
+          {
+            "decodedBodySize": 558,
+            "encodedBodySize": 558,
+            "initiatorType": "other",
+            "name": "http://127.0.0.1:64264/icon.svg?icon.02c-sox5inhq8.svg",
+            "transferSize": 858
+          }
+        ],
+        "path": "/status",
+        "title": "Service status",
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+        "viewport": {
+          "height": 900,
+          "width": 1280
+        },
+        "totals": {
+          "transferSize": 407403,
+          "encodedBodySize": 402003,
+          "decodedBodySize": 1137212
+        }
+      },
+      "/docs/monitoring-as-code": {
+        "entries": [
+          {
+            "decodedBodySize": 108769,
+            "encodedBodySize": 32570,
+            "initiatorType": "navigation",
+            "name": "http://127.0.0.1:64264/docs/monitoring-as-code",
+            "transferSize": 32870
+          },
+          {
+            "decodedBodySize": 73920,
+            "encodedBodySize": 13946,
+            "initiatorType": "link",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/3aschj14s314k.css",
+            "transferSize": 14246
+          },
+          {
+            "decodedBodySize": 7485,
+            "encodedBodySize": 3091,
+            "initiatorType": "link",
+            "name": "http://127.0.0.1:64264/brand/stillup-lockup-cream.svg",
+            "transferSize": 3391
+          },
+          {
+            "decodedBodySize": 15610,
+            "encodedBodySize": 3336,
+            "initiatorType": "link",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/2tzkgium45wdi.css",
+            "transferSize": 3636
+          },
+          {
+            "decodedBodySize": 7483,
+            "encodedBodySize": 3088,
+            "initiatorType": "link",
+            "name": "http://127.0.0.1:64264/brand/stillup-lockup-ink.svg",
+            "transferSize": 3388
+          },
+          {
+            "decodedBodySize": 12886,
+            "encodedBodySize": 3590,
+            "initiatorType": "link",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/38jh0plrvsxvn.js",
+            "transferSize": 3890
+          },
+          {
+            "decodedBodySize": 26825,
+            "encodedBodySize": 7625,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/1sl6uln--8pwx.js",
+            "transferSize": 7925
+          },
+          {
+            "decodedBodySize": 228916,
+            "encodedBodySize": 71597,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/0vxbsq2o698k5.js",
+            "transferSize": 71897
+          },
+          {
+            "decodedBodySize": 10946,
+            "encodedBodySize": 4308,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/turbopack-19q18viqbpe8a.js",
+            "transferSize": 4608
+          },
+          {
+            "decodedBodySize": 14381,
+            "encodedBodySize": 3667,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/0n4xgz6-xuyd8.js",
+            "transferSize": 3967
+          },
+          {
+            "decodedBodySize": 29043,
+            "encodedBodySize": 10416,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/2gxa7oywzv4dm.js",
+            "transferSize": 10716
+          },
+          {
+            "decodedBodySize": 2368,
+            "encodedBodySize": 1121,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/2lq7-0yzkvu4o.js",
+            "transferSize": 1421
+          },
+          {
+            "decodedBodySize": 160632,
+            "encodedBodySize": 43734,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/3qph-yzhx4hl_.js",
+            "transferSize": 44034
+          },
+          {
+            "decodedBodySize": 398488,
+            "encodedBodySize": 91229,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/1fk64ksdi98eo.js",
+            "transferSize": 91529
+          },
+          {
+            "decodedBodySize": 20156,
+            "encodedBodySize": 20156,
+            "initiatorType": "css",
+            "name": "http://127.0.0.1:64264/_next/static/media/figtree-latin-wght-normal.08sr_7r2rzxl4.woff2",
+            "transferSize": 20456
+          },
+          {
+            "decodedBodySize": 23128,
+            "encodedBodySize": 23128,
+            "initiatorType": "css",
+            "name": "http://127.0.0.1:64264/_next/static/media/geist-mono-latin-wght-normal.1t7tphccnfzmb.woff2",
+            "transferSize": 23428
+          },
+          {
+            "decodedBodySize": 90104,
+            "encodedBodySize": 90104,
+            "initiatorType": "css",
+            "name": "http://127.0.0.1:64264/_next/static/media/archivo-latin-wdth-normal.1h4hl0m83hjjz.woff2",
+            "transferSize": 90404
+          },
+          {
+            "decodedBodySize": 520,
+            "encodedBodySize": 520,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64264/_next/static/chunks/2ovize0oq67d7.js",
+            "transferSize": 820
+          },
+          {
+            "decodedBodySize": 558,
+            "encodedBodySize": 558,
+            "initiatorType": "other",
+            "name": "http://127.0.0.1:64264/icon.svg?icon.02c-sox5inhq8.svg",
+            "transferSize": 858
+          },
+          {
+            "decodedBodySize": 211,
+            "encodedBodySize": 160,
+            "initiatorType": "fetch",
+            "name": "http://127.0.0.1:64264/?_rsc=r5t6Xcj4SE0Zhxtv",
+            "transferSize": 460
+          },
+          {
+            "decodedBodySize": 264,
+            "encodedBodySize": 165,
+            "initiatorType": "fetch",
+            "name": "http://127.0.0.1:64264/docs?_rsc=r5t6Xcj4SE0Zhxtv",
+            "transferSize": 465
+          },
+          {
+            "decodedBodySize": 1716,
+            "encodedBodySize": 909,
+            "initiatorType": "fetch",
+            "name": "http://127.0.0.1:64264/docs/getting-started?_rsc=yXDEtuh-XKsZT-Wi",
+            "transferSize": 1209
+          },
+          {
+            "decodedBodySize": 1737,
+            "encodedBodySize": 935,
+            "initiatorType": "fetch",
+            "name": "http://127.0.0.1:64264/docs/monitoring-as-code?_rsc=yXDEtuh-XKsZT-Wi",
+            "transferSize": 1235
+          },
+          {
+            "decodedBodySize": 1557,
+            "encodedBodySize": 866,
+            "initiatorType": "fetch",
+            "name": "http://127.0.0.1:64264/?_rsc=yXDEtuh-XKsZT-Wi",
+            "transferSize": 1166
+          },
+          {
+            "decodedBodySize": 1609,
+            "encodedBodySize": 878,
+            "initiatorType": "fetch",
+            "name": "http://127.0.0.1:64264/docs?_rsc=yXDEtuh-XKsZT-Wi",
+            "transferSize": 1178
+          },
+          {
+            "decodedBodySize": 1724,
+            "encodedBodySize": 916,
+            "initiatorType": "fetch",
+            "name": "http://127.0.0.1:64264/docs/checks-and-assertions?_rsc=yXDEtuh-XKsZT-Wi",
+            "transferSize": 1216
+          },
+          {
+            "decodedBodySize": 1717,
+            "encodedBodySize": 909,
+            "initiatorType": "fetch",
+            "name": "http://127.0.0.1:64264/docs/secrets?_rsc=yXDEtuh-XKsZT-Wi",
+            "transferSize": 1209
+          },
+          {
+            "decodedBodySize": 1711,
+            "encodedBodySize": 910,
+            "initiatorType": "fetch",
+            "name": "http://127.0.0.1:64264/docs/notifications?_rsc=yXDEtuh-XKsZT-Wi",
+            "transferSize": 1210
+          },
+          {
+            "decodedBodySize": 1722,
+            "encodedBodySize": 912,
+            "initiatorType": "fetch",
+            "name": "http://127.0.0.1:64264/docs/locations?_rsc=yXDEtuh-XKsZT-Wi",
+            "transferSize": 1212
+          },
+          {
+            "decodedBodySize": 1724,
+            "encodedBodySize": 912,
+            "initiatorType": "fetch",
+            "name": "http://127.0.0.1:64264/docs/status-page?_rsc=yXDEtuh-XKsZT-Wi",
+            "transferSize": 1212
+          },
+          {
+            "decodedBodySize": 1723,
+            "encodedBodySize": 920,
+            "initiatorType": "fetch",
+            "name": "http://127.0.0.1:64264/docs/api?_rsc=yXDEtuh-XKsZT-Wi",
+            "transferSize": 1220
+          },
+          {
+            "decodedBodySize": 1717,
+            "encodedBodySize": 918,
+            "initiatorType": "fetch",
+            "name": "http://127.0.0.1:64264/docs/self-hosting?_rsc=yXDEtuh-XKsZT-Wi",
+            "transferSize": 1218
+          }
+        ],
+        "path": "/docs/monitoring-as-code",
+        "title": "Monitoring as code \u00b7 StillUp",
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+        "viewport": {
+          "height": 900,
+          "width": 1280
+        },
+        "totals": {
+          "transferSize": 447694,
+          "encodedBodySize": 438094,
+          "decodedBodySize": 1251350
+        }
+      }
+    },
+    "vite": {
+      "/login": {
+        "entries": [
+          {
+            "decodedBodySize": 1197,
+            "encodedBodySize": 642,
+            "initiatorType": "navigation",
+            "name": "http://127.0.0.1:64262/login",
+            "transferSize": 942
+          },
+          {
+            "decodedBodySize": 73772,
+            "encodedBodySize": 13879,
+            "initiatorType": "link",
+            "name": "http://127.0.0.1:64262/assets/index-DwJka9r3.css",
+            "transferSize": 14179
+          },
+          {
+            "decodedBodySize": 323310,
+            "encodedBodySize": 97337,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64262/assets/index-x1AyT8vb.js",
+            "transferSize": 97637
+          },
+          {
+            "decodedBodySize": 3722,
+            "encodedBodySize": 1733,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64262/assets/login-page-BBmiBqYO.js",
+            "transferSize": 2033
+          },
+          {
+            "decodedBodySize": 2630,
+            "encodedBodySize": 1218,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64262/assets/brand-CW3qz-p_.js",
+            "transferSize": 1518
+          },
+          {
+            "decodedBodySize": 154,
+            "encodedBodySize": 160,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64262/assets/arrow-right-C01CfMgG.js",
+            "transferSize": 460
+          },
+          {
+            "decodedBodySize": 309,
+            "encodedBodySize": 246,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64262/assets/shield-check-BjRXrZ7u.js",
+            "transferSize": 546
+          },
+          {
+            "decodedBodySize": 469,
+            "encodedBodySize": 301,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64262/assets/watchful-art-CJ4KN_az.js",
+            "transferSize": 601
+          },
+          {
+            "decodedBodySize": 20156,
+            "encodedBodySize": 20135,
+            "initiatorType": "css",
+            "name": "http://127.0.0.1:64262/assets/figtree-latin-wght-normal-D_ZTVpCC.woff2",
+            "transferSize": 20435
+          },
+          {
+            "decodedBodySize": 140,
+            "encodedBodySize": 136,
+            "initiatorType": "fetch",
+            "name": "http://127.0.0.1:64262/api/v1/public/workspace",
+            "transferSize": 436
+          },
+          {
+            "decodedBodySize": 558,
+            "encodedBodySize": 357,
+            "initiatorType": "other",
+            "name": "http://127.0.0.1:64262/brand/stillup-favicon.svg",
+            "transferSize": 657
+          },
+          {
+            "decodedBodySize": 40,
+            "encodedBodySize": 63,
+            "initiatorType": "fetch",
+            "name": "http://127.0.0.1:64262/api/v1/auth/config",
+            "transferSize": 363
+          },
+          {
+            "decodedBodySize": 7485,
+            "encodedBodySize": 3104,
+            "initiatorType": "img",
+            "name": "http://127.0.0.1:64262/brand/stillup-lockup-cream.svg",
+            "transferSize": 3404
+          },
+          {
+            "decodedBodySize": 2944,
+            "encodedBodySize": 853,
+            "initiatorType": "img",
+            "name": "http://127.0.0.1:64262/illustrations/header-stillup-light.svg",
+            "transferSize": 1153
+          },
+          {
+            "decodedBodySize": 7483,
+            "encodedBodySize": 3101,
+            "initiatorType": "img",
+            "name": "http://127.0.0.1:64262/brand/stillup-lockup-ink.svg",
+            "transferSize": 3401
+          },
+          {
+            "decodedBodySize": 2718,
+            "encodedBodySize": 787,
+            "initiatorType": "img",
+            "name": "http://127.0.0.1:64262/illustrations/header-stillup-dark.svg",
+            "transferSize": 1087
+          },
+          {
+            "decodedBodySize": 90104,
+            "encodedBodySize": 90154,
+            "initiatorType": "css",
+            "name": "http://127.0.0.1:64262/assets/archivo-latin-wdth-normal-DY7AcnAa.woff2",
+            "transferSize": 90454
+          }
+        ],
+        "path": "/login",
+        "title": "StillUp \u00b7 API monitoring",
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+        "viewport": {
+          "height": 900,
+          "width": 1280
+        },
+        "totals": {
+          "transferSize": 239306,
+          "encodedBodySize": 234206,
+          "decodedBodySize": 537191
+        }
+      },
+      "/": {
+        "entries": [
+          {
+            "decodedBodySize": 1197,
+            "encodedBodySize": 642,
+            "initiatorType": "navigation",
+            "name": "http://127.0.0.1:64262/",
+            "transferSize": 942
+          },
+          {
+            "decodedBodySize": 323310,
+            "encodedBodySize": 97337,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64262/assets/index-x1AyT8vb.js",
+            "transferSize": 97637
+          },
+          {
+            "decodedBodySize": 73772,
+            "encodedBodySize": 13879,
+            "initiatorType": "link",
+            "name": "http://127.0.0.1:64262/assets/index-DwJka9r3.css",
+            "transferSize": 14179
+          },
+          {
+            "decodedBodySize": 2630,
+            "encodedBodySize": 1218,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64262/assets/brand-CW3qz-p_.js",
+            "transferSize": 1518
+          },
+          {
+            "decodedBodySize": 109012,
+            "encodedBodySize": 28192,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64262/assets/dashboard-page-vL4XBL8o.js",
+            "transferSize": 28492
+          },
+          {
+            "decodedBodySize": 154,
+            "encodedBodySize": 160,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64262/assets/arrow-right-C01CfMgG.js",
+            "transferSize": 460
+          },
+          {
+            "decodedBodySize": 309,
+            "encodedBodySize": 246,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64262/assets/shield-check-BjRXrZ7u.js",
+            "transferSize": 546
+          },
+          {
+            "decodedBodySize": 449,
+            "encodedBodySize": 288,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64262/assets/terminal-BSsl0cy-.js",
+            "transferSize": 588
+          },
+          {
+            "decodedBodySize": 254,
+            "encodedBodySize": 207,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64262/assets/triangle-alert-CkTuUBQb.js",
+            "transferSize": 507
+          },
+          {
+            "decodedBodySize": 469,
+            "encodedBodySize": 301,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64262/assets/watchful-art-CJ4KN_az.js",
+            "transferSize": 601
+          },
+          {
+            "decodedBodySize": 7503,
+            "encodedBodySize": 2884,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64262/assets/status-view-B5D41UuM.js",
+            "transferSize": 3184
+          },
+          {
+            "decodedBodySize": 20156,
+            "encodedBodySize": 20135,
+            "initiatorType": "css",
+            "name": "http://127.0.0.1:64262/assets/figtree-latin-wght-normal-D_ZTVpCC.woff2",
+            "transferSize": 20435
+          },
+          {
+            "decodedBodySize": 140,
+            "encodedBodySize": 136,
+            "initiatorType": "fetch",
+            "name": "http://127.0.0.1:64262/api/v1/public/workspace",
+            "transferSize": 436
+          },
+          {
+            "decodedBodySize": 558,
+            "encodedBodySize": 357,
+            "initiatorType": "other",
+            "name": "http://127.0.0.1:64262/brand/stillup-favicon.svg",
+            "transferSize": 657
+          },
+          {
+            "decodedBodySize": 97,
+            "encodedBodySize": 111,
+            "initiatorType": "fetch",
+            "name": "http://127.0.0.1:64262/api/v1/dashboard",
+            "transferSize": 411
+          },
+          {
+            "decodedBodySize": 7485,
+            "encodedBodySize": 3104,
+            "initiatorType": "img",
+            "name": "http://127.0.0.1:64262/brand/stillup-lockup-cream.svg",
+            "transferSize": 3404
+          },
+          {
+            "decodedBodySize": 7483,
+            "encodedBodySize": 3101,
+            "initiatorType": "img",
+            "name": "http://127.0.0.1:64262/brand/stillup-lockup-ink.svg",
+            "transferSize": 3401
+          },
+          {
+            "decodedBodySize": 2718,
+            "encodedBodySize": 787,
+            "initiatorType": "img",
+            "name": "http://127.0.0.1:64262/illustrations/header-stillup-dark.svg",
+            "transferSize": 1087
+          },
+          {
+            "decodedBodySize": 11144,
+            "encodedBodySize": 3648,
+            "initiatorType": "img",
+            "name": "http://127.0.0.1:64262/illustrations/empty-state-stillup-light.svg",
+            "transferSize": 3948
+          },
+          {
+            "decodedBodySize": 6373,
+            "encodedBodySize": 1739,
+            "initiatorType": "img",
+            "name": "http://127.0.0.1:64262/brand/rec-mark-cream.svg",
+            "transferSize": 2039
+          },
+          {
+            "decodedBodySize": 2944,
+            "encodedBodySize": 853,
+            "initiatorType": "img",
+            "name": "http://127.0.0.1:64262/illustrations/header-stillup-light.svg",
+            "transferSize": 1153
+          },
+          {
+            "decodedBodySize": 11433,
+            "encodedBodySize": 3763,
+            "initiatorType": "img",
+            "name": "http://127.0.0.1:64262/illustrations/empty-state-stillup-dark.svg",
+            "transferSize": 4063
+          },
+          {
+            "decodedBodySize": 23128,
+            "encodedBodySize": 23158,
+            "initiatorType": "css",
+            "name": "http://127.0.0.1:64262/assets/geist-mono-latin-wght-normal-XN7g48iV.woff2",
+            "transferSize": 23458
+          },
+          {
+            "decodedBodySize": 90104,
+            "encodedBodySize": 90154,
+            "initiatorType": "css",
+            "name": "http://127.0.0.1:64262/assets/archivo-latin-wdth-normal-DY7AcnAa.woff2",
+            "transferSize": 90454
+          }
+        ],
+        "path": "/",
+        "title": "StillUp \u00b7 API monitoring",
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+        "viewport": {
+          "height": 900,
+          "width": 1280
+        },
+        "totals": {
+          "transferSize": 303600,
+          "encodedBodySize": 296400,
+          "decodedBodySize": 702822
+        }
+      },
+      "/status": {
+        "entries": [
+          {
+            "decodedBodySize": 1219,
+            "encodedBodySize": 651,
+            "initiatorType": "navigation",
+            "name": "http://127.0.0.1:64262/status",
+            "transferSize": 951
+          },
+          {
+            "decodedBodySize": 73772,
+            "encodedBodySize": 13879,
+            "initiatorType": "link",
+            "name": "http://127.0.0.1:64262/assets/index-DwJka9r3.css",
+            "transferSize": 14179
+          },
+          {
+            "decodedBodySize": 323310,
+            "encodedBodySize": 97337,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64262/assets/index-x1AyT8vb.js",
+            "transferSize": 97637
+          },
+          {
+            "decodedBodySize": 1031,
+            "encodedBodySize": 605,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64262/assets/status-page-CdiDi1jH.js",
+            "transferSize": 905
+          },
+          {
+            "decodedBodySize": 2630,
+            "encodedBodySize": 1218,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64262/assets/brand-CW3qz-p_.js",
+            "transferSize": 1518
+          },
+          {
+            "decodedBodySize": 309,
+            "encodedBodySize": 246,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64262/assets/shield-check-BjRXrZ7u.js",
+            "transferSize": 546
+          },
+          {
+            "decodedBodySize": 254,
+            "encodedBodySize": 207,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64262/assets/triangle-alert-CkTuUBQb.js",
+            "transferSize": 507
+          },
+          {
+            "decodedBodySize": 7503,
+            "encodedBodySize": 2884,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64262/assets/status-view-B5D41UuM.js",
+            "transferSize": 3184
+          },
+          {
+            "decodedBodySize": 20156,
+            "encodedBodySize": 20135,
+            "initiatorType": "css",
+            "name": "http://127.0.0.1:64262/assets/figtree-latin-wght-normal-D_ZTVpCC.woff2",
+            "transferSize": 20435
+          },
+          {
+            "decodedBodySize": 140,
+            "encodedBodySize": 136,
+            "initiatorType": "fetch",
+            "name": "http://127.0.0.1:64262/api/v1/public/workspace",
+            "transferSize": 436
+          },
+          {
+            "decodedBodySize": 558,
+            "encodedBodySize": 357,
+            "initiatorType": "other",
+            "name": "http://127.0.0.1:64262/brand/stillup-favicon.svg",
+            "transferSize": 657
+          },
+          {
+            "decodedBodySize": 7485,
+            "encodedBodySize": 3104,
+            "initiatorType": "img",
+            "name": "http://127.0.0.1:64262/brand/stillup-lockup-cream.svg",
+            "transferSize": 3404
+          },
+          {
+            "decodedBodySize": 7483,
+            "encodedBodySize": 3101,
+            "initiatorType": "img",
+            "name": "http://127.0.0.1:64262/brand/stillup-lockup-ink.svg",
+            "transferSize": 3401
+          },
+          {
+            "decodedBodySize": 691,
+            "encodedBodySize": 415,
+            "initiatorType": "fetch",
+            "name": "http://127.0.0.1:64262/api/v1/public/status",
+            "transferSize": 715
+          },
+          {
+            "decodedBodySize": 16316,
+            "encodedBodySize": 5611,
+            "initiatorType": "img",
+            "name": "http://127.0.0.1:64262/brand/stillup-endorsed-ink.svg",
+            "transferSize": 5911
+          },
+          {
+            "decodedBodySize": 16316,
+            "encodedBodySize": 5612,
+            "initiatorType": "img",
+            "name": "http://127.0.0.1:64262/brand/stillup-endorsed-cream.svg",
+            "transferSize": 5912
+          },
+          {
+            "decodedBodySize": 90104,
+            "encodedBodySize": 90154,
+            "initiatorType": "css",
+            "name": "http://127.0.0.1:64262/assets/archivo-latin-wdth-normal-DY7AcnAa.woff2",
+            "transferSize": 90454
+          },
+          {
+            "decodedBodySize": 23128,
+            "encodedBodySize": 23158,
+            "initiatorType": "css",
+            "name": "http://127.0.0.1:64262/assets/geist-mono-latin-wght-normal-XN7g48iV.woff2",
+            "transferSize": 23458
+          }
+        ],
+        "path": "/status",
+        "title": "Service status",
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+        "viewport": {
+          "height": 900,
+          "width": 1280
+        },
+        "totals": {
+          "transferSize": 274210,
+          "encodedBodySize": 268810,
+          "decodedBodySize": 592405
+        }
+      },
+      "/docs/monitoring-as-code": {
+        "entries": [
+          {
+            "decodedBodySize": 10694,
+            "encodedBodySize": 4378,
+            "initiatorType": "navigation",
+            "name": "http://127.0.0.1:64262/docs/monitoring-as-code",
+            "transferSize": 4678
+          },
+          {
+            "decodedBodySize": 73772,
+            "encodedBodySize": 13879,
+            "initiatorType": "link",
+            "name": "http://127.0.0.1:64262/assets/index-DwJka9r3.css",
+            "transferSize": 14179
+          },
+          {
+            "decodedBodySize": 323310,
+            "encodedBodySize": 97337,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64262/assets/index-x1AyT8vb.js",
+            "transferSize": 97637
+          },
+          {
+            "decodedBodySize": 20156,
+            "encodedBodySize": 20135,
+            "initiatorType": "css",
+            "name": "http://127.0.0.1:64262/assets/figtree-latin-wght-normal-D_ZTVpCC.woff2",
+            "transferSize": 20435
+          },
+          {
+            "decodedBodySize": 23128,
+            "encodedBodySize": 23158,
+            "initiatorType": "css",
+            "name": "http://127.0.0.1:64262/assets/geist-mono-latin-wght-normal-XN7g48iV.woff2",
+            "transferSize": 23458
+          },
+          {
+            "decodedBodySize": 92434,
+            "encodedBodySize": 20017,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64262/assets/docs-page-0kDc2rus.js",
+            "transferSize": 20317
+          },
+          {
+            "decodedBodySize": 2630,
+            "encodedBodySize": 1218,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64262/assets/brand-CW3qz-p_.js",
+            "transferSize": 1518
+          },
+          {
+            "decodedBodySize": 449,
+            "encodedBodySize": 288,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64262/assets/terminal-BSsl0cy-.js",
+            "transferSize": 588
+          },
+          {
+            "decodedBodySize": 469,
+            "encodedBodySize": 301,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64262/assets/watchful-art-CJ4KN_az.js",
+            "transferSize": 601
+          },
+          {
+            "decodedBodySize": 254,
+            "encodedBodySize": 207,
+            "initiatorType": "script",
+            "name": "http://127.0.0.1:64262/assets/triangle-alert-CkTuUBQb.js",
+            "transferSize": 507
+          },
+          {
+            "decodedBodySize": 15595,
+            "encodedBodySize": 3331,
+            "initiatorType": "link",
+            "name": "http://127.0.0.1:64262/assets/docs-page-Bw0pysAx.css",
+            "transferSize": 3631
+          },
+          {
+            "decodedBodySize": 140,
+            "encodedBodySize": 136,
+            "initiatorType": "fetch",
+            "name": "http://127.0.0.1:64262/api/v1/public/workspace",
+            "transferSize": 436
+          },
+          {
+            "decodedBodySize": 558,
+            "encodedBodySize": 357,
+            "initiatorType": "other",
+            "name": "http://127.0.0.1:64262/brand/stillup-favicon.svg",
+            "transferSize": 657
+          },
+          {
+            "decodedBodySize": 7483,
+            "encodedBodySize": 3101,
+            "initiatorType": "img",
+            "name": "http://127.0.0.1:64262/brand/stillup-lockup-ink.svg",
+            "transferSize": 3401
+          },
+          {
+            "decodedBodySize": 7485,
+            "encodedBodySize": 3104,
+            "initiatorType": "img",
+            "name": "http://127.0.0.1:64262/brand/stillup-lockup-cream.svg",
+            "transferSize": 3404
+          },
+          {
+            "decodedBodySize": 90104,
+            "encodedBodySize": 90154,
+            "initiatorType": "css",
+            "name": "http://127.0.0.1:64262/assets/archivo-latin-wdth-normal-DY7AcnAa.woff2",
+            "transferSize": 90454
+          }
+        ],
+        "path": "/docs/monitoring-as-code",
+        "title": "Monitoring as code \u00b7 StillUp",
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+        "viewport": {
+          "height": 900,
+          "width": 1280
+        },
+        "totals": {
+          "transferSize": 285901,
+          "encodedBodySize": 281101,
+          "decodedBodySize": 668661
+        }
+      }
+    }
+  },
+  "native_executable_sha256": "6e4fe82ff74108a8bdc42474476b0b411e9647e76a415f2ad43ee91e2bba87b1",
+  "source_worktree_modified": true
+}

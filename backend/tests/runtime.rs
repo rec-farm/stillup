@@ -628,6 +628,59 @@ async fn native_http_listener_serves_health_and_shuts_down_gracefully() {
 
 #[tokio::test]
 #[ignore = "requires TEST_DATABASE_URL"]
+async fn native_assets_negotiate_gzip_without_changing_identity_or_cache_policy() {
+    let fixture = Fixture::new().await;
+    std::fs::create_dir(fixture.dir.path().join("assets")).unwrap();
+    let asset = "export const fixture = 'gzip negotiation';\n".repeat(200);
+    std::fs::write(fixture.dir.path().join("assets/fixture-123.js"), &asset).unwrap();
+    let app = fixture.app();
+    for encoding in ["identity", "gzip", "gzip;q=0"] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/assets/fixture-123.js")
+                    .header(header::ACCEPT_ENCODING, encoding)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(
+            response.headers()[header::CACHE_CONTROL]
+                .to_str()
+                .unwrap()
+                .contains("immutable")
+        );
+        let content_encoding = response.headers().get(header::CONTENT_ENCODING).cloned();
+        if encoding == "gzip" {
+            assert_eq!(content_encoding.unwrap(), "gzip");
+            assert!(
+                response
+                    .headers()
+                    .get_all(header::VARY)
+                    .iter()
+                    .any(|value| value
+                        .to_str()
+                        .unwrap()
+                        .to_ascii_lowercase()
+                        .contains("accept-encoding"))
+            );
+            let body = response.into_body().collect().await.unwrap().to_bytes();
+            assert!(body.starts_with(&[0x1f, 0x8b]));
+            assert!(body.len() < asset.len() / 10);
+        } else {
+            assert!(content_encoding.is_none());
+            let body = response.into_body().collect().await.unwrap().to_bytes();
+            assert_eq!(body.as_ref(), asset.as_bytes());
+        }
+    }
+    fixture.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL"]
 async fn oidc_pkce_signed_tokens_callback_and_logout() {
     use axum::{
         Json,
