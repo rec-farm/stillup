@@ -1,17 +1,16 @@
 use crate::{
     error::ApiError,
-    json::ApiJson,
+    json::{ApiJson, ApiQuery, positive_route_integer},
     server::{AppState, monitor, timestamp},
 };
 use axum::{
     Json,
-    extract::{Path, Query, State},
+    extract::{Path, State},
     http::StatusCode,
 };
 use chrono::{DateTime, Utc};
 use serde_json::{Value, json};
 use sqlx::{Row, postgres::PgRow};
-use std::collections::HashMap;
 use uuid::Uuid;
 fn id(value: &str) -> Result<Uuid, ApiError> {
     if !crate::check_config::valid_uuid(value) {
@@ -59,20 +58,18 @@ fn revision(row: &PgRow) -> Result<Value, sqlx::Error> {
 pub async fn revisions(
     State(state): State<AppState>,
     Path(value): Path<String>,
-    Query(query): Query<HashMap<String, String>>,
+    ApiQuery(query): ApiQuery,
 ) -> Result<Json<Value>, ApiError> {
     let id = id(&value)?;
-    require(&state, id).await?;
     let before = query
         .get("before")
         .map(|v| {
-            v.parse::<i32>()
-                .ok()
-                .filter(|v| *v > 0)
+            positive_route_integer(v)
                 .ok_or_else(|| ApiError::bad("before: Expected a positive integer"))
         })
         .transpose()?;
-    let rows = sqlx::query("SELECT * FROM check_revisions WHERE monitor_id=$1 AND ($2::integer IS NULL OR revision<$2) ORDER BY revision DESC LIMIT 21").bind(id).bind(before).fetch_all(&state.pool).await?;
+    require(&state, id).await?;
+    let rows = sqlx::query("SELECT * FROM check_revisions WHERE monitor_id=$1 AND ($2::bigint IS NULL OR revision<$2) ORDER BY revision DESC LIMIT 21").bind(id).bind(before).fetch_all(&state.pool).await?;
     let next = if rows.len() > 20 {
         Some(rows[19].try_get::<i32, _>("revision")?)
     } else {
@@ -89,22 +86,20 @@ pub async fn read_revision(
     State(state): State<AppState>,
     Path((value, number)): Path<(String, String)>,
 ) -> Result<Json<Value>, ApiError> {
-    let number = number
-        .parse::<i32>()
-        .ok()
-        .filter(|v| *v > 0)
+    let number = positive_route_integer(&number)
         .ok_or_else(|| ApiError::bad("revision: Expected a positive integer"))?;
-    let row = sqlx::query("SELECT * FROM check_revisions WHERE monitor_id=$1 AND revision=$2")
-        .bind(id(&value)?)
-        .bind(number)
-        .fetch_optional(&state.pool)
-        .await?
-        .ok_or_else(|| {
-            ApiError(
-                StatusCode::NOT_FOUND,
-                "Configuration revision not found".into(),
-            )
-        })?;
+    let row =
+        sqlx::query("SELECT * FROM check_revisions WHERE monitor_id=$1 AND revision=$2::bigint")
+            .bind(id(&value)?)
+            .bind(number)
+            .fetch_optional(&state.pool)
+            .await?
+            .ok_or_else(|| {
+                ApiError(
+                    StatusCode::NOT_FOUND,
+                    "Configuration revision not found".into(),
+                )
+            })?;
     Ok(Json(revision(&row)?))
 }
 enum Change {

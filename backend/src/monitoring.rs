@@ -253,7 +253,7 @@ pub async fn run_one(state: &AppState) -> Result<bool, ApiError> {
 pub async fn incident_timeline(
     State(state): State<AppState>,
     Path(value): Path<String>,
-    axum::extract::Query(query): axum::extract::Query<std::collections::HashMap<String, String>>,
+    crate::json::ApiQuery(query): crate::json::ApiQuery,
 ) -> Result<Json<Value>, ApiError> {
     let incident_id = notifications::id(&value)?;
     let before = query

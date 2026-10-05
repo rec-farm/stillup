@@ -1,0 +1,194 @@
+[
+  {
+    "input": "1",
+    "valid": true,
+    "output": 1
+  },
+  {
+    "input": "01",
+    "valid": true,
+    "output": 1
+  },
+  {
+    "input": "+1",
+    "valid": true,
+    "output": 1
+  },
+  {
+    "input": "1.0",
+    "valid": true,
+    "output": 1
+  },
+  {
+    "input": "1.",
+    "valid": true,
+    "output": 1
+  },
+  {
+    "input": ".1e1",
+    "valid": true,
+    "output": 1
+  },
+  {
+    "input": "1e2",
+    "valid": true,
+    "output": 100
+  },
+  {
+    "input": "1E+2",
+    "valid": true,
+    "output": 100
+  },
+  {
+    "input": "0x10",
+    "valid": true,
+    "output": 16
+  },
+  {
+    "input": "0X10",
+    "valid": true,
+    "output": 16
+  },
+  {
+    "input": "0b10",
+    "valid": true,
+    "output": 2
+  },
+  {
+    "input": "0B10",
+    "valid": true,
+    "output": 2
+  },
+  {
+    "input": "0o10",
+    "valid": true,
+    "output": 8
+  },
+  {
+    "input": "0O10",
+    "valid": true,
+    "output": 8
+  },
+  {
+    "input": "2147483648",
+    "valid": true,
+    "output": 2147483648
+  },
+  {
+    "input": "9007199254740991",
+    "valid": true,
+    "output": 9007199254740991
+  },
+  {
+    "input": "9007199254740992",
+    "valid": false
+  },
+  {
+    "input": "9007199254740990.9",
+    "valid": true,
+    "output": 9007199254740991
+  },
+  {
+    "input": "0",
+    "valid": false
+  },
+  {
+    "input": "-0",
+    "valid": false
+  },
+  {
+    "input": "-1",
+    "valid": false
+  },
+  {
+    "input": "",
+    "valid": false
+  },
+  {
+    "input": " ",
+    "valid": false
+  },
+  {
+    "input": "NaN",
+    "valid": false
+  },
+  {
+    "input": "Infinity",
+    "valid": false
+  },
+  {
+    "input": "+Infinity",
+    "valid": false
+  },
+  {
+    "input": "inf",
+    "valid": false
+  },
+  {
+    "input": "1.2",
+    "valid": false
+  },
+  {
+    "input": "1_0",
+    "valid": false
+  },
+  {
+    "input": "+0x1",
+    "valid": false
+  },
+  {
+    "input": "-0x1",
+    "valid": false
+  },
+  {
+    "input": "0x",
+    "valid": false
+  },
+  {
+    "input": "0x+1",
+    "valid": false
+  },
+  {
+    "input": "0b+1",
+    "valid": false
+  },
+  {
+    "input": "0o+1",
+    "valid": false
+  },
+  {
+    "input": "0b2",
+    "valid": false
+  },
+  {
+    "input": "0o8",
+    "valid": false
+  },
+  {
+    "input": "1e",
+    "valid": false
+  },
+  {
+    "input": "1foo",
+    "valid": false
+  },
+  {
+    "input": "1",
+    "valid": false
+  },
+  {
+    "input": "﻿1",
+    "valid": true,
+    "output": 1
+  },
+  {
+    "input": " 1 ",
+    "valid": true,
+    "output": 1
+  },
+  {
+    "input": " 1　",
+    "valid": true,
+    "output": 1
+  }
+]

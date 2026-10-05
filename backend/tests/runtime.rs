@@ -3295,3 +3295,126 @@ async fn code_plan_apply_preserves_ownership_state_and_rejects_drift_atomically(
     );
     fixture.close().await;
 }
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL"]
+async fn revision_routes_coerce_numbers_and_reject_repeated_query_values() {
+    let fixture = Fixture::new().await;
+    let app = fixture.app();
+    let (status, check, _) = request(
+        app.clone(),
+        "POST",
+        "/v1/checks",
+        json!({"name":"Query contract","url":"https://example.com"}),
+        true,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let id = check["id"].as_str().unwrap();
+    for before in [
+        "1e2",
+        "0x10",
+        "0b10",
+        "0o10",
+        "2.0",
+        "%EF%BB%BF2",
+        "9007199254740991",
+        "2147483648",
+    ] {
+        let (status, page, _) = request(
+            app.clone(),
+            "GET",
+            &format!("/v1/checks/{id}/revisions?before={before}"),
+            Value::Null,
+            true,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{before}");
+        assert_eq!(page["revisions"][0]["revision"], 1);
+    }
+    for number in ["1e0", "0x1", "1.0"] {
+        let (status, revision, _) = request(
+            app.clone(),
+            "GET",
+            &format!("/v1/checks/{id}/revisions/{number}"),
+            Value::Null,
+            true,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(revision["revision"], 1);
+    }
+    assert_eq!(
+        request(
+            app.clone(),
+            "GET",
+            &format!("/v1/checks/{id}/revisions/2147483648"),
+            Value::Null,
+            true
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    for before in [
+        "1.5",
+        "9007199254740992",
+        "0x%2B1",
+        "before",
+        "0",
+        "1&before=2",
+    ] {
+        let (status, error, headers) = request(
+            app.clone(),
+            "GET",
+            &format!("/v1/checks/{id}/revisions?before={before}"),
+            Value::Null,
+            true,
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{before}");
+        assert!(error["error"].is_string());
+        assert!(
+            headers[header::CONTENT_TYPE]
+                .to_str()
+                .unwrap()
+                .starts_with("application/json")
+        );
+    }
+    let uuid = uuid::Uuid::new_v4();
+    assert_eq!(
+        request(
+            app.clone(),
+            "GET",
+            &format!("/v1/checks/{uuid}/revisions?before=invalid"),
+            Value::Null,
+            true
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    for path in [
+        format!("/v1/notification-deliveries?incidentId={uuid}&incidentId={uuid}"),
+        format!("/v1/notification-deliveries?before={uuid}&before={uuid}"),
+        format!("/v1/incidents/{uuid}?before={uuid}&before={uuid}"),
+    ] {
+        let (status, error, _) = request(app.clone(), "GET", &path, Value::Null, true).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(error["error"].is_string());
+    }
+    for path in [
+        format!(
+            "/v1/checks/{id}/revisions?ignored=1&ignored=2&incidentId=unknown&incidentId=also-unknown"
+        ),
+        "/v1/notification-deliveries?ignored=1&ignored=2".into(),
+    ] {
+        assert_eq!(
+            request(app.clone(), "GET", &path, Value::Null, true)
+                .await
+                .0,
+            StatusCode::OK
+        );
+    }
+    fixture.close().await;
+}

@@ -243,7 +243,7 @@ fn delivery(row: &PgRow) -> Result<Value, ApiError> {
 }
 pub async fn history(
     State(state): State<AppState>,
-    axum::extract::Query(query): axum::extract::Query<std::collections::HashMap<String, String>>,
+    crate::json::ApiQuery(query): crate::json::ApiQuery<true>,
 ) -> Result<Json<Value>, ApiError> {
     let incident = query.get("incidentId").map(|v| id(v)).transpose()?;
     let before = query.get("before").map(|v| id(v)).transpose()?;

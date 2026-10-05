@@ -35,7 +35,7 @@ jobs:
       - run: pnpm test
       - run: pnpm test:integration
       - run: pnpm exec tsx scripts/generate-contract-fixtures.ts
-      - run: git diff --exit-code -- backend/tests/fixtures/check-contracts.json backend/tests/fixtures/assertion-contracts.json backend/tests/fixtures/network-contracts.json backend/tests/fixtures/status-contracts.json backend/tests/fixtures/status-date-contracts.json backend/tests/fixtures/code-contracts.json backend/tests/fixtures/canonical-contracts.json
+      - run: git diff --exit-code -- backend/tests/fixtures/check-contracts.json backend/tests/fixtures/assertion-contracts.json backend/tests/fixtures/network-contracts.json backend/tests/fixtures/status-contracts.json backend/tests/fixtures/status-date-contracts.json backend/tests/fixtures/code-contracts.json backend/tests/fixtures/canonical-contracts.json backend/tests/fixtures/route-integer-contracts.json
       - run: rustup toolchain install 1.92.0 --profile minimal --component clippy,rustfmt
       - run: cargo +1.92.0 fmt --manifest-path backend/Cargo.toml --check
       - run: cargo +1.92.0 clippy --manifest-path backend/Cargo.toml --all-targets --locked -- -D warnings

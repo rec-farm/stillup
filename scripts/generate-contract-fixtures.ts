@@ -515,3 +515,63 @@ await writeFixture(
     2,
   ) + '\n',
 );
+
+// Original HTTP route coercion contract (the same validator used by legacy server.ts).
+const { z } = await import('../tests/legacy-api/node_modules/zod/index.js');
+const positiveInteger = z.coerce.number().int().positive();
+const integerInputs = [
+  '1',
+  '01',
+  '+1',
+  '1.0',
+  '1.',
+  '.1e1',
+  '1e2',
+  '1E+2',
+  '0x10',
+  '0X10',
+  '0b10',
+  '0B10',
+  '0o10',
+  '0O10',
+  '2147483648',
+  '9007199254740991',
+  '9007199254740992',
+  '9007199254740990.9',
+  '0',
+  '-0',
+  '-1',
+  '',
+  ' ',
+  'NaN',
+  'Infinity',
+  '+Infinity',
+  'inf',
+  '1.2',
+  '1_0',
+  '+0x1',
+  '-0x1',
+  '0x',
+  '0x+1',
+  '0b+1',
+  '0o+1',
+  '0b2',
+  '0o8',
+  '1e',
+  '1foo',
+  '1\u0085',
+  '\ufeff1',
+  '\u00a01\u2029',
+  '\u20001\u3000',
+];
+await writeFixture(
+  new URL('../backend/tests/fixtures/route-integer-contracts.json', import.meta.url),
+  JSON.stringify(
+    integerInputs.map((input) => {
+      const result = positiveInteger.safeParse(input);
+      return { input, valid: result.success, ...(result.success ? { output: result.data } : {}) };
+    }),
+    null,
+    2,
+  ) + '\n',
+);
