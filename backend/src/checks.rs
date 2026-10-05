@@ -14,6 +14,9 @@ use sqlx::{Row, postgres::PgRow};
 use std::collections::HashMap;
 use uuid::Uuid;
 fn id(value: &str) -> Result<Uuid, ApiError> {
+    if !crate::check_config::valid_uuid(value) {
+        return Err(ApiError::bad("id: Invalid UUID"));
+    }
     Uuid::parse_str(value).map_err(|_| ApiError::bad("id: Invalid UUID"))
 }
 async fn require(state: &AppState, id: Uuid) -> Result<PgRow, ApiError> {
@@ -106,17 +109,18 @@ pub async fn read_revision(
 }
 enum Change {
     Enabled(bool),
+    Edit(Value),
     Archive,
     Restore,
 }
 fn expected(input: &Value, required: bool) -> Result<Option<i32>, ApiError> {
     match input.get("expectedRevision") {
         None if !required => Ok(None),
-        Some(value) => value
-            .as_i64()
-            .filter(|v| *v > 0 && *v <= i32::MAX as i64)
-            .map(|v| Some(v as i32))
-            .ok_or_else(|| ApiError::bad("expectedRevision: Expected a positive integer")),
+        Some(value) => {
+            Ok(Some(
+                crate::check_config::integer(value, 1, i32::MAX as i64, "expectedRevision")? as i32,
+            ))
+        }
         _ => Err(ApiError::bad("expectedRevision: Required")),
     }
 }
@@ -126,12 +130,22 @@ async fn change(
     change: Change,
     expected: Option<i32>,
 ) -> Result<Value, ApiError> {
+    if let Change::Edit(config) = &change {
+        validate_routes(state, config).await?;
+    }
     let mut tx = state.pool.begin().await?;
     let row = sqlx::query("SELECT * FROM monitors WHERE id=$1 FOR UPDATE")
         .bind(id)
         .fetch_optional(&mut *tx)
         .await?
         .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "Check not found".into()))?;
+    if matches!(change, Change::Edit(_))
+        && row.try_get::<Option<String>, _>("code_project")?.is_some()
+    {
+        return Err(ApiError::conflict(
+            "This check is managed as code. Edit its project configuration and apply it with the CLI.",
+        ));
+    }
     let revision: i32 = row.try_get("config_revision")?;
     if expected.is_some_and(|expected| expected != revision) {
         return Err(ApiError::conflict(
@@ -155,7 +169,23 @@ async fn change(
     {
         return Ok(monitor(&row)?);
     }
+    if let Change::Edit(config) = &change {
+        if *config == row.try_get::<Value, _>("config")? {
+            return Ok(monitor(&row)?);
+        }
+        sqlx::query("INSERT INTO check_revisions(monitor_id,revision,config) VALUES($1,$2,$3)")
+            .bind(id)
+            .bind(revision + 1)
+            .bind(config)
+            .execute(&mut *tx)
+            .await?;
+        let row=sqlx::query("UPDATE monitors SET config=$2, config_revision=config_revision+1, execution_epoch=execution_epoch+1, next_run_at=now(), failures=0, successes=0, last_observed_at=NULL, last_run_at=NULL, last_outcome=NULL, last_duration_ms=NULL, status=CASE WHEN status='down' THEN 'down' ELSE 'unknown' END WHERE id=$1 RETURNING *").bind(id).bind(config).fetch_one(&mut *tx).await?;
+        let result = monitor(&row)?;
+        tx.commit().await?;
+        return Ok(result);
+    }
     let sql = match change {
+        Change::Edit(_) => unreachable!("edit handled above"),
         Change::Archive => {
             "UPDATE monitors SET execution_epoch=execution_epoch+1, archived_at=now(), enabled=false WHERE id=$1 RETURNING *"
         }
@@ -221,5 +251,104 @@ pub async fn restore(
             expected(&input, true)?,
         )
         .await?,
+    ))
+}
+
+pub async fn validate_routes(state: &AppState, config: &Value) -> Result<(), ApiError> {
+    let locations: Vec<String> = config
+        .get("locationIds")
+        .and_then(Value::as_array)
+        .map(|v| v.iter().map(|v| v.as_str().unwrap().to_string()).collect())
+        .unwrap_or_else(|| vec!["local".into()]);
+    let count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM probe_locations WHERE id=ANY($1::text[]) AND revoked_at IS NULL",
+    )
+    .bind(&locations)
+    .fetch_one(&state.pool)
+    .await?;
+    if count != locations.len() as i64 {
+        return Err(ApiError::bad("Choose existing, non-revoked locations"));
+    }
+    if let Some(ids) = config["notificationChannelIds"].as_array() {
+        let ids: Vec<Uuid> = ids
+            .iter()
+            .map(|v| Uuid::parse_str(v.as_str().unwrap()).unwrap())
+            .collect();
+        let count: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM notification_channels WHERE id=ANY($1::uuid[])",
+        )
+        .bind(&ids)
+        .fetch_one(&state.pool)
+        .await?;
+        if count != ids.len() as i64 {
+            return Err(ApiError::bad(
+                "A selected notification channel does not exist",
+            ));
+        }
+    }
+    Ok(())
+}
+pub async fn create(
+    State(state): State<AppState>,
+    ApiJson(input): ApiJson,
+) -> Result<(StatusCode, Json<Value>), ApiError> {
+    let config = crate::check_config::validate(&input)?;
+    validate_routes(&state, &config).await?;
+    let mut tx = state.pool.begin().await?;
+    let row = sqlx::query("INSERT INTO monitors(config) VALUES($1) RETURNING *")
+        .bind(&config)
+        .fetch_one(&mut *tx)
+        .await?;
+    let id: Uuid = row.try_get("id")?;
+    sqlx::query("INSERT INTO check_revisions(monitor_id,revision,config,created_at) SELECT id,config_revision,config,created_at FROM monitors WHERE id=$1").bind(id).execute(&mut *tx).await?;
+    let result = monitor(&row)?;
+    tx.commit().await?;
+    Ok((StatusCode::CREATED, Json(result)))
+}
+pub async fn edit(
+    State(state): State<AppState>,
+    Path(value): Path<String>,
+    ApiJson(input): ApiJson,
+) -> Result<Json<Value>, ApiError> {
+    let config = crate::check_config::validate(input.get("config").unwrap_or(&Value::Null))?;
+    Ok(Json(
+        change(
+            &state,
+            id(&value)?,
+            Change::Edit(config),
+            expected(&input, true)?,
+        )
+        .await?,
+    ))
+}
+
+pub async fn test_request(
+    State(state): State<AppState>,
+    ApiJson(input): ApiJson,
+) -> Result<Json<Value>, ApiError> {
+    let config = crate::check_config::validate(&input)?;
+    let _permit = state.previews.try_acquire().map_err(|_| {
+        ApiError(
+            StatusCode::TOO_MANY_REQUESTS,
+            "Two request tests are already running. Try again shortly.".into(),
+        )
+    })?;
+    let mut values: Vec<String> = config["headers"]
+        .as_object()
+        .unwrap()
+        .values()
+        .map(|v| v.as_str().unwrap().into())
+        .collect();
+    values.push(config["body"].as_str().unwrap().into());
+    let secrets = crate::secrets::resolve(&state.pool, &state.config.secrets, &values).await?;
+    Ok(Json(
+        crate::executor::execute(
+            &config,
+            &crate::executor::Options {
+                allow_private_networks: state.config.allow_private_networks,
+                secrets,
+            },
+        )
+        .await,
     ))
 }

@@ -18,8 +18,8 @@ pub fn validate(input: &Value) -> Result<Value, ApiError> {
             _ => return Err(ApiError::bad(format!("{name}: Expected a string"))),
         };
         let value = if trim { value.trim() } else { value };
-        // Zod strings measure UTF-16 code units, matching the existing JavaScript contract.
-        if !(min..=max).contains(&value.encode_utf16().count()) {
+        // The installed Zod version measures Unicode code points for string length checks.
+        if !(min..=max).contains(&value.chars().count()) {
             return Err(ApiError::bad(format!("{name}: Invalid length")));
         }
         Ok(value.to_owned())
@@ -95,6 +95,8 @@ mod tests {
     #[test]
     fn defaults_normalization_and_logo_guards() {
         assert_eq!(validate(&json!({})).unwrap()["name"], "StillUp");
+        assert!(validate(&json!({"name":"🙂".repeat(60)})).is_ok());
+        assert!(validate(&json!({"name":"🙂".repeat(61)})).is_err());
         assert_eq!(
             validate(&json!({"name":" Custom "})).unwrap()["name"],
             "Custom"

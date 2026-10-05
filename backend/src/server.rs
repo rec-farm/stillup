@@ -25,6 +25,7 @@ pub struct AppState {
     pub config: Config,
     pub oidc: crate::oidc::Runtime,
     limits: Arc<Mutex<Buckets>>,
+    pub previews: Arc<tokio::sync::Semaphore>,
 }
 impl AppState {
     pub fn new(pool: PgPool, config: Config) -> Self {
@@ -33,6 +34,7 @@ impl AppState {
             config,
             oidc: Default::default(),
             limits: Arc::new(Mutex::new(HashMap::new())),
+            previews: Arc::new(tokio::sync::Semaphore::new(2)),
         }
     }
 }
@@ -45,9 +47,21 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/auth/oidc/start", get(crate::oidc::start))
         .route("/v1/auth/oidc/callback", get(crate::oidc::callback))
         .route("/v1/dashboard", get(dashboard))
+        .route("/v1/checks", post(checks::create))
+        .route("/v1/checks/test", post(checks::test_request))
+        .route(
+            "/v1/secrets",
+            get(crate::secrets::overview).post(crate::secrets::create),
+        )
+        .route(
+            "/v1/secrets/{name}",
+            axum::routing::put(crate::secrets::edit),
+        )
         .route(
             "/v1/checks/{id}",
-            get(checks::read).patch(checks::set_enabled),
+            get(checks::read)
+                .patch(checks::set_enabled)
+                .put(checks::edit),
         )
         .route("/v1/checks/{id}/runs", get(checks::runs))
         .route("/v1/checks/{id}/revisions", get(checks::revisions))
@@ -109,8 +123,11 @@ async fn protect(State(state): State<AppState>, request: Request, next: Next) ->
         buckets.retain(|_, (start, _)| now.duration_since(*start) < Duration::from_secs(60));
         let signin = path == "/v1/session" && method == "POST";
         let oidc = path.starts_with("/v1/auth/");
+        let request_test = path == "/v1/checks/test";
         let categories: &[(&str, u32)] = if signin {
             &[("global", 120), ("sign-in", 5)]
+        } else if request_test {
+            &[("global", 120), ("request-test", 10)]
         } else if oidc {
             &[("global", 120), ("oidc", 20)]
         } else {
@@ -200,7 +217,7 @@ async fn sign_in(
     let token = input
         .get("token")
         .and_then(Value::as_str)
-        .filter(|value| value.encode_utf16().count() <= 1024)
+        .filter(|value| value.chars().count() <= 1024)
         .ok_or_else(|| ApiError::bad("token: Expected a string of at most 1024 characters"))?;
     if !auth::token_matches(token, &state.config.admin_token) {
         return Err(ApiError(
@@ -258,11 +275,12 @@ async fn save_workspace(
     State(state): State<AppState>,
     ApiJson(input): ApiJson,
 ) -> Result<Json<Value>, ApiError> {
-    let expected = input
-        .get("expectedRevision")
-        .and_then(Value::as_i64)
-        .filter(|v| *v >= 0 && *v <= i32::MAX as i64)
-        .ok_or_else(|| ApiError::bad("expectedRevision: Expected a nonnegative integer"))?;
+    let expected = crate::check_config::integer(
+        &input["expectedRevision"],
+        0,
+        i32::MAX as i64,
+        "expectedRevision",
+    )?;
     let config = input
         .get("config")
         .ok_or_else(|| ApiError::bad("config: Required"))?;

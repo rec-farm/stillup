@@ -9,6 +9,8 @@ pub struct Config {
     pub bind: String,
     pub web: WebConfig,
     pub oidc: crate::oidc::OidcConfig,
+    pub secrets: crate::secrets::SecretConfig,
+    pub allow_private_networks: bool,
 }
 impl Config {
     pub fn from_env() -> Result<Self, String> {
@@ -39,6 +41,15 @@ impl Config {
                 env::var("HOST").unwrap_or_else(|_| "127.0.0.1".into())
             ),
             oidc: crate::oidc::OidcConfig::from_env()?,
+            secrets: crate::secrets::SecretConfig::from_env()?,
+            allow_private_networks: match env::var("ALLOW_PRIVATE_NETWORKS")
+                .unwrap_or_else(|_| "false".into())
+                .as_str()
+            {
+                "false" => false,
+                "true" => true,
+                _ => return Err("ALLOW_PRIVATE_NETWORKS must be true or false".into()),
+            },
             web: WebConfig {
                 client_dir: PathBuf::from(
                     env::var("CLIENT_DIR").unwrap_or_else(|_| "apps/web/dist".into()),

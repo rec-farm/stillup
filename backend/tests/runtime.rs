@@ -70,20 +70,24 @@ impl Fixture {
         self.app_with_oidc(Default::default())
     }
     fn app_with_oidc(&self, oidc: stillup_api::oidc::OidcConfig) -> Router {
-        router(AppState::new(
-            self.pool.clone(),
-            Config {
-                oidc,
-                database_url: String::new(),
-                admin_token: "01234567890123456789012345678901".into(),
-                origin: "https://dashboard.example.com".into(),
-                bind: "127.0.0.1:0".into(),
-                web: WebConfig {
-                    client_dir: self.dir.path().into(),
-                    status_domains: "status.example.com".into(),
-                },
+        self.app_configure(|config| config.oidc = oidc)
+    }
+    fn app_configure(&self, configure: impl FnOnce(&mut Config)) -> Router {
+        let mut config = Config {
+            oidc: Default::default(),
+            secrets: Default::default(),
+            allow_private_networks: false,
+            database_url: String::new(),
+            admin_token: "01234567890123456789012345678901".into(),
+            origin: "https://dashboard.example.com".into(),
+            bind: "127.0.0.1:0".into(),
+            web: WebConfig {
+                client_dir: self.dir.path().into(),
+                status_domains: "status.example.com".into(),
             },
-        ))
+        };
+        configure(&mut config);
+        router(AppState::new(self.pool.clone(), config))
     }
     async fn close(self) {
         self.pool.close().await;
@@ -809,5 +813,260 @@ async fn disabled_or_unavailable_oidc_returns_existing_login_errors() {
             .unwrap()
             .ends_with("oidc_unavailable")
     );
+    fixture.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL"]
+async fn create_and_edit_checks_keep_revisions_routing_and_code_ownership() {
+    let fixture = Fixture::new().await;
+    let app = fixture.app();
+    let input = json!({"name":" Example ","url":"https://example.com/health"});
+    let (status, data, _) =
+        request(app.clone(), "POST", "/api/v1/checks", input.clone(), true).await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(data["config"]["name"], "Example");
+    assert_eq!(data["config"]["method"], "GET");
+    assert_eq!(data["configRevision"], 1);
+    let id = data["id"].as_str().unwrap();
+    let path = format!("/v1/checks/{id}");
+    let changed = json!({"config":{"name":"Changed","url":"https://example.com/health"},"expectedRevision":1});
+    let (a, b) = tokio::join!(
+        request(app.clone(), "PUT", &path, changed.clone(), true),
+        request(
+            app.clone(),
+            "PUT",
+            &path,
+            json!({"config":{"name":"Concurrent","url":"https://example.com/health"},"expectedRevision":1}),
+            true
+        )
+    );
+    assert!(
+        (a.0 == StatusCode::OK && b.0 == StatusCode::CONFLICT)
+            || (b.0 == StatusCode::OK && a.0 == StatusCode::CONFLICT)
+    );
+    let (_, data, _) = request(app.clone(), "GET", &path, Value::Null, true).await;
+    assert_eq!(data["configRevision"], 2);
+    assert_eq!(data["health"], "unknown");
+    let uid = uuid::Uuid::parse_str(id).unwrap();
+    let epoch: i32 = sqlx::query_scalar("SELECT execution_epoch FROM monitors WHERE id=$1")
+        .bind(uid)
+        .fetch_one(&fixture.pool)
+        .await
+        .unwrap();
+    let (_, same, _) = request(
+        app.clone(),
+        "PUT",
+        &path,
+        json!({"config":data["config"],"expectedRevision":2}),
+        true,
+    )
+    .await;
+    assert_eq!(same["configRevision"], 2);
+    let new_epoch: i32 = sqlx::query_scalar("SELECT execution_epoch FROM monitors WHERE id=$1")
+        .bind(uid)
+        .fetch_one(&fixture.pool)
+        .await
+        .unwrap();
+    assert_eq!(epoch, new_epoch);
+    let (_, history, _) = request(
+        app.clone(),
+        "GET",
+        &format!("{path}/revisions"),
+        Value::Null,
+        true,
+    )
+    .await;
+    assert_eq!(history["revisions"].as_array().unwrap().len(), 2);
+    sqlx::query("UPDATE monitors SET code_project='fixture',code_key='example' WHERE id=$1")
+        .bind(uid)
+        .execute(&fixture.pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        request(
+            app.clone(),
+            "PUT",
+            &path,
+            json!({"config":input,"expectedRevision":2}),
+            true
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    for patch in [
+        json!({"locationIds":["12d5f625-8487-4400-ae00-9a3ee6616cc6"]}),
+        json!({"notificationChannelIds":["12d5f625-8487-4400-ae00-9a3ee6616cc6"]}),
+        json!({"body":"x"}),
+    ] {
+        let mut config = input.clone();
+        for (key, value) in patch.as_object().unwrap() {
+            config[key] = value.clone();
+        }
+        assert_eq!(
+            request(app.clone(), "POST", "/v1/checks", config, true)
+                .await
+                .0,
+            StatusCode::BAD_REQUEST
+        );
+    }
+    fixture.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL"]
+async fn managed_secrets_encrypt_guard_revisions_and_override_environment() {
+    use stillup_api::secrets::{SecretConfig, resolve};
+    let fixture = Fixture::new().await;
+    let settings = SecretConfig {
+        encryption_key: "a".repeat(64),
+        environment: std::collections::HashMap::new(),
+    };
+    let app = fixture.app_configure(|config| config.secrets = settings.clone());
+    assert_eq!(
+        request(
+            app.clone(),
+            "POST",
+            "/v1/secrets",
+            json!({"name":"TOKEN","value":"fixture-secret"}),
+            true
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+    let encrypted: Value =
+        sqlx::query_scalar("SELECT encrypted_value FROM managed_secrets WHERE name='TOKEN'")
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap();
+    assert!(!encrypted.to_string().contains("fixture-secret"));
+    let refs = vec!["Bearer {{TOKEN}}".into()];
+    let mut settings = settings;
+    settings
+        .environment
+        .insert("CHECK_SECRET_TOKEN".into(), "environment-secret".into());
+    assert_eq!(
+        resolve(&fixture.pool, &settings, &refs).await.unwrap()["CHECK_SECRET_TOKEN"],
+        "fixture-secret"
+    );
+    assert_eq!(
+        request(
+            app.clone(),
+            "PUT",
+            "/v1/secrets/TOKEN",
+            json!({"enabled":false,"expectedRevision":2}),
+            true
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        request(
+            app.clone(),
+            "PUT",
+            "/v1/secrets/TOKEN",
+            json!({"enabled":false,"expectedRevision":1}),
+            true
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert!(
+        !resolve(&fixture.pool, &settings, &refs)
+            .await
+            .unwrap()
+            .contains_key("CHECK_SECRET_TOKEN")
+    );
+    let (status, overview, _) = request(app.clone(), "GET", "/v1/secrets", Value::Null, true).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(!overview.to_string().contains("fixture-secret"));
+    assert_eq!(overview["secrets"][0]["revision"], 2);
+    let bad = fixture.app_configure(|config| config.secrets.encryption_key = "b".repeat(64));
+    assert_eq!(
+        request(
+            bad,
+            "POST",
+            "/v1/secrets",
+            json!({"name":"OTHER","value":"x"}),
+            true
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    let env = fixture.app_configure(|config| config.secrets = settings.clone());
+    assert_eq!(
+        request(
+            env,
+            "POST",
+            "/v1/secrets",
+            json!({"name":"TOKEN","value":"x"}),
+            true
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    let (_,result,_)=request(app,"POST","/v1/checks/test",json!({"name":"Private","url":"http://127.0.0.1:9","headers":{"Authorization":"Bearer {{TOKEN}}"}}),true).await;
+    assert_eq!(result["outcome"], "error");
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM monitors")
+        .fetch_one(&fixture.pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 0);
+    fixture.close().await;
+}
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL"]
+async fn test_request_resolves_stored_secrets_without_saving_monitoring_state() {
+    use axum::{extract::Request, routing::get};
+    let fixture = Fixture::new().await;
+    let app = fixture.app_configure(|config| {
+        config.allow_private_networks = true;
+        config.secrets.encryption_key = "a".repeat(64);
+    });
+    request(
+        app.clone(),
+        "POST",
+        "/v1/secrets",
+        json!({"name":"TOKEN","value":"fixture-secret"}),
+        true,
+    )
+    .await;
+    let target = Router::new().route(
+        "/",
+        get(|request: Request| async move {
+            assert_eq!(request.headers()["authorization"], "Bearer fixture-secret");
+            "{\"healthy\":true}"
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/", listener.local_addr().unwrap());
+    let (stop, stopped) = tokio::sync::oneshot::channel();
+    let server = tokio::spawn(async move {
+        axum::serve(listener, target)
+            .with_graceful_shutdown(async {
+                stopped.await.ok();
+            })
+            .await
+            .unwrap();
+    });
+    let (status,data,_)=request(app,"POST","/api/v1/checks/test",json!({"name":"Preview","url":url,"headers":{"Authorization":"Bearer {{TOKEN}}"},"jsonAssertions":[{"path":"$.healthy","equals":true}]}),true).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(data["outcome"], "pass");
+    assert!(!data.to_string().contains("fixture-secret"));
+    for table in ["monitors", "runs", "incidents", "notification_deliveries"] {
+        let count: i64 = sqlx::query_scalar(&format!("SELECT count(*) FROM {table}"))
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+    stop.send(()).unwrap();
+    server.await.unwrap();
     fixture.close().await;
 }

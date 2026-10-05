@@ -1,0 +1,1345 @@
+[
+  {
+    "name": "defaults",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health"
+    },
+    "accepted": true,
+    "normalized": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    }
+  },
+  {
+    "name": "trim and discard unknown fields",
+    "input": {
+      "name": " Example ",
+      "url": "https://example.com/health",
+      "extra": "ignored"
+    },
+    "accepted": true,
+    "normalized": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    }
+  },
+  {
+    "name": "all methods and routing",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "POST",
+      "body": "{\"ok\":true}",
+      "headers": {
+        "Authorization": "Bearer {{TOKEN}}"
+      },
+      "intervalSeconds": 30,
+      "timeoutMs": 100,
+      "expectedStatus": 201,
+      "maxResponseMs": 30000,
+      "failureThreshold": 10,
+      "recoveryThreshold": 1,
+      "notificationChannelIds": ["12d5f625-8487-4400-ae00-9a3ee6616cc6"],
+      "locationIds": ["local"],
+      "locationFailureThreshold": 1,
+      "reminderIntervalSeconds": 300,
+      "public": true
+    },
+    "accepted": true,
+    "normalized": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "POST",
+      "headers": {
+        "Authorization": "Bearer {{TOKEN}}"
+      },
+      "body": "{\"ok\":true}",
+      "intervalSeconds": 30,
+      "timeoutMs": 100,
+      "expectedStatus": 201,
+      "maxResponseMs": 30000,
+      "jsonAssertions": [],
+      "failureThreshold": 10,
+      "recoveryThreshold": 1,
+      "notificationChannelIds": ["12d5f625-8487-4400-ae00-9a3ee6616cc6"],
+      "reminderIntervalSeconds": 300,
+      "locationIds": ["local"],
+      "locationFailureThreshold": 1,
+      "public": true
+    }
+  },
+  {
+    "name": "method invalid OPTIONS",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "OPTIONS"
+    },
+    "accepted": false
+  },
+  {
+    "name": "method invalid null",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": null
+    },
+    "accepted": false
+  },
+  {
+    "name": "intervalSeconds invalid 29",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "intervalSeconds": 29
+    },
+    "accepted": false
+  },
+  {
+    "name": "intervalSeconds invalid 86401",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "intervalSeconds": 86401
+    },
+    "accepted": false
+  },
+  {
+    "name": "intervalSeconds invalid 60.5",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "intervalSeconds": 60.5
+    },
+    "accepted": false
+  },
+  {
+    "name": "intervalSeconds invalid 60",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "intervalSeconds": "60"
+    },
+    "accepted": false
+  },
+  {
+    "name": "timeoutMs invalid 99",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "timeoutMs": 99
+    },
+    "accepted": false
+  },
+  {
+    "name": "timeoutMs invalid 30001",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "timeoutMs": 30001
+    },
+    "accepted": false
+  },
+  {
+    "name": "expectedStatus invalid 99",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "expectedStatus": 99
+    },
+    "accepted": false
+  },
+  {
+    "name": "expectedStatus invalid 600",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "expectedStatus": 600
+    },
+    "accepted": false
+  },
+  {
+    "name": "maxResponseMs invalid 0",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "maxResponseMs": 0
+    },
+    "accepted": false
+  },
+  {
+    "name": "maxResponseMs invalid 30001",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "maxResponseMs": 30001
+    },
+    "accepted": false
+  },
+  {
+    "name": "failureThreshold invalid 0",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "failureThreshold": 0
+    },
+    "accepted": false
+  },
+  {
+    "name": "failureThreshold invalid 11",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "failureThreshold": 11
+    },
+    "accepted": false
+  },
+  {
+    "name": "public invalid true",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "public": "true"
+    },
+    "accepted": false
+  },
+  {
+    "name": "public invalid null",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "public": null
+    },
+    "accepted": false
+  },
+  {
+    "name": "body invalid x",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "body": "x"
+    },
+    "accepted": false
+  },
+  {
+    "name": "invalid URL ftp://example.com",
+    "input": {
+      "name": "Example",
+      "url": "ftp://example.com"
+    },
+    "accepted": false
+  },
+  {
+    "name": "invalid URL https://user:pass@example.com",
+    "input": {
+      "name": "Example",
+      "url": "https://user:pass@example.com"
+    },
+    "accepted": false
+  },
+  {
+    "name": "invalid URL https://example.com/#x",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/#x"
+    },
+    "accepted": false
+  },
+  {
+    "name": "invalid URL not-a-url",
+    "input": {
+      "name": "Example",
+      "url": "not-a-url"
+    },
+    "accepted": false
+  },
+  {
+    "name": "invalid headers 24",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "headers": {
+        "Bad": "a\nb"
+      }
+    },
+    "accepted": false
+  },
+  {
+    "name": "invalid headers 25",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "headers": {
+        "Bad Header": "x"
+      }
+    },
+    "accepted": false
+  },
+  {
+    "name": "invalid headers 26",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "headers": {
+        "okay": 3
+      }
+    },
+    "accepted": false
+  },
+  {
+    "name": "invalid headers 27",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "headers": {
+        "x-0": "a",
+        "x-1": "a",
+        "x-2": "a",
+        "x-3": "a",
+        "x-4": "a",
+        "x-5": "a",
+        "x-6": "a",
+        "x-7": "a",
+        "x-8": "a",
+        "x-9": "a",
+        "x-10": "a",
+        "x-11": "a",
+        "x-12": "a",
+        "x-13": "a",
+        "x-14": "a",
+        "x-15": "a",
+        "x-16": "a",
+        "x-17": "a",
+        "x-18": "a",
+        "x-19": "a",
+        "x-20": "a",
+        "x-21": "a",
+        "x-22": "a",
+        "x-23": "a",
+        "x-24": "a",
+        "x-25": "a",
+        "x-26": "a",
+        "x-27": "a",
+        "x-28": "a",
+        "x-29": "a",
+        "x-30": "a"
+      }
+    },
+    "accepted": false
+  },
+  {
+    "name": "JSON operator exists",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "jsonAssertions": [
+        {
+          "path": "$.items.0.id",
+          "operator": "exists"
+        }
+      ]
+    },
+    "accepted": true,
+    "normalized": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$.items.0.id",
+          "operator": "exists"
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    }
+  },
+  {
+    "name": "JSON operator notExists",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "jsonAssertions": [
+        {
+          "path": "$.items.0.id",
+          "operator": "notExists"
+        }
+      ]
+    },
+    "accepted": true,
+    "normalized": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$.items.0.id",
+          "operator": "notExists"
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    }
+  },
+  {
+    "name": "JSON operator equals",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "jsonAssertions": [
+        {
+          "path": "$.items.0.id",
+          "operator": "equals",
+          "value": null
+        }
+      ]
+    },
+    "accepted": true,
+    "normalized": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$.items.0.id",
+          "operator": "equals",
+          "value": null
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    }
+  },
+  {
+    "name": "JSON operator notEquals",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "jsonAssertions": [
+        {
+          "path": "$.items.0.id",
+          "operator": "notEquals",
+          "value": null
+        }
+      ]
+    },
+    "accepted": true,
+    "normalized": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$.items.0.id",
+          "operator": "notEquals",
+          "value": null
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    }
+  },
+  {
+    "name": "JSON operator contains",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "jsonAssertions": [
+        {
+          "path": "$.items.0.id",
+          "operator": "contains",
+          "value": "ok"
+        }
+      ]
+    },
+    "accepted": true,
+    "normalized": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$.items.0.id",
+          "operator": "contains",
+          "value": "ok"
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    }
+  },
+  {
+    "name": "JSON operator startsWith",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "jsonAssertions": [
+        {
+          "path": "$.items.0.id",
+          "operator": "startsWith",
+          "value": "ok"
+        }
+      ]
+    },
+    "accepted": true,
+    "normalized": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$.items.0.id",
+          "operator": "startsWith",
+          "value": "ok"
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    }
+  },
+  {
+    "name": "JSON operator endsWith",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "jsonAssertions": [
+        {
+          "path": "$.items.0.id",
+          "operator": "endsWith",
+          "value": "ok"
+        }
+      ]
+    },
+    "accepted": true,
+    "normalized": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$.items.0.id",
+          "operator": "endsWith",
+          "value": "ok"
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    }
+  },
+  {
+    "name": "JSON operator gt",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "jsonAssertions": [
+        {
+          "path": "$.items.0.id",
+          "operator": "gt",
+          "value": 2
+        }
+      ]
+    },
+    "accepted": true,
+    "normalized": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$.items.0.id",
+          "operator": "gt",
+          "value": 2
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    }
+  },
+  {
+    "name": "JSON operator gte",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "jsonAssertions": [
+        {
+          "path": "$.items.0.id",
+          "operator": "gte",
+          "value": 2
+        }
+      ]
+    },
+    "accepted": true,
+    "normalized": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$.items.0.id",
+          "operator": "gte",
+          "value": 2
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    }
+  },
+  {
+    "name": "JSON operator lt",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "jsonAssertions": [
+        {
+          "path": "$.items.0.id",
+          "operator": "lt",
+          "value": 2
+        }
+      ]
+    },
+    "accepted": true,
+    "normalized": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$.items.0.id",
+          "operator": "lt",
+          "value": 2
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    }
+  },
+  {
+    "name": "JSON operator lte",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "jsonAssertions": [
+        {
+          "path": "$.items.0.id",
+          "operator": "lte",
+          "value": 2
+        }
+      ]
+    },
+    "accepted": true,
+    "normalized": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$.items.0.id",
+          "operator": "lte",
+          "value": 2
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    }
+  },
+  {
+    "name": "JSON operator length",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "jsonAssertions": [
+        {
+          "path": "$.items.0.id",
+          "operator": "length",
+          "value": 2
+        }
+      ]
+    },
+    "accepted": true,
+    "normalized": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$.items.0.id",
+          "operator": "length",
+          "value": 2
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    }
+  },
+  {
+    "name": "legacy equality",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "jsonAssertions": [
+        {
+          "path": "$.ok",
+          "equals": true
+        }
+      ]
+    },
+    "accepted": true,
+    "normalized": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$.ok",
+          "equals": true
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    }
+  },
+  {
+    "name": "legacy unbounded path/value",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "jsonAssertions": [
+        {
+          "path": "$.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "equals": "vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv"
+        }
+      ]
+    },
+    "accepted": true,
+    "normalized": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "equals": "vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv"
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    }
+  },
+  {
+    "name": "invalid JSON rule 42",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "jsonAssertions": [
+        {
+          "path": "$..bad",
+          "operator": "exists"
+        }
+      ]
+    },
+    "accepted": false
+  },
+  {
+    "name": "invalid JSON rule 43",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "jsonAssertions": [
+        {
+          "path": "$.ok",
+          "operator": "exists",
+          "value": true
+        }
+      ]
+    },
+    "accepted": false
+  },
+  {
+    "name": "invalid JSON rule 44",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "jsonAssertions": [
+        {
+          "path": "$.ok",
+          "operator": "gt",
+          "value": "3"
+        }
+      ]
+    },
+    "accepted": false
+  },
+  {
+    "name": "invalid JSON rule 45",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "jsonAssertions": [
+        {
+          "path": "$.ok",
+          "equals": {
+            "a": 1
+          }
+        }
+      ]
+    },
+    "accepted": false
+  },
+  {
+    "name": "invalid JSON rule 46",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "jsonAssertions": [
+        {
+          "path": "$.ok",
+          "operator": "length",
+          "value": -1
+        }
+      ]
+    },
+    "accepted": false
+  },
+  {
+    "name": "header rule 47",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "headerAssertions": [
+        {
+          "name": "x-test",
+          "operator": "exists"
+        }
+      ]
+    },
+    "accepted": true,
+    "normalized": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [],
+      "headerAssertions": [
+        {
+          "name": "x-test",
+          "operator": "exists"
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    }
+  },
+  {
+    "name": "header rule 48",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "headerAssertions": [
+        {
+          "name": "x-test",
+          "operator": "notExists"
+        }
+      ]
+    },
+    "accepted": true,
+    "normalized": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [],
+      "headerAssertions": [
+        {
+          "name": "x-test",
+          "operator": "notExists"
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    }
+  },
+  {
+    "name": "header rule 49",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "headerAssertions": [
+        {
+          "name": "x-test",
+          "operator": "equals",
+          "value": "okay"
+        }
+      ]
+    },
+    "accepted": true,
+    "normalized": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [],
+      "headerAssertions": [
+        {
+          "name": "x-test",
+          "operator": "equals",
+          "value": "okay"
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    }
+  },
+  {
+    "name": "header rule 50",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "headerAssertions": [
+        {
+          "name": "x-test",
+          "operator": "contains",
+          "value": "okay"
+        }
+      ]
+    },
+    "accepted": true,
+    "normalized": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [],
+      "headerAssertions": [
+        {
+          "name": "x-test",
+          "operator": "contains",
+          "value": "okay"
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    }
+  },
+  {
+    "name": "invalid header operator",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "headerAssertions": [
+        {
+          "name": "x-test",
+          "operator": "gt",
+          "value": 1
+        }
+      ]
+    },
+    "accepted": false
+  },
+  {
+    "name": "bounded schema",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "responseSchema": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "required": ["items"],
+        "additionalProperties": false
+      }
+    },
+    "accepted": true,
+    "normalized": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [],
+      "responseSchema": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "required": ["items"],
+        "additionalProperties": false
+      },
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    }
+  },
+  {
+    "name": "schema 53",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "responseSchema": true
+    },
+    "accepted": true,
+    "normalized": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [],
+      "responseSchema": true,
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    }
+  },
+  {
+    "name": "schema 54",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "responseSchema": false
+    },
+    "accepted": true,
+    "normalized": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [],
+      "responseSchema": false,
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    }
+  },
+  {
+    "name": "schema 55",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "responseSchema": {
+        "$ref": "https://evil.example/schema"
+      }
+    },
+    "accepted": false
+  },
+  {
+    "name": "schema 56",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "responseSchema": {
+        "pattern": "x"
+      }
+    },
+    "accepted": false
+  },
+  {
+    "name": "schema 57",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "responseSchema": {
+        "required": ["x", "x"]
+      }
+    },
+    "accepted": false
+  },
+  {
+    "name": "schema 58",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "responseSchema": {
+        "enum": [1, 1]
+      }
+    },
+    "accepted": false
+  },
+  {
+    "name": "schema 59",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "responseSchema": {
+        "properties": {
+          "x": {
+            "type": "madeup"
+          }
+        }
+      }
+    },
+    "accepted": false
+  },
+  {
+    "name": "schema 60",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "responseSchema": {
+        "additionalProperties": {}
+      }
+    },
+    "accepted": false
+  },
+  {
+    "name": "schema 61",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "responseSchema": {
+        "minimum": "3"
+      }
+    },
+    "accepted": false
+  },
+  {
+    "name": "location threshold too large",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "locationIds": ["local"],
+      "locationFailureThreshold": 2
+    },
+    "accepted": false
+  },
+  {
+    "name": "duplicate locations",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "locationIds": ["local", "local"]
+    },
+    "accepted": false
+  },
+  {
+    "name": "empty locations",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "locationIds": []
+    },
+    "accepted": false
+  },
+  {
+    "name": "duplicate channels",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "notificationChannelIds": [
+        "12d5f625-8487-4400-ae00-9a3ee6616cc6",
+        "12d5f625-8487-4400-ae00-9a3ee6616cc6"
+      ]
+    },
+    "accepted": false
+  },
+  {
+    "name": "noncanonical UUID",
+    "input": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "locationIds": ["12d5f62584874400ae009a3ee6616cc6"]
+    },
+    "accepted": false
+  },
+  {
+    "name": "long name",
+    "input": {
+      "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "url": "https://example.com/health"
+    },
+    "accepted": false
+  },
+  {
+    "name": "Unicode code point name length",
+    "input": {
+      "name": "🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂",
+      "url": "https://example.com/health"
+    },
+    "accepted": true,
+    "normalized": {
+      "name": "🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    }
+  }
+]
