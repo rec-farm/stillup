@@ -144,6 +144,9 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/checks/{id}/restore", post(checks::restore))
         .route("/v1/public/workspace", get(public_workspace))
         .route("/v1/workspace", get(read_workspace).put(save_workspace))
+        .method_not_allowed_fallback(|| async {
+            ApiError(StatusCode::NOT_FOUND, "Not found".into())
+        })
         .route_layer(middleware::from_fn_with_state(state.clone(), protect))
         .layer(DefaultBodyLimit::max(100_000))
         .with_state(state.clone());

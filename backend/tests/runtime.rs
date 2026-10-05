@@ -456,6 +456,31 @@ async fn malformed_paths_keep_json_errors_on_all_parameterized_route_families() 
 
 #[tokio::test]
 #[ignore = "requires TEST_DATABASE_URL"]
+async fn unsupported_api_methods_match_legacy_not_found_and_keep_authentication() {
+    let fixture = Fixture::new().await;
+    let app = fixture.app();
+    for prefix in ["/v1", "/api/v1"] {
+        for (method, suffix) in [
+            ("PATCH", "/session"),
+            ("POST", "/dashboard"),
+            ("DELETE", "/workspace"),
+        ] {
+            let path = format!("{prefix}{suffix}");
+            let (status, body, headers) =
+                request(app.clone(), method, &path, Value::Null, true).await;
+            assert_eq!(status, StatusCode::NOT_FOUND, "{method} {path}");
+            assert_eq!(headers[header::CONTENT_TYPE], "application/json");
+            assert_eq!(body["error"], "Not found");
+            let (status, body, _) = request(app.clone(), method, &path, Value::Null, false).await;
+            assert_eq!(status, StatusCode::UNAUTHORIZED);
+            assert!(body["error"].is_string());
+        }
+    }
+    fixture.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL"]
 async fn native_http_listener_serves_health_and_shuts_down_gracefully() {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let fixture = Fixture::new().await;
