@@ -1,0 +1,51 @@
+[
+  {
+    "input": null,
+    "canonical": "null"
+  },
+  {
+    "input": false,
+    "canonical": "false"
+  },
+  {
+    "input": ["A", "a", 1, 0, 1e-7, 0.000001, 100000000000000000000, 1e21],
+    "canonical": "[\"A\",\"a\",1,0,1e-7,0.000001,100000000000000000000,1e+21]"
+  },
+  {
+    "input": {
+      "2": 10,
+      "10": 9,
+      "Z": 1,
+      "a": 2,
+      "A": 3,
+      "_": 4,
+      "-": 5,
+      "é": 6,
+      "é": 7,
+      "😀": 8
+    },
+    "canonical": "{\"_\":4,\"-\":5,\"😀\":8,\"10\":9,\"2\":10,\"a\":2,\"A\":3,\"é\":6,\"é\":7,\"Z\":1}"
+  },
+  {
+    "input": {
+      "schema": {
+        "properties": {
+          "あ": true,
+          "Á": {
+            "enum": [null, 1e21, "quoted\ntext"]
+          },
+          "a": false
+        }
+      }
+    },
+    "canonical": "{\"schema\":{\"properties\":{\"a\":false,\"Á\":{\"enum\":[null,1e+21,\"quoted\\ntext\"]},\"あ\":true}}}"
+  },
+  {
+    "input": {
+      "Accept": "json",
+      "Authorization": "{{TOKEN}}",
+      "x-token": "fixture"
+    },
+    "canonical": "{\"Accept\":\"json\",\"Authorization\":\"{{TOKEN}}\",\"x-token\":\"fixture\"}"
+  }
+]

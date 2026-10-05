@@ -49,6 +49,8 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/auth/oidc/start", get(crate::oidc::start))
         .route("/v1/auth/oidc/callback", get(crate::oidc::callback))
         .route("/v1/dashboard", get(dashboard))
+        .route("/v1/code/plan", post(crate::code_management::plan))
+        .route("/v1/code/apply", post(crate::code_management::apply))
         .route("/v1/public/status", get(crate::status::public_status))
         .route("/v1/status-management", get(crate::status::admin))
         .route(

@@ -464,3 +464,54 @@ await writeFixture(
     2,
   ) + '\n',
 );
+
+const { codeConfigSchema, canonicalJson } = await import('../packages/core/src/code-config');
+const codeBase = { version: 1, project: 'production', checks: [{ id: 'api', config: base }] };
+const codeCases = [
+  codeBase,
+  { ...codeBase, checks: [] },
+  { ...codeBase, project: '../production' },
+  { ...codeBase, prune: true },
+  { ...codeBase, checks: [...codeBase.checks, ...codeBase.checks] },
+  { ...codeBase, checks: [{ id: 'api', config: { ...base, intervalseconds: 30 } }] },
+  {
+    ...codeBase,
+    checks: [
+      {
+        id: 'api',
+        config: {
+          ...base,
+          headers: { Authorization: '{{TOKEN}}' },
+          jsonAssertions: [{ path: '$.size', equals: 1e21 }],
+        },
+      },
+    ],
+  },
+];
+await writeFixture(
+  new URL('../backend/tests/fixtures/code-contracts.json', import.meta.url),
+  JSON.stringify(
+    codeCases.map((input) => {
+      const result = codeConfigSchema.safeParse(input);
+      return { input, valid: result.success, ...(result.success ? { output: result.data } : {}) };
+    }),
+    null,
+    2,
+  ) + '\n',
+);
+const canonicalCases = [
+  null,
+  false,
+  ['A', 'a', 1.0, -0, 1e-7, 1e-6, 1e20, 1e21],
+  { Z: 1, a: 2, A: 3, _: 4, '-': 5, é: 6, é: 7, '😀': 8, '10': 9, '2': 10 },
+  { schema: { properties: { あ: true, Á: { enum: [null, 1e21, 'quoted\ntext'] }, a: false } } },
+  { Accept: 'json', Authorization: '{{TOKEN}}', 'x-token': 'fixture' },
+];
+await writeFixture(
+  new URL('../backend/tests/fixtures/canonical-contracts.json', import.meta.url),
+  JSON.stringify(
+    canonicalCases.map((input) => ({ input, canonical: canonicalJson(input) })),
+    null,
+    2,
+  ) + '\n',
+);

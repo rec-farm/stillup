@@ -3042,3 +3042,215 @@ async fn native_status_management_guards_revisions_and_filters_public_components
     }
     fixture.close().await;
 }
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL"]
+async fn code_plan_apply_preserves_ownership_state_and_rejects_drift_atomically() {
+    use uuid::Uuid;
+    let fixture = Fixture::new().await;
+    let app = fixture.app();
+    let config = json!({"version":1,"project":"production","checks":[{"id":"api","config":{"name":"API","url":"https://example.com","headers":{"Authorization":"private-token","Accept":"json"}}},{"id":"worker","config":{"name":"Worker","url":"https://example.com/worker"}}]});
+    let (status, plan, _) =
+        request(app.clone(), "POST", "/v1/code/plan", config.clone(), true).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(plan["changes"][0]["action"], "create");
+    assert!(!plan.to_string().contains("private-token"));
+    let apply = json!({"config":config,"token":plan["token"]});
+    let (a, b) = tokio::join!(
+        request(app.clone(), "POST", "/v1/code/apply", apply.clone(), true),
+        request(app.clone(), "POST", "/v1/code/apply", apply, true)
+    );
+    assert!([a.0, b.0].contains(&StatusCode::OK));
+    assert!([a.0, b.0].contains(&StatusCode::CONFLICT));
+    let (_, plan, _) = request(app.clone(), "POST", "/v1/code/plan", config.clone(), true).await;
+    assert_eq!(plan["changes"][0]["action"], "unchanged");
+    let api_id = plan["changes"][0]["monitorId"].as_str().unwrap();
+    let worker_id = plan["changes"][1]["monitorId"].as_str().unwrap();
+    let reordered = json!({"version":1,"project":"production","checks":[{"id":"worker","config":{"name":"Worker","url":"https://example.com/worker"}},{"id":"api","config":{"name":"API","url":"https://example.com","headers":{"Accept":"json","Authorization":"private-token"}}}]});
+    let (_, same, _) = request(
+        app.clone(),
+        "POST",
+        "/api/v1/code/plan",
+        reordered.clone(),
+        true,
+    )
+    .await;
+    assert_eq!(same["token"], plan["token"]);
+    assert_eq!(
+        request(
+            app.clone(),
+            "POST",
+            "/v1/code/apply",
+            json!({"config":reordered,"token":plan["token"]}),
+            true
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM check_revisions")
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap(),
+        2
+    );
+    assert_eq!(
+        request(
+            app.clone(),
+            "PATCH",
+            &format!("/v1/checks/{api_id}"),
+            json!({"enabled":false,"expectedRevision":1}),
+            true
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        request(
+            app.clone(),
+            "POST",
+            "/v1/code/apply",
+            json!({"config":config,"token":plan["token"]}),
+            true
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    let mut changed = config.clone();
+    changed["checks"][0]["config"]["name"] = json!("Updated API");
+    let (_, fresh, _) = request(app.clone(), "POST", "/v1/code/plan", changed.clone(), true).await;
+    assert_eq!(fresh["changes"][0]["fields"], json!(["name"]));
+    assert_eq!(fresh["changes"][0]["paused"], true);
+    assert_eq!(
+        request(
+            app.clone(),
+            "POST",
+            "/v1/code/apply",
+            json!({"config":changed,"token":fresh["token"]}),
+            true
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let (_, updated, _) = request(
+        app.clone(),
+        "GET",
+        &format!("/v1/checks/{api_id}"),
+        Value::Null,
+        true,
+    )
+    .await;
+    assert_eq!(updated["enabled"], false);
+    assert_eq!(updated["configRevision"], 2);
+    assert_eq!(updated["codeOwnership"]["id"], "api");
+    assert_eq!(
+        request(
+            app.clone(),
+            "PUT",
+            &format!("/v1/checks/{api_id}"),
+            json!({"config":{"name":"UI edit","url":"https://example.com"},"expectedRevision":2}),
+            true
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        request(
+            app.clone(),
+            "POST",
+            &format!("/v1/checks/{worker_id}/archive"),
+            json!({"expectedRevision":1}),
+            true
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let mut atomic = changed.clone();
+    atomic["checks"][0]["config"]["name"] = json!("Must roll back");
+    atomic["checks"][1]["config"]["name"] = json!("Archived edit");
+    let (_, preview, _) = request(app.clone(), "POST", "/v1/code/plan", atomic.clone(), true).await;
+    assert_eq!(
+        request(
+            app.clone(),
+            "POST",
+            "/v1/code/apply",
+            json!({"config":atomic,"token":preview["token"]}),
+            true
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    let (_, current, _) = request(
+        app.clone(),
+        "GET",
+        &format!("/v1/checks/{api_id}"),
+        Value::Null,
+        true,
+    )
+    .await;
+    assert_eq!(current["config"]["name"], "Updated API");
+    assert_eq!(current["configRevision"], 2);
+    let retain = json!({"version":1,"project":"production","checks":[]});
+    let (_, plan, _) = request(app.clone(), "POST", "/v1/code/plan", retain.clone(), true).await;
+    assert_eq!(plan["changes"].as_array().unwrap().len(), 2);
+    assert!(
+        plan["changes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|c| c["action"] == "retained")
+    );
+    assert_eq!(
+        request(
+            app.clone(),
+            "POST",
+            "/v1/code/apply",
+            json!({"config":retain,"token":plan["token"]}),
+            true
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let independent = json!({"version":1,"project":"other","checks":[{"id":"api","config":{"name":"Other","url":"https://example.com"}}]});
+    let (_, plan, _) = request(
+        app.clone(),
+        "POST",
+        "/v1/code/plan",
+        independent.clone(),
+        true,
+    )
+    .await;
+    assert_eq!(
+        request(
+            app.clone(),
+            "POST",
+            "/v1/code/apply",
+            json!({"config":independent,"token":plan["token"]}),
+            true
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM monitors")
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap(),
+        3
+    );
+    let invalid = json!({"version":1,"project":"bad","checks":[{"id":"api","config":{"name":"Bad","url":"https://example.com","notificationChannelIds":[Uuid::new_v4()]}}]});
+    assert_eq!(
+        request(app, "POST", "/v1/code/plan", invalid, true).await.0,
+        StatusCode::BAD_REQUEST
+    );
+    fixture.close().await;
+}

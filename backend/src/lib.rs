@@ -2,6 +2,7 @@ pub mod assertions;
 pub mod auth;
 pub mod check_config;
 pub mod checks;
+pub mod code_management;
 pub mod config;
 pub mod database;
 pub mod error;
