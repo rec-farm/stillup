@@ -47,6 +47,30 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/auth/oidc/start", get(crate::oidc::start))
         .route("/v1/auth/oidc/callback", get(crate::oidc::callback))
         .route("/v1/dashboard", get(dashboard))
+        .route(
+            "/v1/notification-channels",
+            get(crate::notifications::list).post(crate::notifications::create),
+        )
+        .route(
+            "/v1/notification-channels/{id}",
+            axum::routing::put(crate::notifications::edit),
+        )
+        .route(
+            "/v1/notification-channels/{id}/test",
+            post(crate::notifications::test_channel),
+        )
+        .route(
+            "/v1/notification-deliveries",
+            get(crate::notifications::history),
+        )
+        .route(
+            "/v1/notification-deliveries/{id}",
+            get(crate::notifications::attempts),
+        )
+        .route(
+            "/v1/notification-deliveries/{id}/retry",
+            post(crate::notifications::retry),
+        )
         .route("/v1/checks", post(checks::create))
         .route("/v1/checks/test", post(checks::test_request))
         .route(
@@ -124,10 +148,20 @@ async fn protect(State(state): State<AppState>, request: Request, next: Next) ->
         let signin = path == "/v1/session" && method == "POST";
         let oidc = path.starts_with("/v1/auth/");
         let request_test = path == "/v1/checks/test";
+        let notification_test = method == "POST"
+            && path.starts_with("/v1/notification-channels/")
+            && path.ends_with("/test");
+        let notification_retry = method == "POST"
+            && path.starts_with("/v1/notification-deliveries/")
+            && path.ends_with("/retry");
         let categories: &[(&str, u32)] = if signin {
             &[("global", 120), ("sign-in", 5)]
         } else if request_test {
             &[("global", 120), ("request-test", 10)]
+        } else if notification_test {
+            &[("global", 120), ("notification-test", 10)]
+        } else if notification_retry {
+            &[("global", 120), ("notification-retry", 10)]
         } else if oidc {
             &[("global", 120), ("oidc", 20)]
         } else {

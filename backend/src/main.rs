@@ -20,6 +20,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         pool.close().await;
         return Ok(());
     }
+    stillup_api::notifications::initialize(&pool, &config.alert_webhook_url).await?;
     let listener = tokio::net::TcpListener::bind(&config.bind).await?;
     tracing::info!(address = %listener.local_addr()?, "StillUp Rust API listening");
     axum::serve(

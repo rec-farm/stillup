@@ -73,7 +73,11 @@ impl Fixture {
         self.app_configure(|config| config.oidc = oidc)
     }
     fn app_configure(&self, configure: impl FnOnce(&mut Config)) -> Router {
+        router(self.state_configure(configure))
+    }
+    fn state_configure(&self, configure: impl FnOnce(&mut Config)) -> AppState {
         let mut config = Config {
+            alert_webhook_url: String::new(),
             oidc: Default::default(),
             secrets: Default::default(),
             allow_private_networks: false,
@@ -87,7 +91,7 @@ impl Fixture {
             },
         };
         configure(&mut config);
-        router(AppState::new(self.pool.clone(), config))
+        AppState::new(self.pool.clone(), config)
     }
     async fn close(self) {
         self.pool.close().await;
@@ -1068,5 +1072,461 @@ async fn test_request_resolves_stored_secrets_without_saving_monitoring_state() 
     }
     stop.send(()).unwrap();
     server.await.unwrap();
+    fixture.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL"]
+async fn notification_channels_are_revision_guarded_and_never_expose_destinations() {
+    let fixture = Fixture::new().await;
+    stillup_api::notifications::initialize(&fixture.pool, "{{ENV_URL}}")
+        .await
+        .unwrap();
+    stillup_api::notifications::initialize(&fixture.pool, "{{ENV_URL}}")
+        .await
+        .unwrap();
+    let app = fixture.app_configure(|config| config.alert_webhook_url = "{{ENV_URL}}".into());
+    let (status, channels, _) = request(
+        app.clone(),
+        "GET",
+        "/v1/notification-channels",
+        Value::Null,
+        true,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(channels.as_array().unwrap().len(), 1);
+    assert_eq!(channels[0]["destination"], "Secret reference: ENV_URL");
+    let env_id = channels[0]["id"].as_str().unwrap();
+    assert_eq!(
+        request(
+            app.clone(),
+            "PUT",
+            &format!("/v1/notification-channels/{env_id}"),
+            json!({"name":"Environment","expectedRevision":1,"url":"https://example.com"}),
+            true
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    let (status, ch, _) = request(app.clone(), "POST", "/api/v1/notification-channels", json!({"name":" Webhook ","url":"https://example.com/private?secret=hidden","isDefault":true}), true).await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(ch["name"], "Webhook");
+    assert_eq!(ch["destination"], "https://example.com");
+    assert!(ch.get("url").is_none());
+    assert!(!ch.to_string().contains("hidden"));
+    let path = format!("/v1/notification-channels/{}", ch["id"].as_str().unwrap());
+    let edit = json!({"name":"Renamed","expectedRevision":1,"url":"{{HOOK}}","enabled":false});
+    let (first, second) = tokio::join!(
+        request(app.clone(), "PUT", &path, edit.clone(), true),
+        request(app.clone(), "PUT", &path, edit, true)
+    );
+    assert!([first.0, second.0].contains(&StatusCode::OK));
+    assert!([first.0, second.0].contains(&StatusCode::CONFLICT));
+    let saved = if first.0 == StatusCode::OK {
+        first.1
+    } else {
+        second.1
+    };
+    assert_eq!(saved["revision"], 2);
+    assert_eq!(saved["destination"], "Secret reference: HOOK");
+    assert_eq!(saved["enabled"], false);
+    for url in [
+        "file:///etc/passwd",
+        "https://user:secret@example.com",
+        "https://example.com/#secret",
+        "prefix{{HOOK}}",
+    ] {
+        assert_eq!(
+            request(
+                app.clone(),
+                "POST",
+                "/v1/notification-channels",
+                json!({"name":"Bad","url":url}),
+                true
+            )
+            .await
+            .0,
+            StatusCode::BAD_REQUEST
+        );
+    }
+    assert_eq!(
+        request(app, "GET", "/v1/notification-channels", Value::Null, false)
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    fixture.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL"]
+async fn notification_delivery_leases_retry_ordering_fencing_and_diagnostics() {
+    use sqlx::Row;
+    use stillup_api::{notifications as alerts, webhook::DeliveryResult};
+    use uuid::Uuid;
+    let fixture = Fixture::new().await;
+    let state = fixture.state_configure(|_| {});
+    let app = router(state.clone());
+    let (_, channel, _) = request(
+        app.clone(),
+        "POST",
+        "/v1/notification-channels",
+        json!({"name":"Alerts","url":"{{HOOK}}","isDefault":true}),
+        true,
+    )
+    .await;
+    let channel_id = channel["id"].as_str().unwrap();
+    let (status, test, _) = request(
+        app.clone(),
+        "POST",
+        &format!("/v1/notification-channels/{channel_id}/test"),
+        Value::Null,
+        true,
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED);
+    let delivery_id = Uuid::parse_str(test["deliveryId"].as_str().unwrap()).unwrap();
+    let (left, right) = tokio::join!(
+        alerts::claim(&state, Some(delivery_id)),
+        alerts::claim(&state, Some(delivery_id))
+    );
+    let (left, right) = (left.unwrap(), right.unwrap());
+    assert_ne!(left.is_some(), right.is_some());
+    let first = left.or(right).unwrap();
+    assert_eq!(first.get::<i32, _>("attempts"), 1);
+    assert!(
+        alerts::claim(&state, Some(delivery_id))
+            .await
+            .unwrap()
+            .is_none()
+    );
+    sqlx::query(
+        "UPDATE notification_deliveries SET next_attempt_at=now()-interval '1 second' WHERE id=$1",
+    )
+    .bind(delivery_id)
+    .execute(&fixture.pool)
+    .await
+    .unwrap();
+    let second = alerts::claim(&state, Some(delivery_id))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(second.get::<i32, _>("attempts"), 2);
+    alerts::acknowledge(
+        &state,
+        &first,
+        DeliveryResult {
+            status_code: Some(204),
+            error: None,
+        },
+    )
+    .await
+    .unwrap();
+    let active: String =
+        sqlx::query_scalar("SELECT status FROM notification_deliveries WHERE id=$1")
+            .bind(delivery_id)
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap();
+    assert_eq!(active, "delivering");
+    alerts::acknowledge(
+        &state,
+        &second,
+        DeliveryResult {
+            status_code: Some(503),
+            error: Some("Webhook returned HTTP 503".into()),
+        },
+    )
+    .await
+    .unwrap();
+    let (_, detail, _) = request(
+        app.clone(),
+        "GET",
+        &format!("/v1/notification-deliveries/{delivery_id}"),
+        Value::Null,
+        true,
+    )
+    .await;
+    assert_eq!(detail["delivery"]["status"], "retrying");
+    assert_eq!(detail["attempts"][0]["statusCode"], 503);
+    assert_eq!(
+        detail["attempts"][1]["error"],
+        "Worker interrupted before acknowledgement was recorded"
+    );
+    assert!(!detail.to_string().contains("{{HOOK}}"));
+    assert_eq!(
+        request(
+            app.clone(),
+            "POST",
+            &format!("/v1/notification-deliveries/{delivery_id}/retry"),
+            Value::Null,
+            true
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    sqlx::query("UPDATE notification_deliveries SET next_attempt_at=now()-interval '1 second',cycle_attempts=5 WHERE id=$1").bind(delivery_id).execute(&fixture.pool).await.unwrap();
+    assert!(
+        alerts::deliver_one(&state, Some(delivery_id))
+            .await
+            .unwrap()
+    );
+    let (_, detail, _) = request(
+        app.clone(),
+        "GET",
+        &format!("/v1/notification-deliveries/{delivery_id}"),
+        Value::Null,
+        true,
+    )
+    .await;
+    assert_eq!(detail["delivery"]["status"], "failed");
+    assert_eq!(
+        detail["delivery"]["lastError"],
+        "A referenced webhook secret is unavailable"
+    );
+    assert_eq!(
+        request(
+            app.clone(),
+            "POST",
+            &format!("/v1/notification-deliveries/{delivery_id}/retry"),
+            Value::Null,
+            true
+        )
+        .await
+        .0,
+        StatusCode::ACCEPTED
+    );
+    let retried = alerts::claim(&state, Some(delivery_id))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(retried.get::<i32, _>("cycle_attempts"), 1);
+    assert_eq!(retried.get::<i32, _>("attempts"), 4);
+    alerts::acknowledge(
+        &state,
+        &retried,
+        DeliveryResult {
+            status_code: Some(204),
+            error: None,
+        },
+    )
+    .await
+    .unwrap();
+    let monitor_id: Uuid =
+        sqlx::query_scalar("INSERT INTO monitors(config) VALUES($1) RETURNING id")
+            .bind(json!({"name":"API","url":"https://example.com","intervalSeconds":60}))
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap();
+    let incident_id: Uuid =
+        sqlx::query_scalar("INSERT INTO incidents(monitor_id,name) VALUES($1,'API') RETURNING id")
+            .bind(monitor_id)
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap();
+    let event = json!({"id":incident_id,"type":"incident.opened","name":"API","at":"2026-01-01T00:00:00.000Z"});
+    let mut tx = fixture.pool.begin().await.unwrap();
+    let ids = alerts::queue_event(&mut tx, "", &event, &json!({}), "opened", None, None)
+        .await
+        .unwrap();
+    assert_eq!(ids.len(), 1);
+    assert!(
+        alerts::queue_event(&mut tx, "", &event, &json!({}), "opened", None, None)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    let mut resolved = event.clone();
+    resolved["type"] = json!("incident.resolved");
+    let later = alerts::queue_event(&mut tx, "", &resolved, &json!({}), "resolved", None, None)
+        .await
+        .unwrap();
+    assert!(
+        alerts::queue_event(
+            &mut tx,
+            "",
+            &event,
+            &json!({"notificationChannelIds":[]}),
+            "no-routes",
+            None,
+            None
+        )
+        .await
+        .unwrap()
+        .is_empty()
+    );
+    sqlx::query("UPDATE notification_deliveries SET created_at=created_at+interval '1 microsecond' WHERE id=$1").bind(later[0]).execute(&mut *tx).await.unwrap();
+    tx.commit().await.unwrap();
+    assert!(
+        alerts::claim(&state, Some(later[0]))
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let opened = alerts::claim(&state, Some(ids[0])).await.unwrap().unwrap();
+    alerts::acknowledge(
+        &state,
+        &opened,
+        DeliveryResult {
+            status_code: Some(200),
+            error: None,
+        },
+    )
+    .await
+    .unwrap();
+    let resolved = alerts::claim(&state, Some(later[0]))
+        .await
+        .unwrap()
+        .unwrap();
+    alerts::acknowledge(
+        &state,
+        &resolved,
+        DeliveryResult {
+            status_code: Some(200),
+            error: None,
+        },
+    )
+    .await
+    .unwrap();
+    let (_, history, _) = request(
+        app.clone(),
+        "GET",
+        &format!("/v1/notification-deliveries?incidentId={incident_id}"),
+        Value::Null,
+        true,
+    )
+    .await;
+    assert_eq!(history["deliveries"].as_array().unwrap().len(), 2);
+    assert_eq!(history["nextBefore"], Value::Null);
+    fixture.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL"]
+async fn native_alerts_deliver_managed_webhooks_and_cancel_obsolete_reminders() {
+    use sqlx::Row;
+    use stillup_api::notifications as alerts;
+    use uuid::Uuid;
+    let fixture = Fixture::new().await;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let target = format!(
+        "http://{}/hook/private?token=hidden",
+        listener.local_addr().unwrap()
+    );
+    let receipts = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let captured = receipts.clone();
+    let receiver = Router::new().route(
+        "/hook/private",
+        axum::routing::post(
+            move |headers: axum::http::HeaderMap, axum::Json(payload): axum::Json<Value>| {
+                let captured = captured.clone();
+                async move {
+                    assert_eq!(
+                        headers["idempotency-key"],
+                        payload["eventId"].as_str().unwrap()
+                    );
+                    captured.lock().unwrap().push(payload);
+                    StatusCode::NO_CONTENT
+                }
+            },
+        ),
+    );
+    let server = tokio::spawn(async move { axum::serve(listener, receiver).await.unwrap() });
+    let state = fixture.state_configure(|config| {
+        config.allow_private_networks = true;
+        config.secrets.encryption_key = "24".repeat(32);
+    });
+    let app = router(state.clone());
+    assert_eq!(
+        request(
+            app.clone(),
+            "POST",
+            "/v1/secrets",
+            json!({"name":"HOOK","value":target}),
+            true
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+    let (_, channel, _) = request(
+        app.clone(),
+        "POST",
+        "/v1/notification-channels",
+        json!({"name":"Webhook","url":"{{HOOK}}","isDefault":true}),
+        true,
+    )
+    .await;
+    let channel_id = channel["id"].as_str().unwrap();
+    let (_, test, _) = request(
+        app.clone(),
+        "POST",
+        &format!("/v1/notification-channels/{channel_id}/test"),
+        Value::Null,
+        true,
+    )
+    .await;
+    let delivery_id = Uuid::parse_str(test["deliveryId"].as_str().unwrap()).unwrap();
+    assert!(
+        alerts::deliver_one(&state, Some(delivery_id))
+            .await
+            .unwrap()
+    );
+    let (_, details, _) = request(
+        app.clone(),
+        "GET",
+        &format!("/v1/notification-deliveries/{delivery_id}"),
+        Value::Null,
+        true,
+    )
+    .await;
+    assert_eq!(details["delivery"]["status"], "delivered");
+    assert_eq!(details["attempts"][0]["statusCode"], 204);
+    assert!(details["delivery"]["deliveredAt"].is_string());
+    assert!(!details.to_string().contains("hidden"));
+    assert_eq!(receipts.lock().unwrap().len(), 1);
+    let monitor_id: Uuid = sqlx::query_scalar("INSERT INTO monitors(config,status,last_outcome,last_observed_at) VALUES($1,'down','fail',now()) RETURNING id")
+        .bind(json!({"name":"API","url":"https://example.com","intervalSeconds":60,"reminderIntervalSeconds":300})).fetch_one(&fixture.pool).await.unwrap();
+    let incident_id: Uuid = sqlx::query_scalar("INSERT INTO incidents(monitor_id,name,opened_at) VALUES($1,'API',now()-interval '301 seconds') RETURNING id")
+        .bind(monitor_id).fetch_one(&fixture.pool).await.unwrap();
+    alerts::reminders(&state).await.unwrap();
+    alerts::reminders(&state).await.unwrap();
+    let reminders = sqlx::query("SELECT * FROM notification_deliveries WHERE incident_id=$1")
+        .bind(incident_id)
+        .fetch_all(&fixture.pool)
+        .await
+        .unwrap();
+    assert_eq!(reminders.len(), 1);
+    let reminder_id: Uuid = reminders[0].get("id");
+    sqlx::query("UPDATE monitors SET last_observed_at=now()-interval '181 seconds' WHERE id=$1")
+        .bind(monitor_id)
+        .execute(&fixture.pool)
+        .await
+        .unwrap();
+    assert!(
+        alerts::claim(&state, Some(reminder_id))
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let (_, details, _) = request(
+        app,
+        "GET",
+        &format!("/v1/notification-deliveries/{reminder_id}"),
+        Value::Null,
+        true,
+    )
+    .await;
+    assert_eq!(details["delivery"]["status"], "cancelled");
+    assert_eq!(
+        details["delivery"]["lastError"],
+        "Outage reminder is no longer applicable"
+    );
+    assert_eq!(receipts.lock().unwrap().len(), 1);
+    server.abort();
+    assert!(server.await.unwrap_err().is_cancelled());
     fixture.close().await;
 }

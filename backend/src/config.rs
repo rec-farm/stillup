@@ -11,6 +11,7 @@ pub struct Config {
     pub oidc: crate::oidc::OidcConfig,
     pub secrets: crate::secrets::SecretConfig,
     pub allow_private_networks: bool,
+    pub alert_webhook_url: String,
 }
 impl Config {
     pub fn from_env() -> Result<Self, String> {
@@ -32,7 +33,15 @@ impl Config {
             .unwrap_or_else(|_| "3001".into())
             .parse::<u16>()
             .map_err(|_| "PORT must be a valid port")?;
+        let alert_webhook_url = env::var("ALERT_WEBHOOK_URL").unwrap_or_default();
+        if !alert_webhook_url.is_empty() {
+            crate::notifications::destination(&serde_json::Value::String(
+                alert_webhook_url.clone(),
+            ))
+            .map_err(|_| "ALERT_WEBHOOK_URL must be a webhook URL or secret reference")?;
+        }
         Ok(Self {
+            alert_webhook_url,
             database_url,
             admin_token,
             origin: url.origin().ascii_serialization(),

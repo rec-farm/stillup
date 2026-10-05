@@ -319,7 +319,7 @@ pub async fn overview(State(state): State<AppState>) -> Result<Json<Value>, ApiE
         let destination: Option<String> = row.try_get("url")?;
         let source: String = row.try_get("source")?;
         let value = if source == "environment" {
-            std::env::var("ALERT_WEBHOOK_URL").unwrap_or_default()
+            state.config.alert_webhook_url.clone()
         } else {
             destination.unwrap_or_default()
         };
