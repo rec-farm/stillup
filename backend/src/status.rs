@@ -478,6 +478,9 @@ async fn communications(
     public_ids: Option<&[Uuid]>,
 ) -> Result<Vec<Value>, ApiError> {
     let rows=sqlx::query("SELECT * FROM (SELECT id,name,ARRAY[monitor_id] AS monitor_ids,'automatic' AS source,opened_at,resolved_at,communication_revision AS revision FROM incidents WHERE ($1::uuid[] IS NULL OR monitor_id=ANY($1::uuid[])) UNION ALL SELECT id,title AS name,monitor_ids,'manual' AS source,created_at AS opened_at,resolved_at,revision FROM status_incidents WHERE ($1::uuid[] IS NULL OR monitor_ids && $1::uuid[])) combined ORDER BY (resolved_at IS NULL) DESC,opened_at DESC LIMIT 100").bind(public_ids).fetch_all(&state.pool).await?;
+    if rows.is_empty() {
+        return Ok(vec![]);
+    }
     let ids: Vec<Uuid> = rows.iter().map(|r| r.get("id")).collect();
     let updates=sqlx::query("SELECT * FROM (SELECT *,row_number() OVER (PARTITION BY incident_id ORDER BY created_at DESC,id DESC) AS rn FROM status_updates WHERE incident_id=ANY($1::uuid[])) t WHERE rn<=50 ORDER BY created_at DESC,id DESC").bind(&ids).fetch_all(&state.pool).await?;
     rows.iter().map(|row|{
@@ -495,13 +498,26 @@ pub async fn admin(State(state): State<AppState>) -> Result<Json<Value>, ApiErro
     Ok(Json(config))
 }
 pub async fn public_status(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let rows=sqlx::query("SELECT * FROM monitors WHERE (config->>'public')::boolean IS TRUE AND archived_at IS NULL ORDER BY created_at").fetch_all(&state.pool).await?;
+    let (rows, history, settings) = tokio::try_join!(
+        async {
+            sqlx::query("SELECT id,config,status,enabled,last_observed_at FROM monitors WHERE (config->>'public')::boolean IS TRUE AND archived_at IS NULL ORDER BY created_at").fetch_all(&state.pool).await.map_err(ApiError::from)
+        },
+        async {
+            sqlx::query("SELECT i.id,i.monitor_id,i.name,i.opened_at,i.resolved_at FROM incidents i JOIN monitors m ON m.id=i.monitor_id WHERE (m.config->>'public')::boolean IS TRUE AND m.archived_at IS NULL ORDER BY i.opened_at DESC LIMIT 50").fetch_all(&state.pool).await.map_err(ApiError::from)
+        },
+        settings(&state),
+    )?;
     let ids: Vec<Uuid> = rows.iter().map(|r| r.get("id")).collect();
-    let history=sqlx::query("SELECT i.* FROM incidents i JOIN monitors m ON m.id=i.monitor_id WHERE (m.config->>'public')::boolean IS TRUE AND m.archived_at IS NULL ORDER BY i.opened_at DESC LIMIT 50").fetch_all(&state.pool).await?;
-    let settings = settings(&state).await?;
     let config = &settings["settings"];
-    let windows=sqlx::query("SELECT * FROM maintenance_windows WHERE NOT cancelled AND ends_at>now() AND (cardinality(monitor_ids)=0 OR monitor_ids && $1::uuid[]) ORDER BY starts_at LIMIT 100").bind(&ids).fetch_all(&state.pool).await?;
-    let impact=sqlx::query("SELECT m.id,EXISTS(SELECT 1 FROM maintenance_windows w WHERE NOT w.cancelled AND w.starts_at<=now() AND w.ends_at>now() AND (cardinality(w.monitor_ids)=0 OR m.id=ANY(w.monitor_ids))) AS maintenance,EXISTS(SELECT 1 FROM status_incidents i WHERE i.resolved_at IS NULL AND m.id=ANY(i.monitor_ids)) AS incident FROM monitors m WHERE m.id=ANY($1::uuid[])").bind(&ids).fetch_all(&state.pool).await?;
+    let (windows, impact, communication) = tokio::try_join!(
+        async {
+            sqlx::query("SELECT * FROM maintenance_windows WHERE NOT cancelled AND ends_at>now() AND (cardinality(monitor_ids)=0 OR monitor_ids && $1::uuid[]) ORDER BY starts_at LIMIT 100").bind(&ids).fetch_all(&state.pool).await.map_err(ApiError::from)
+        },
+        async {
+            sqlx::query("SELECT m.id,EXISTS(SELECT 1 FROM maintenance_windows w WHERE NOT w.cancelled AND w.starts_at<=now() AND w.ends_at>now() AND (cardinality(w.monitor_ids)=0 OR m.id=ANY(w.monitor_ids))) AS maintenance,EXISTS(SELECT 1 FROM status_incidents i WHERE i.resolved_at IS NULL AND m.id=ANY(i.monitor_ids)) AS incident FROM monitors m WHERE m.id=ANY($1::uuid[])").bind(&ids).fetch_all(&state.pool).await.map_err(ApiError::from)
+        },
+        communications(&state, Some(&ids)),
+    )?;
     let components=rows.iter().map(|row|->Result<Value,ApiError>{
         let id:Uuid=row.get("id");let check:Value=row.get("config");let status:String=row.get("status");
         let current=impact.iter().find(|r|r.get::<Uuid,_>("id")==id);
@@ -541,7 +557,7 @@ pub async fn public_status(State(state): State<AppState>) -> Result<Json<Value>,
     };
     let incidents=history.iter().map(|r|->Result<Value,ApiError>{Ok(json!({"id":r.get::<Uuid,_>("id"),"monitorId":r.get::<Uuid,_>("monitor_id"),"name":r.get::<String,_>("name"),"openedAt":timestamp(r,"opened_at")?,"resolvedAt":timestamp(r,"resolved_at")?}))}).collect::<Result<Vec<_>,_>>()?;
     Ok(Json(
-        json!({"title":config["title"],"updatedAt":Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis,true),"branding":branding,"groups":groups,"components":components,"incidents":incidents,"maintenance":maintenance,"communications":communications(&state,Some(&ids)).await?}),
+        json!({"title":config["title"],"updatedAt":Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis,true),"branding":branding,"groups":groups,"components":components,"incidents":incidents,"maintenance":maintenance,"communications":communication}),
     ))
 }
 
