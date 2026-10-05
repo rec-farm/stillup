@@ -38,6 +38,8 @@ Branch: `feat/vite-rust-migration`. Deliver one PR replacing the runtime, retain
 
 - Frontend performance baseline captured from unchanged pre-migration commit `30c1b36` in a detached worktree using identical Node/pnpm versions and sequential warmed builds. Median frontend build time was 3.420 seconds for Next and 0.667 seconds for Vite; total generated gzip JavaScript was 334,886 versus 152,792 bytes. These are whole-output totals, not browser-navigation payloads. Reproducible script, raw timings and limitations are documented in `performance.md`. Runtime startup/RSS/API latency and browser transfers remain pending.
 
+- A bounded API comparison with 100 checks (10 public), fresh isolated databases and 45 warmed requests per endpoint found 191,056 KiB Node API process-tree RSS versus 14,688 KiB Rust, and public-status medians of 1.236 versus 0.907 ms. Rust dashboard median/p95 and fresh-migration startup remain higher in this sample; whole-stack/browser/concurrent measurements remain pending. Measurement-driven fixes overlap independent status reads, skip empty update queries and validate idle pooled connections without pinging every hot checkout. All 27 PostgreSQL tests and Clippy pass, including replacement of a deliberately terminated test connection. Scripts/raw data/limitations are recorded in `performance.md`; every benchmark process/database was removed.
+
 ## Completion gates
 
 - [ ] Native Rust API implements every existing route in `tests/legacy-api/src/server.ts`, including validation and response/error contracts.
