@@ -19,6 +19,9 @@ hmac = "0.12"
 sha2 = "0.10"
 subtle = "2"
 hex = "0.4"
+base64 = "0.22"
+openidconnect = { version = "4", default-features = false, features = ["reqwest", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "postgres", "json", "chrono", "uuid"] }
 chrono = { version = "0.4", features = ["serde"] }
@@ -28,3 +31,4 @@ uuid = { version = "1", features = ["serde", "v4"] }
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 tempfile = "3"
+rsa = { version = "0.9", features = ["sha2"] }

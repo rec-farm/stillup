@@ -23,6 +23,7 @@ type Buckets = HashMap<(IpAddr, &'static str), (Instant, u32)>;
 pub struct AppState {
     pub pool: PgPool,
     pub config: Config,
+    pub oidc: crate::oidc::Runtime,
     limits: Arc<Mutex<Buckets>>,
 }
 impl AppState {
@@ -30,6 +31,7 @@ impl AppState {
         Self {
             pool,
             config,
+            oidc: Default::default(),
             limits: Arc::new(Mutex::new(HashMap::new())),
         }
     }
@@ -39,6 +41,9 @@ pub fn router(state: AppState) -> Router {
     let api = Router::new()
         .route("/health", get(health_check))
         .route("/v1/session", post(sign_in).delete(sign_out))
+        .route("/v1/auth/config", get(crate::oidc::config))
+        .route("/v1/auth/oidc/start", get(crate::oidc::start))
+        .route("/v1/auth/oidc/callback", get(crate::oidc::callback))
         .route("/v1/dashboard", get(dashboard))
         .route(
             "/v1/checks/{id}",
@@ -103,8 +108,11 @@ async fn protect(State(state): State<AppState>, request: Request, next: Next) ->
         let now = Instant::now();
         buckets.retain(|_, (start, _)| now.duration_since(*start) < Duration::from_secs(60));
         let signin = path == "/v1/session" && method == "POST";
+        let oidc = path.starts_with("/v1/auth/");
         let categories: &[(&str, u32)] = if signin {
             &[("global", 120), ("sign-in", 5)]
+        } else if oidc {
+            &[("global", 120), ("oidc", 20)]
         } else {
             &[("global", 120)]
         };
@@ -152,7 +160,11 @@ async fn protect(State(state): State<AppState>, request: Request, next: Next) ->
             .into_response();
         }
     }
-    let public = (path == "/health" && matches!(method, "GET" | "HEAD"))
+    let public = (matches!(
+        path,
+        "/v1/auth/config" | "/v1/auth/oidc/start" | "/v1/auth/oidc/callback"
+    ) && matches!(method, "GET" | "HEAD"))
+        || (path == "/health" && matches!(method, "GET" | "HEAD"))
         || (path == "/v1/session" && matches!(method, "POST" | "DELETE"))
         || (path == "/v1/public/workspace" && matches!(method, "GET" | "HEAD"));
     if !public {
@@ -217,8 +229,15 @@ async fn sign_in(
     );
     Ok(response)
 }
-async fn sign_out() -> Response {
-    let mut response = Json(json!({"ok":true})).into_response();
+async fn sign_out(State(state): State<AppState>, request: Request) -> Response {
+    let token = cookie(request.headers(), "stillup_oidc_idt").map(str::to_owned);
+    drop(request);
+    let logout = crate::oidc::logout(&state, token).await;
+    let mut data = json!({"ok":true});
+    if let Some(url) = logout {
+        data["logoutUrl"] = json!(url);
+    }
+    let mut response = Json(data).into_response();
     for name in ["stillup_session", "stillup_oidc_idt"] {
         response.headers_mut().append(
             header::SET_COOKIE,

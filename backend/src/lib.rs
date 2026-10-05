@@ -5,6 +5,7 @@ pub mod database;
 pub mod error;
 pub mod health;
 pub mod json;
+pub mod oidc;
 pub mod server;
 pub mod status_domain;
 pub mod web;

@@ -8,6 +8,7 @@ pub struct Config {
     pub origin: String,
     pub bind: String,
     pub web: WebConfig,
+    pub oidc: crate::oidc::OidcConfig,
 }
 impl Config {
     pub fn from_env() -> Result<Self, String> {
@@ -37,6 +38,7 @@ impl Config {
                 "{}:{port}",
                 env::var("HOST").unwrap_or_else(|_| "127.0.0.1".into())
             ),
+            oidc: crate::oidc::OidcConfig::from_env()?,
             web: WebConfig {
                 client_dir: PathBuf::from(
                     env::var("CLIENT_DIR").unwrap_or_else(|_| "apps/web/dist".into()),

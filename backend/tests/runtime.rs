@@ -67,9 +67,13 @@ impl Fixture {
         fixture
     }
     fn app(&self) -> Router {
+        self.app_with_oidc(Default::default())
+    }
+    fn app_with_oidc(&self, oidc: stillup_api::oidc::OidcConfig) -> Router {
         router(AppState::new(
             self.pool.clone(),
             Config {
+                oidc,
                 database_url: String::new(),
                 admin_token: "01234567890123456789012345678901".into(),
                 origin: "https://dashboard.example.com".into(),
@@ -458,5 +462,352 @@ async fn native_http_listener_serves_health_and_shuts_down_gracefully() {
         .await
         .unwrap()
         .unwrap();
+    fixture.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL"]
+async fn oidc_pkce_signed_tokens_callback_and_logout() {
+    use axum::{
+        Json,
+        extract::{Form, State},
+        routing::{get, post},
+    };
+    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+    use rsa::{
+        pkcs1v15::SigningKey,
+        pkcs8::DecodePrivateKey,
+        signature::{SignatureEncoding, Signer},
+    };
+    use sha2::{Digest, Sha256};
+    use std::{
+        collections::HashMap,
+        sync::{Arc, Mutex},
+    };
+    #[derive(Clone)]
+    struct Provider {
+        issuer: String,
+        flow: Arc<Mutex<(String, String, bool)>>,
+        mode: Arc<Mutex<String>>,
+    }
+    async fn metadata(State(p): State<Provider>) -> Json<Value> {
+        Json(
+            json!({"issuer":p.issuer,"authorization_endpoint":format!("{}/authorize",p.issuer),"token_endpoint":format!("{}/token",p.issuer),"jwks_uri":format!("{}/jwks",p.issuer),"end_session_endpoint":format!("{}/logout",p.issuer),"response_types_supported":["code"],"subject_types_supported":["public"],"id_token_signing_alg_values_supported":["RS256"]}),
+        )
+    }
+    async fn token(
+        State(p): State<Provider>,
+        Form(form): Form<HashMap<String, String>>,
+    ) -> (StatusCode, Json<Value>) {
+        let mut flow = p.flow.lock().unwrap();
+        let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(
+            form.get("code_verifier")
+                .map(String::as_str)
+                .unwrap_or("")
+                .as_bytes(),
+        ));
+        if flow.2
+            || form.get("code").map(String::as_str) != Some("fixture-code")
+            || challenge != flow.1
+        {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error":"invalid_grant"})),
+            );
+        }
+        flow.2 = true;
+        let mode = p.mode.lock().unwrap().clone();
+        let header = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&json!({"alg":"RS256","kid":if mode=="rotate" { "rotated" } else { "fixture" },"typ":"JWT"})).unwrap());
+        let now = chrono::Utc::now().timestamp();
+        let mut claims = json!({"iss":p.issuer,"aud":"fixture-client","sub":"administrator","iat":now,"exp":now+300,"nonce":flow.0});
+        match mode.as_str() {
+            "nonce" => claims["nonce"] = json!("wrong-nonce"),
+            "audience" => claims["aud"] = json!("other-client"),
+            "issuer" => claims["iss"] = json!("https://other.example.com"),
+            "expired" => claims["exp"] = json!(now - 3600),
+            "access-hash" => claims["at_hash"] = json!("invalid"),
+            _ => (),
+        }
+        let payload = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).unwrap());
+        let message = format!("{header}.{payload}");
+        // This checked-in key is only a disposable local test fixture.
+        let key =
+            rsa::RsaPrivateKey::from_pkcs8_pem(include_str!("fixtures/oidc-test-key.pem")).unwrap();
+        let signature = SigningKey::<Sha256>::new(key).sign(message.as_bytes());
+        let mut signature = signature.to_vec();
+        if mode == "signature" {
+            signature[0] ^= 1;
+        }
+        let jwt = format!("{message}.{}", URL_SAFE_NO_PAD.encode(signature));
+        (
+            StatusCode::OK,
+            Json(
+                json!({"access_token":"fixture-access","token_type":"Bearer","expires_in":300,"id_token":jwt}),
+            ),
+        )
+    }
+    let fixture = Fixture::new().await;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let issuer = format!("http://{}", listener.local_addr().unwrap());
+    let provider = Provider {
+        issuer: issuer.clone(),
+        flow: Arc::new(Mutex::new((String::new(), String::new(), false))),
+        mode: Arc::new(Mutex::new(String::new())),
+    };
+    let provider_app = Router::new()
+        .route("/.well-known/openid-configuration", get(metadata))
+        .route(
+            "/jwks",
+            get(|State(p): State<Provider>| async move {
+                let mut keys: Value =
+                    serde_json::from_str(include_str!("fixtures/oidc-test-jwks.json")).unwrap();
+                if *p.mode.lock().unwrap() == "rotate" {
+                    keys["keys"][0]["kid"] = json!("rotated");
+                }
+                Json(keys)
+            }),
+        )
+        .route("/token", post(token))
+        .with_state(provider.clone());
+    let (stop, stopped) = tokio::sync::oneshot::channel();
+    let server = tokio::spawn(async move {
+        axum::serve(listener, provider_app)
+            .with_graceful_shutdown(async {
+                stopped.await.ok();
+            })
+            .await
+            .unwrap();
+    });
+    let app = fixture.app_with_oidc(stillup_api::oidc::OidcConfig {
+        issuer: issuer.clone(),
+        client_id: "fixture-client".into(),
+        ..Default::default()
+    });
+    let (status, data, _) = request(
+        app.clone(),
+        "GET",
+        "/api/v1/auth/config",
+        Value::Null,
+        false,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(data["oidc"], true);
+    let (status, _, headers) = request(
+        app.clone(),
+        "GET",
+        "/api/v1/auth/oidc/start?next=/docs",
+        Value::Null,
+        false,
+    )
+    .await;
+    assert_eq!(status, StatusCode::FOUND);
+    let authorization = url::Url::parse(headers[header::LOCATION].to_str().unwrap()).unwrap();
+    let params: HashMap<_, _> = authorization.query_pairs().into_owned().collect();
+    assert_eq!(params["code_challenge_method"], "S256");
+    assert_eq!(
+        params["redirect_uri"],
+        "https://dashboard.example.com/api/v1/auth/oidc/callback"
+    );
+    *provider.flow.lock().unwrap() = (
+        params["nonce"].clone(),
+        params["code_challenge"].clone(),
+        false,
+    );
+    let cookie = headers[header::SET_COOKIE]
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap();
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/v1/auth/oidc/callback?code=fixture-code&state={}",
+                    params["state"]
+                ))
+                .header(header::COOKIE, cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::FOUND);
+    assert_eq!(
+        response.headers()[header::LOCATION],
+        "https://dashboard.example.com/docs"
+    );
+    let cookies: Vec<_> = response
+        .headers()
+        .get_all(header::SET_COOKIE)
+        .iter()
+        .map(|v| v.to_str().unwrap().split(';').next().unwrap().to_string())
+        .collect();
+    assert!(cookies.iter().any(|v| v.starts_with("stillup_session=")));
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/api/v1/session")
+                .header(header::COOKIE, cookies.join("; "))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let data: Value =
+        serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    let logout = url::Url::parse(data["logoutUrl"].as_str().unwrap()).unwrap();
+    assert_eq!(logout.path(), "/logout");
+    let params: HashMap<_, _> = logout.query_pairs().into_owned().collect();
+    assert_eq!(
+        params["post_logout_redirect_uri"],
+        "https://dashboard.example.com/login"
+    );
+    assert!(params.contains_key("id_token_hint"));
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/auth/oidc/callback?code=fixture-code&state=wrong")
+                .header(header::COOKIE, cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        response.headers()[header::LOCATION],
+        "https://dashboard.example.com/login?error=oidc_failed"
+    );
+    let (status, _, headers) = request(
+        app.clone(),
+        "GET",
+        "/v1/auth/oidc/callback?code=missing",
+        Value::Null,
+        false,
+    )
+    .await;
+    assert_eq!(status, StatusCode::FOUND);
+    assert!(
+        headers[header::LOCATION]
+            .to_str()
+            .unwrap()
+            .ends_with("oidc_expired")
+    );
+
+    for mode in [
+        "nonce",
+        "audience",
+        "issuer",
+        "expired",
+        "signature",
+        "access-hash",
+        "rotate",
+    ] {
+        *provider.mode.lock().unwrap() = mode.into();
+        let (status, _, headers) = request(
+            app.clone(),
+            "GET",
+            "/api/v1/auth/oidc/start",
+            Value::Null,
+            false,
+        )
+        .await;
+        assert_eq!(status, StatusCode::FOUND);
+        let authorization = url::Url::parse(headers[header::LOCATION].to_str().unwrap()).unwrap();
+        let params: HashMap<_, _> = authorization.query_pairs().into_owned().collect();
+        *provider.flow.lock().unwrap() = (
+            params["nonce"].clone(),
+            params["code_challenge"].clone(),
+            false,
+        );
+        let cookie = headers[header::SET_COOKIE]
+            .to_str()
+            .unwrap()
+            .split(';')
+            .next()
+            .unwrap();
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/api/v1/auth/oidc/callback?code=fixture-code&state={}",
+                        params["state"]
+                    ))
+                    .header(header::COOKIE, cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::FOUND);
+        if mode == "rotate" {
+            assert_eq!(
+                response.headers()[header::LOCATION],
+                "https://dashboard.example.com/"
+            );
+            assert!(
+                response
+                    .headers()
+                    .get_all(header::SET_COOKIE)
+                    .iter()
+                    .any(|v| v.to_str().unwrap().starts_with("stillup_session="))
+            );
+        } else {
+            assert_eq!(
+                response.headers()[header::LOCATION],
+                "https://dashboard.example.com/login?error=oidc_failed",
+                "mode: {mode}"
+            );
+            assert!(
+                !response
+                    .headers()
+                    .get_all(header::SET_COOKIE)
+                    .iter()
+                    .any(|v| v.to_str().unwrap().starts_with("stillup_session=")),
+                "mode: {mode}"
+            );
+        }
+    }
+    stop.send(()).unwrap();
+    server.await.unwrap();
+    fixture.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL"]
+async fn disabled_or_unavailable_oidc_returns_existing_login_errors() {
+    let fixture = Fixture::new().await;
+    let app = fixture.app();
+    let (status, data, _) =
+        request(app.clone(), "GET", "/v1/auth/config", Value::Null, false).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(data["oidc"], false);
+    let (status, _, headers) = request(app, "GET", "/v1/auth/oidc/start", Value::Null, false).await;
+    assert_eq!(status, StatusCode::FOUND);
+    assert!(
+        headers[header::LOCATION]
+            .to_str()
+            .unwrap()
+            .ends_with("oidc_disabled")
+    );
+    let app = fixture.app_with_oidc(stillup_api::oidc::OidcConfig {
+        issuer: "http://127.0.0.1:0".into(),
+        client_id: "fixture".into(),
+        ..Default::default()
+    });
+    let (status, _, headers) = request(app, "GET", "/v1/auth/oidc/start", Value::Null, false).await;
+    assert_eq!(status, StatusCode::FOUND);
+    assert!(
+        headers[header::LOCATION]
+            .to_str()
+            .unwrap()
+            .ends_with("oidc_unavailable")
+    );
     fixture.close().await;
 }
