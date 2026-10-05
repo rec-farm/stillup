@@ -3,7 +3,7 @@ import { randomUUID, randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { checkSchema } from '@stillup/core';
 import { createServer as httpServer } from 'node:http';
-import { connectDatabase } from '@stillup/db';
+import { connectDatabase } from '@stillup/legacy-db';
 import type { Service } from './service';
 import type { createServer } from './server';
 const baseUrl = process.env.DATABASE_URL;
@@ -1834,7 +1834,11 @@ suite(
     const start = (token?: string) => {
       child = spawn(
         process.execPath,
-        ['--import', 'tsx', fileURLToPath(new URL('../../probe/src/main.ts', import.meta.url))],
+        [
+          '--import',
+          'tsx',
+          fileURLToPath(new URL('../../legacy-probe/src/main.ts', import.meta.url)),
+        ],
         {
           env: {
             PATH: process.env.PATH,

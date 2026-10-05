@@ -248,8 +248,8 @@ Legacy parity integration tests require the local PostgreSQL service and `.env`.
 apps/web       Vite dashboard, sign-in, public status and documentation
 backend        Rust API/static server, scheduler, workers and remote probe
 packages/core  TypeScript client validation and shared contract fixtures
-packages/db    SQL migrations and legacy test schema
-apps/api       Legacy parity reference/tests, pending removal
+packages/db    Embedded SQL migration sources
+tests/legacy-* Test-only previous implementation for parity comparisons
 ```
 
 Detailed runs are retained for `RUN_RETENTION_DAYS` (default 30); the worker cleans them hourly. Incidents and configuration revisions are retained. Archiving does not change the run-retention policy. No uptime percentage is advertised until interval-aware aggregation is implemented.

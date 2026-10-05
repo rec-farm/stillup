@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { connectDatabase, type PoolClient } from '@stillup/db';
+import { connectDatabase, type PoolClient } from '@stillup/legacy-db';
 import type {
   AlertEvent,
   Channel,

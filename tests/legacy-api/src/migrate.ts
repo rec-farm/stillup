@@ -1,5 +1,5 @@
 import { readdir, readFile } from 'node:fs/promises';
-import { connectDatabase } from '@stillup/db';
+import { connectDatabase } from '@stillup/legacy-db';
 export async function migrate(url: string) {
   const { pool } = connectDatabase(url);
   const client = await pool.connect();
@@ -24,9 +24,4 @@ export async function migrate(url: string) {
     client.release();
     await pool.end();
   }
-}
-if (process.argv[1]?.endsWith('/migrate.ts')) {
-  if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
-  await migrate(process.env.DATABASE_URL);
-  console.log('Database migrations applied');
 }

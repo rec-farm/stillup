@@ -1,6 +1,6 @@
 // Test-only: seed the installed pg-boss schema so the Rust handoff is checked
 // against real queue partitions and enums, rather than a mock table.
-import { PgBoss } from '../apps/api/node_modules/pg-boss/dist/index.js';
+import { PgBoss } from '../tests/legacy-api/node_modules/pg-boss/dist/index.js';
 import { randomUUID } from 'node:crypto';
 const [schema, monitorId] = process.argv.slice(2);
 if (!/^rust_test_[a-f0-9]+$/.test(schema ?? '') || !monitorId || !process.env.TEST_DATABASE_URL)

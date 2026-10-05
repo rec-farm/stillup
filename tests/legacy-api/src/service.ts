@@ -10,7 +10,7 @@ import {
   desc,
   sql,
   and,
-} from '@stillup/db';
+} from '@stillup/legacy-db';
 import {
   evaluateHealth,
   visibleHealth,
@@ -32,7 +32,7 @@ import { createSecrets } from './secrets';
 import { createWorkspaceSettings } from './workspace';
 import { createStatusManagement } from './status-management';
 import { createProbes } from './probes';
-import type { PoolClient } from '@stillup/db';
+import type { PoolClient } from '@stillup/legacy-db';
 import type { CheckResult } from '@stillup/core';
 type CheckJob = {
   monitorId: string;

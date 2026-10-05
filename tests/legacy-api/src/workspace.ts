@@ -1,4 +1,4 @@
-import { connectDatabase } from '@stillup/db';
+import { connectDatabase } from '@stillup/legacy-db';
 import {
   workspaceSettingsSchema,
   defaultWorkspaceSettings,

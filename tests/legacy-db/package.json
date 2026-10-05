@@ -1,5 +1,5 @@
 {
-  "name": "@stillup/db",
+  "name": "@stillup/legacy-db",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -9,12 +9,10 @@
   "scripts": {
     "typecheck": "tsc"
   },
-  "dependencies": {
+  "devDependencies": {
     "@stillup/core": "workspace:*",
     "drizzle-orm": "0.45.2",
-    "pg": "^8.16.0"
-  },
-  "devDependencies": {
+    "pg": "^8.16.0",
     "@types/pg": "^8.15.0"
   }
 }

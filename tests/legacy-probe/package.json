@@ -1,14 +1,12 @@
 {
-  "name": "@stillup/probe",
+  "name": "@stillup/legacy-probe",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "tsx src/main.ts",
-    "typecheck": "tsc",
-    "build": "tsc"
+    "typecheck": "tsc"
   },
-  "dependencies": {
+  "devDependencies": {
     "@stillup/core": "workspace:*",
     "tsx": "^4.20.0",
     "zod": "4.6.2"

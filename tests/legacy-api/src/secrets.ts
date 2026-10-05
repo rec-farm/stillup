@@ -1,4 +1,4 @@
-import { connectDatabase, type PoolClient } from '@stillup/db';
+import { connectDatabase, type PoolClient } from '@stillup/legacy-db';
 import {
   secretCreateSchema,
   secretEditSchema,

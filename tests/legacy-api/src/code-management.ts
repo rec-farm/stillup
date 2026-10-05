@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { connectDatabase } from '@stillup/db';
+import type { connectDatabase } from '@stillup/legacy-db';
 import {
   canonicalJson,
   changedConfigFields,

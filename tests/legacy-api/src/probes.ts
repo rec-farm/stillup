@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { connectDatabase, type PoolClient } from '@stillup/db';
+import { connectDatabase, type PoolClient } from '@stillup/legacy-db';
 import {
   aggregateLocations,
   locationCreateSchema,
