@@ -38,4 +38,8 @@ Another disposable installation prepared state through native HTTP APIs, then in
 
 Saved workspace identity/density and public serif typography, compact layout, corner radius, navigation link and content section rendered through the native runtime. The custom public logo deliberately pointed at an invalid local TLS/image response. After network idle, the image was removed, the brand name remained visible, and the inspected 390-pixel screenshot was readable with document width 390. The saved public document title matched. Both browser and runtime were stopped and the unique database removed.
 
-Remaining verification boundaries include documentation keyboard/failure paths beyond the tested search shortcut and chunk failure. These samples do not exercise every possible custom palette or settings combination. Mobile viewport emulation does not establish physical-device behavior. Live Handstamp OIDC, production data migration and production delivery were not exercised.
+## Documentation keyboard and disabled scripting
+
+The API guide's `/` shortcut focused search; entering a query and pressing Escape cleared it and returned focus to the document body. In a separate fresh Chromium session launched with `--blink-settings=scriptEnabled=false`, the monitoring-as-code guide retained static navigation, headings, prose and examples (7,015 text characters). Its noscript notice had a visible 17-pixel layout height, confirming the disabled-scripting rendering path. The inspected mobile screenshot remained readable. Both sessions and the disposable native installation were stopped and its database removed.
+
+These samples do not exercise every possible custom palette or settings combination. Mobile viewport emulation does not establish physical-device behavior. Live Handstamp OIDC, production data migration and production delivery were not exercised.
