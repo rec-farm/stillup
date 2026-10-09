@@ -1,7 +1,12 @@
 'use client';
 import { useEffect, useState, type CSSProperties } from 'react';
 import { CircleHelp, ShieldCheck, TriangleAlert, Wrench } from 'lucide-react';
-import { customizedColor, statusDesignDefaults, type PublicStatus } from '@stillup/core';
+import {
+  customizedColor,
+  formatUptime,
+  statusDesignDefaults,
+  type PublicStatus,
+} from '@stillup/core';
 import { Brand } from './brand';
 const date = (value: string) => (
   <time dateTime={value}>{new Date(value).toLocaleString('en-GB', { timeZone: 'UTC' })} UTC</time>
@@ -9,9 +14,6 @@ const date = (value: string) => (
 type Uptime = NonNullable<PublicStatus['components'][number]['uptime']>;
 const uptimeLevel = (percentage: number | null | undefined) =>
   percentage == null ? 'none' : percentage >= 99.9 ? 'up' : percentage >= 95 ? 'degraded' : 'down';
-// Truncate rather than round so 99.999% never reads as 100%.
-const formatUptime = (percentage: number) =>
-  percentage === 100 ? '100%' : `${(Math.floor(percentage * 100) / 100).toFixed(2)}%`;
 function UptimeBars({ uptime, now }: { uptime: Uptime; now: string }) {
   const byDate = new Map(uptime.days.map((d) => [d.date, d.percentage]));
   const today = Date.parse(now.slice(0, 10));

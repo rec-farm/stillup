@@ -1907,6 +1907,14 @@ async fn native_queue_executes_http_and_records_incident_lifecycle_atomically() 
         .unwrap();
     let interval = monitor["config"]["intervalSeconds"].as_i64().unwrap();
     assert_eq!((observed, down), (4 * interval, 2 * interval));
+    let (_, dashboard, _) = request(app.clone(), "GET", "/v1/dashboard", Value::Null, true).await;
+    let listed = dashboard["monitors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["id"] == monitor["id"])
+        .unwrap();
+    assert_eq!(listed["uptime30d"], 50.0);
     let (_, deliveries, _) = request(
         app.clone(),
         "GET",

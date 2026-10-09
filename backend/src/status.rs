@@ -496,7 +496,7 @@ pub async fn admin(State(state): State<AppState>) -> Result<Json<Value>, ApiErro
 }
 const UPTIME_DAYS: i32 = 90;
 
-fn uptime_percentage(observed: i64, down: i64) -> Option<f64> {
+pub(crate) fn uptime_percentage(observed: i64, down: i64) -> Option<f64> {
     (observed > 0)
         .then(|| ((observed - down) as f64 * 100_000.0 / observed as f64).floor() / 1000.0)
 }

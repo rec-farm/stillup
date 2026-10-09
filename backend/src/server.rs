@@ -447,7 +447,7 @@ pub fn monitor(row: &PgRow) -> Result<Value, sqlx::Error> {
     }))
 }
 async fn dashboard(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let (monitors, incidents, heartbeat, enabled) = tokio::try_join!(
+    let (monitors, incidents, heartbeat, enabled, uptime) = tokio::try_join!(
         sqlx::query("SELECT * FROM monitors ORDER BY created_at DESC").fetch_all(&state.pool),
         sqlx::query("SELECT * FROM incidents ORDER BY opened_at DESC LIMIT 50")
             .fetch_all(&state.pool),
@@ -458,10 +458,22 @@ async fn dashboard(State(state): State<AppState>) -> Result<Json<Value>, ApiErro
         )
         .bind(&state.config.alert_webhook_url)
         .fetch_one(&state.pool),
+        sqlx::query_as::<_, (uuid::Uuid, i64, i64)>(
+            "SELECT monitor_id,sum(observed_seconds)::bigint,sum(down_seconds)::bigint FROM monitor_daily_uptime WHERE day>(now() AT TIME ZONE 'UTC')::date-30 GROUP BY monitor_id"
+        )
+        .fetch_all(&state.pool),
     )?;
     let monitors = monitors
         .iter()
-        .map(monitor)
+        .map(|row| {
+            let mut value = monitor(row)?;
+            let id: uuid::Uuid = row.try_get("id")?;
+            value["uptime30d"] =
+                json!(uptime.iter().find(|(monitor, ..)| *monitor == id).and_then(
+                    |(_, observed, down)| crate::status::uptime_percentage(*observed, *down)
+                ));
+            Ok::<_, sqlx::Error>(value)
+        })
         .collect::<Result<Vec<_>, _>>()?;
     let incidents = incidents.iter().map(|row| -> Result<Value, sqlx::Error> {
         Ok(json!({"id":row.try_get::<uuid::Uuid,_>("id")?,"monitorId":row.try_get::<uuid::Uuid,_>("monitor_id")?,"name":row.try_get::<String,_>("name")?,"openedAt":timestamp(row,"opened_at")?,"resolvedAt":timestamp(row,"resolved_at")?}))

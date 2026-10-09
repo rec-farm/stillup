@@ -7,6 +7,7 @@ CREATE TABLE monitor_daily_uptime (
   down_seconds bigint NOT NULL DEFAULT 0 CHECK (down_seconds BETWEEN 0 AND observed_seconds),
   PRIMARY KEY (monitor_id, day)
 );
+CREATE INDEX monitor_daily_uptime_day ON monitor_daily_uptime(day);
 
 -- Backfill from retained runs. A run inside an incident's open window was observed down.
 INSERT INTO monitor_daily_uptime (monitor_id, day, observed_seconds, down_seconds)

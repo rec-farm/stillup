@@ -32,9 +32,9 @@ HTTP check creation; status/latency/JSON assertions; PostgreSQL persistence; dur
 
 **Implemented:** public component groups, branding, maintenance windows, written incident updates, and standalone manual public incidents.
 
-**Implemented:** custom public domains (`STATUS_PAGE_DOMAINS`) restricted to read-only status, and interval-aware daily uptime rollups kept independently of run retention, shown as 90-day bars per published component.
+**Implemented:** custom public domains (`STATUS_PAGE_DOMAINS`) restricted to read-only status, and interval-aware daily uptime rollups kept independently of run retention, shown as 90-day bars per published component and as a 30-day figure per check in the dashboard.
 
-**Remaining:** components independent of checks, uptime in the dashboard and per-check API, subscriptions, and independently hosted status snapshots with freshness indicators.
+**Remaining:** components independent of checks, per-check uptime history in check details, subscriptions, and independently hosted status snapshots with freshness indicators.
 
 ## Milestone 4 — Monitoring as code
 

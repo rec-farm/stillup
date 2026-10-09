@@ -26,7 +26,7 @@ import {
   Terminal,
   X,
 } from 'lucide-react';
-import type { Dashboard, Monitor, Run, Health } from '@stillup/core';
+import { formatUptime, type Dashboard, type Monitor, type Run, type Health } from '@stillup/core';
 import { useWorkspace } from './workspace-provider';
 import { Brand } from './brand';
 import { Illustration, WatchfulArt } from './watchful-art';
@@ -599,6 +599,7 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
                     <tr>
                       <th>Check / endpoint</th>
                       <th>Status</th>
+                      <th>Uptime (30d)</th>
                       <th>Response</th>
                       <th>Interval</th>
                       <th>Last run</th>
@@ -626,6 +627,9 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
                         </td>
                         <td>
                           <HealthBadge health={m.health} />
+                        </td>
+                        <td className="mono">
+                          {m.uptime30d == null ? '—' : formatUptime(m.uptime30d)}
                         </td>
                         <td className="mono">
                           {m.lastDurationMs === null ? '—' : `${m.lastDurationMs} ms`}
