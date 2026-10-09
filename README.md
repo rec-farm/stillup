@@ -6,9 +6,9 @@ Know before your users do.
 
 Self-hosted HTTP checks, configurable assertions, incident detection, webhook alerts, and a public status page. Built with React, Vite, Rust, Axum, and PostgreSQL. No browsers are required to execute checks.
 
-## Current milestone
+## What it does
 
-This is the first working foundation, intended for a trusted administrator managing one installation:
+StillUp is intended for a trusted administrator managing one installation:
 
 - Create HTTP checks with GET, HEAD, POST, PUT, PATCH, or DELETE.
 - Configure intervals (30 seconds–24 hours), timeouts, expected HTTP status, latency limits, header rules, typed JSON assertions, and JSON Schema validation.
@@ -20,10 +20,11 @@ This is the first working foundation, intended for a trusted administrator manag
 - Inspect recent results without storing response bodies.
 - Open and resolve incidents using consecutive failure/recovery thresholds.
 - Send incident and recovery webhooks through a durable retry queue.
-- Publish selected checks and their incidents at `/status`.
-- Protect management with an installation administrator token and a 24-hour HTTP-only session.
+- Publish selected checks, their incidents and 90-day uptime history at `/status`, optionally on dedicated status domains.
+- Store encrypted named secrets, run checks from remote probe locations, and manage checks as code.
+- Protect management with an installation administrator token, or OpenID Connect sign-in, and a 24-hour HTTP-only session.
 
-Multi-user accounts, permanent deletion, email notifications, custom domains, uptime aggregates, and TypeScript workflow execution are not implemented yet. See [the roadmap](docs/ROADMAP.md).
+Multi-user accounts, permanent deletion, email notifications, and TypeScript workflow execution are not implemented yet. See [the roadmap](docs/ROADMAP.md).
 
 ## Documentation and monitoring as code
 
@@ -252,7 +253,7 @@ packages/db    Embedded SQL migration sources
 tests/legacy-* Test-only previous implementation for parity comparisons
 ```
 
-Detailed runs are retained for `RUN_RETENTION_DAYS` (default 30); the worker cleans them hourly. Incidents and configuration revisions are retained. Archiving does not change the run-retention policy. No uptime percentage is advertised until interval-aware aggregation is implemented.
+Detailed runs are retained for `RUN_RETENTION_DAYS` (default 30); the worker cleans them hourly. Incidents and configuration revisions are retained. Archiving does not change the run-retention policy. Daily uptime totals are kept separately and are not affected by run retention; see the status page guide at `/docs` for how they are calculated.
 
 ## Backup and upgrades
 
