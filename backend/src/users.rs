@@ -33,6 +33,33 @@ pub fn viewer_may(method: &str, path: &str) -> bool {
             || path.starts_with("/v1/incidents/"))
 }
 
+/// Hides request headers and bodies from viewers in every check configuration of a response,
+/// since they may hold credentials written inline instead of as secret references.
+pub fn redact_for_viewer(value: &mut Value) {
+    match value {
+        Value::Object(object) => {
+            if let Some(Value::Object(config)) = object.get_mut("config") {
+                if let Some(Value::Object(headers)) = config.get_mut("headers") {
+                    for header in headers.values_mut() {
+                        *header = json!(HIDDEN);
+                    }
+                }
+                if config
+                    .get("body")
+                    .and_then(Value::as_str)
+                    .is_some_and(|body| !body.is_empty())
+                {
+                    config["body"] = json!(HIDDEN);
+                }
+            }
+            object.values_mut().for_each(redact_for_viewer);
+        }
+        Value::Array(items) => items.iter_mut().for_each(redact_for_viewer),
+        _ => (),
+    }
+}
+pub const HIDDEN: &str = "[hidden]";
+
 pub fn is_user_session(value: &str) -> bool {
     value.starts_with("u.")
 }
@@ -51,6 +78,22 @@ pub async fn session_principal(pool: &PgPool, value: &str) -> Result<Option<Prin
         id,
         admin: role == "admin",
     }))
+}
+
+/// A signed installation session is current unless it was issued before the first user existed.
+pub async fn legacy_session_current(pool: &PgPool, value: &str) -> Result<bool, ApiError> {
+    let Some(expires) = value
+        .split_once('.')
+        .and_then(|(expires, _)| expires.parse::<i64>().ok())
+    else {
+        return Ok(false);
+    };
+    let first = sqlx::query_scalar::<_, Option<i64>>(
+        "SELECT (extract(epoch FROM min(created_at))*1000)::bigint FROM users",
+    )
+    .fetch_one(pool)
+    .await?;
+    Ok(first.is_none_or(|first| expires - SESSION_SECONDS * 1000 >= first))
 }
 
 pub async fn create_session(pool: &PgPool, user: Uuid) -> Result<String, sqlx::Error> {
@@ -114,11 +157,11 @@ pub async fn sign_in(pool: &PgPool, issuer: &str, identity: &Identity) -> Result
     {
         return Ok(SignIn::User(id));
     }
-    // A provider that states the address is unverified cannot claim an invitation.
+    // Only an address the provider asserts it verified can claim an invitation.
     let email = identity
         .email
         .as_deref()
-        .filter(|_| identity.email_verified != Some(false))
+        .filter(|_| identity.email_verified == Some(true))
         .map(|email| email.trim().to_lowercase());
     let Some(email) = email else {
         return Ok(SignIn::NotInvited);
@@ -333,6 +376,12 @@ mod tests {
         ] {
             assert!(!viewer_may("GET", path), "{path}");
         }
+        let mut value = json!({"monitors":[{"config":{"headers":{"authorization":"Bearer x"},"body":"{\"key\":1}","url":"https://x.io"}}],"revisions":[{"config":{"headers":{},"body":""}}]});
+        redact_for_viewer(&mut value);
+        assert_eq!(
+            value,
+            json!({"monitors":[{"config":{"headers":{"authorization":"[hidden]"},"body":"[hidden]","url":"https://x.io"}}],"revisions":[{"config":{"headers":{},"body":""}}]})
+        );
         assert!(!viewer_may("POST", "/v1/checks/x/run"));
         assert!(!viewer_may("PATCH", "/v1/checks/x"));
     }

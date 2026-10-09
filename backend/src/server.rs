@@ -340,10 +340,18 @@ async fn protect(State(state): State<AppState>, request: Request, next: Next) ->
                     Ok(principal) => principal,
                     Err(error) => return error.into_response(),
                 }
+            } else if let Some(value) = session
+                .filter(|value| auth::valid_session(value, &state.config.admin_token, now_ms()))
+            {
+                // Signed sessions carry no identity; any from before the first user was added
+                // may come from single sign-on that no longer admits that person.
+                match users::legacy_session_current(&state.pool, value).await {
+                    Ok(true) => Some(Principal::Installation),
+                    Ok(false) => None,
+                    Err(error) => return error.into_response(),
+                }
             } else {
-                session
-                    .filter(|value| auth::valid_session(value, &state.config.admin_token, now_ms()))
-                    .map(|_| Principal::Installation)
+                None
             };
         let Some(principal) = principal else {
             return ApiError(
@@ -359,9 +367,29 @@ async fn protect(State(state): State<AppState>, request: Request, next: Next) ->
             )
             .into_response();
         }
+        let viewer = !principal.admin();
         let mut request = request;
         request.extensions_mut().insert(principal);
-        return next.run(request).await;
+        let response = next.run(request).await;
+        if !viewer || !response.status().is_success() {
+            return response;
+        }
+        let (parts, body) = response.into_parts();
+        let Ok(bytes) = axum::body::to_bytes(body, 64 * 1024 * 1024).await else {
+            return ApiError(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "StillUp could not complete this request".into(),
+            )
+            .into_response();
+        };
+        let Ok(mut value) = serde_json::from_slice::<Value>(&bytes) else {
+            return Response::from_parts(parts, axum::body::Body::from(bytes));
+        };
+        users::redact_for_viewer(&mut value);
+        let mut parts = parts;
+        parts.headers.remove(header::CONTENT_LENGTH);
+        let body = serde_json::to_vec(&value).unwrap_or_default();
+        return Response::from_parts(parts, axum::body::Body::from(body));
     }
     next.run(request).await
 }

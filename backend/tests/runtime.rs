@@ -768,6 +768,11 @@ async fn oidc_pkce_signed_tokens_callback_and_logout() {
             "viewer" => {
                 claims["sub"] = json!("viewer-sub");
                 claims["email"] = json!("viewer@example.com");
+                claims["email_verified"] = json!(true);
+            }
+            "unstated" => {
+                claims["sub"] = json!("trent");
+                claims["email"] = json!("viewer@example.com");
             }
             _ => (),
         }
@@ -1096,6 +1101,36 @@ async fn oidc_pkce_signed_tokens_callback_and_logout() {
         client_id: "fixture-client".into(),
         ..Default::default()
     });
+    let (_, _, headers) = request(
+        app.clone(),
+        "POST",
+        "/v1/session",
+        json!({"token":"01234567890123456789012345678901"}),
+        false,
+    )
+    .await;
+    let earlier = headers[header::SET_COOKIE]
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_owned();
+    assert_eq!(
+        as_user(&app, &earlier, "GET", "/v1/me", Value::Null)
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let (status, check, _) = request(
+        app.clone(),
+        "POST",
+        "/v1/checks",
+        json!({"name":"Private API","url":"https://api.example.com/health","method":"POST","headers":{"authorization":"Bearer inline"},"body":"{\"key\":\"inline\"}"}),
+        true,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
     let (status, data, _) = request(
         app.clone(),
         "POST",
@@ -1140,7 +1175,14 @@ async fn oidc_pkce_signed_tokens_callback_and_logout() {
             "{input}"
         );
     }
-    for mode in ["", "unverified"] {
+    // Signed sessions from before the first user may belong to people who are not invited.
+    assert_eq!(
+        as_user(&app, &earlier, "GET", "/v1/me", Value::Null)
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    for mode in ["", "unverified", "unstated"] {
         let (location, session) = sso(&app, &provider, mode).await;
         assert!(
             location.ends_with("/login?error=oidc_not_invited"),
@@ -1203,6 +1245,23 @@ async fn oidc_pkce_signed_tokens_callback_and_logout() {
             "{method} {path}"
         );
     }
+    let check_path = format!("/v1/checks/{}", check["id"].as_str().unwrap());
+    for path in [
+        "/v1/dashboard".to_owned(),
+        check_path.clone(),
+        format!("{check_path}/revisions"),
+        format!("{check_path}/revisions/1"),
+    ] {
+        let (status, body) = as_user(&app, &viewer, "GET", &path, Value::Null).await;
+        assert_eq!(status, StatusCode::OK, "{path}");
+        let text = body.to_string();
+        assert!(
+            !text.contains("inline") && text.contains("[hidden]"),
+            "{path}: {text}"
+        );
+    }
+    let (_, body) = as_user(&app, &ada, "GET", &check_path, Value::Null).await;
+    assert_eq!(body["config"]["headers"]["authorization"], "Bearer inline");
     let path = format!("/v1/users/{}", me["id"].as_str().unwrap());
     assert_eq!(
         as_user(&app, &ada, "PATCH", &path, json!({"role":"viewer"}))
