@@ -130,6 +130,7 @@ pub fn router(state: AppState) -> Router {
                 .put(checks::edit),
         )
         .route("/v1/checks/{id}/runs", get(checks::runs))
+        .route("/v1/checks/{id}/uptime", get(checks::uptime))
         .route(
             "/v1/checks/{id}/locations",
             get(crate::probes::observations),

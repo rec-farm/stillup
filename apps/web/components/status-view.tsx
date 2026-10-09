@@ -6,15 +6,15 @@ import {
   formatUptime,
   statusDesignDefaults,
   type PublicStatus,
+  type Uptime,
 } from '@stillup/core';
 import { Brand } from './brand';
 const date = (value: string) => (
   <time dateTime={value}>{new Date(value).toLocaleString('en-GB', { timeZone: 'UTC' })} UTC</time>
 );
-type Uptime = NonNullable<PublicStatus['components'][number]['uptime']>;
 const uptimeLevel = (percentage: number | null | undefined) =>
   percentage == null ? 'none' : percentage >= 99.9 ? 'up' : percentage >= 95 ? 'degraded' : 'down';
-function UptimeBars({ uptime, now }: { uptime: Uptime; now: string }) {
+export function UptimeBars({ uptime, now }: { uptime: Uptime; now: string }) {
   const byDate = new Map(uptime.days.map((d) => [d.date, d.percentage]));
   const today = Date.parse(now.slice(0, 10));
   const days = Array.from({ length: uptime.windowDays }, (_, index) => {

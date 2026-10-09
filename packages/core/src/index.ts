@@ -123,6 +123,12 @@ export function visibleHealth(
     return 'unknown';
   return status;
 }
+/** Interval-weighted daily uptime (UTC days, oldest first); only days with observations. */
+export type Uptime = {
+  windowDays: number;
+  percentage: number | null;
+  days: { date: string; percentage: number | null }[];
+};
 export type Monitor = {
   codeOwnership?: { project: string; id: string } | null;
   id: string;
@@ -175,12 +181,7 @@ export type PublicStatus = {
     health: Health | 'maintenance';
     lastObservedAt: string | null;
     groupId?: string;
-    /** Interval-weighted daily uptime (UTC days, oldest first); only days with observations. */
-    uptime?: {
-      windowDays: number;
-      percentage: number | null;
-      days: { date: string; percentage: number | null }[];
-    };
+    uptime?: Uptime;
   }[];
   incidents: Incident[];
 };

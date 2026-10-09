@@ -26,7 +26,14 @@ import {
   Terminal,
   X,
 } from 'lucide-react';
-import { formatUptime, type Dashboard, type Monitor, type Run, type Health } from '@stillup/core';
+import {
+  formatUptime,
+  type Dashboard,
+  type Health,
+  type Monitor,
+  type Run,
+  type Uptime,
+} from '@stillup/core';
 import { useWorkspace } from './workspace-provider';
 import { Brand } from './brand';
 import { Illustration, WatchfulArt } from './watchful-art';
@@ -37,6 +44,7 @@ import { NotificationDialog, IncidentDialog } from './notifications';
 import { SecretsDialog } from './secrets';
 import { LocationsDialog, RegionalResults } from './locations';
 import { StatusManagementDialog } from './status-management';
+import { UptimeBars } from './status-view';
 const labels: Record<Health, string> = {
   up: 'Healthy',
   down: 'Failing',
@@ -868,6 +876,7 @@ function CheckDetail({
   busy: boolean;
 }) {
   const [runs, setRuns] = useState<Run[]>([]);
+  const [uptime, setUptime] = useState<Uptime | null>(null);
   const [tab, setTab] = useState<'runs' | 'history'>('runs');
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [error, setError] = useState('');
@@ -876,9 +885,13 @@ function CheckDetail({
     let active = true;
     const load = async () => {
       try {
-        const rows = await api<Run[]>(`checks/${monitor.id}/runs`);
+        const [rows, daily] = await Promise.all([
+          api<Run[]>(`checks/${monitor.id}/runs`),
+          api<Uptime>(`checks/${monitor.id}/uptime`),
+        ]);
         if (active) {
           setRuns(rows);
+          setUptime(daily);
           setError('');
         }
       } catch (e) {
@@ -888,6 +901,7 @@ function CheckDetail({
       }
     };
     setRuns([]);
+    setUptime(null);
     setLoading(true);
     void load();
     const timer = setInterval(() => void load(), 5000);
@@ -926,6 +940,12 @@ function CheckDetail({
         </div>
       )}
       <RegionalResults monitor={monitor} />
+      {uptime && (
+        <section className="detail-uptime" aria-label="Uptime history">
+          <h3>Uptime</h3>
+          <UptimeBars uptime={uptime} now={new Date().toISOString()} />
+        </section>
+      )}
       <p className="detail-url">
         <span className="method">{monitor.config.method}</span>
         {monitor.config.url}

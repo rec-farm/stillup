@@ -382,32 +382,32 @@
   flex-wrap: wrap;
 }
 
-/* Daily uptime: one bar per UTC day, oldest first. */
-.status-canvas .public-uptime {
+/* Daily uptime: one bar per UTC day, oldest first. Shared with the dashboard's check details. */
+.public-uptime {
   flex-basis: 100%;
   min-width: 0;
 }
-.status-canvas .public-uptime-bars {
+.public-uptime-bars {
   display: grid;
   grid-auto-columns: minmax(0, 1fr);
   grid-auto-flow: column;
   gap: 2px;
   height: 28px;
 }
-.status-canvas .public-uptime-bars > span {
+.public-uptime-bars > span {
   border-radius: 1px;
   background: var(--border);
 }
-.status-canvas .public-uptime-bars > .up {
+.public-uptime-bars > .up {
   background: var(--success-text);
 }
-.status-canvas .public-uptime-bars > .degraded {
+.public-uptime-bars > .degraded {
   background: var(--warning-text);
 }
-.status-canvas .public-uptime-bars > .down {
+.public-uptime-bars > .down {
   background: var(--danger-text);
 }
-.status-canvas .public-uptime-caption {
+.public-uptime-caption {
   display: flex;
   justify-content: space-between;
   gap: 8px;
@@ -417,7 +417,7 @@
   font-size: 12px;
   white-space: nowrap;
 }
-.status-canvas .public-uptime-caption > .narrow {
+.public-uptime-caption > .narrow {
   display: none;
 }
 .status-canvas .status-page[data-layout='compact'] .public-uptime-bars {
@@ -978,13 +978,13 @@ p.status-contrast {
     gap: 8px;
   }
   /* Show the most recent 30 days on narrow screens. */
-  .status-canvas .public-uptime-bars > span:nth-child(-n + 60) {
+  .public-uptime-bars > span:nth-child(-n + 60) {
     display: none;
   }
-  .status-canvas .public-uptime-caption > .wide {
+  .public-uptime-caption > .wide {
     display: none;
   }
-  .status-canvas .public-uptime-caption > .narrow {
+  .public-uptime-caption > .narrow {
     display: inline;
   }
 }

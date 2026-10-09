@@ -494,7 +494,7 @@ pub async fn admin(State(state): State<AppState>) -> Result<Json<Value>, ApiErro
     config["incidents"] = json!(communications(&state, None).await?);
     Ok(Json(config))
 }
-const UPTIME_DAYS: i32 = 90;
+pub(crate) const UPTIME_DAYS: i32 = 90;
 
 pub(crate) fn uptime_percentage(observed: i64, down: i64) -> Option<f64> {
     (observed > 0)
@@ -502,7 +502,7 @@ pub(crate) fn uptime_percentage(observed: i64, down: i64) -> Option<f64> {
 }
 
 /// Daily rollups, oldest first, as `(UTC date, observed seconds, down seconds)`.
-fn uptime_summary(days: &[(String, i64, i64)]) -> Value {
+pub(crate) fn uptime_summary(days: &[(String, i64, i64)]) -> Value {
     let (observed, down) = days.iter().fold((0, 0), |(o, d), (_, observed, down)| {
         (o + observed, d + down)
     });

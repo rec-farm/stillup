@@ -1915,6 +1915,29 @@ async fn native_queue_executes_http_and_records_incident_lifecycle_atomically() 
         .find(|m| m["id"] == monitor["id"])
         .unwrap();
     assert_eq!(listed["uptime30d"], 50.0);
+    let (status, history, _) = request(
+        app.clone(),
+        "GET",
+        &format!("/v1/checks/{monitor_id}/uptime"),
+        Value::Null,
+        true,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(history["percentage"], 50.0);
+    assert_eq!(history["windowDays"], 90);
+    assert_eq!(
+        request(
+            app.clone(),
+            "GET",
+            &format!("/v1/checks/{monitor_id}/uptime"),
+            Value::Null,
+            false
+        )
+        .await
+        .0,
+        StatusCode::UNAUTHORIZED
+    );
     let (_, deliveries, _) = request(
         app.clone(),
         "GET",

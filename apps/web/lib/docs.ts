@@ -566,6 +566,11 @@ export const docs: Doc[] = [
           },
           {
             method: 'GET',
+            path: '/v1/checks/:id/uptime',
+            description: 'Read daily uptime for the last 90 UTC days, with the overall percentage.',
+          },
+          {
+            method: 'GET',
             path: '/v1/checks/:id/revisions',
             description: 'List configuration revisions. Use `before` as the revision cursor.',
           },
