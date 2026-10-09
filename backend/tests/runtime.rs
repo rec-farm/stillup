@@ -1122,11 +1122,19 @@ async fn oidc_pkce_signed_tokens_callback_and_logout() {
             .0,
         StatusCode::OK
     );
+    let (_, before_users) = sso(&app, &provider, "").await;
+    let before_users = before_users.unwrap();
+    assert_eq!(
+        as_user(&app, &before_users, "GET", "/v1/me", Value::Null)
+            .await
+            .1,
+        json!({"kind":"installation","role":"admin"})
+    );
     let (status, check, _) = request(
         app.clone(),
         "POST",
         "/v1/checks",
-        json!({"name":"Private API","url":"https://api.example.com/health","method":"POST","headers":{"authorization":"Bearer inline"},"body":"{\"key\":\"inline\"}"}),
+        json!({"name":"Private API","url":"https://api.example.com/health?key=inline","method":"POST","headers":{"authorization":"Bearer inline"},"body":"{\"key\":\"inline\"}"}),
         true,
     )
     .await;
@@ -1175,13 +1183,13 @@ async fn oidc_pkce_signed_tokens_callback_and_logout() {
             "{input}"
         );
     }
-    // Signed sessions from before the first user may belong to people who are not invited.
-    assert_eq!(
-        as_user(&app, &earlier, "GET", "/v1/me", Value::Null)
-            .await
-            .0,
-        StatusCode::UNAUTHORIZED
-    );
+    // Sessions from before the first user may belong to people who are not invited.
+    for session in [&earlier, &before_users] {
+        assert_eq!(
+            as_user(&app, session, "GET", "/v1/me", Value::Null).await.0,
+            StatusCode::UNAUTHORIZED
+        );
+    }
     for mode in ["", "unverified", "unstated"] {
         let (location, session) = sso(&app, &provider, mode).await;
         assert!(

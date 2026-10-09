@@ -11,10 +11,11 @@ CREATE TABLE users (
   last_sign_in_at timestamptz
 );
 
--- Revocable browser sessions for named users; the cookie holds a random token, stored hashed.
+-- Revocable single sign-on sessions; the cookie holds a random token, stored hashed. A null
+-- user is the installation administrator, admitted before any users existed.
 CREATE TABLE user_sessions (
   token_hash bytea PRIMARY KEY,
-  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_id uuid REFERENCES users(id) ON DELETE CASCADE,
   expires_at timestamptz NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now()
 );

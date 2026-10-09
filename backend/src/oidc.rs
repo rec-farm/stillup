@@ -393,17 +393,11 @@ async fn finish(
             verify(&refreshed.id_token_verifier(), id_token, &tokens, flow).ok_or(())?
         }
     };
-    let session = match users::sign_in(&state.pool, &state.config.oidc.issuer, &identity)
+    let Some(session) = users::sign_in(&state.pool, &state.config.oidc.issuer, &identity)
         .await
         .map_err(|_| ())?
-    {
-        users::SignIn::Installation => {
-            auth::session_value(now() + 86400000, &state.config.admin_token)
-        }
-        users::SignIn::User(id) => users::create_session(&state.pool, id)
-            .await
-            .map_err(|_| ())?,
-        users::SignIn::NotInvited => return Ok(login_error(state, "oidc_not_invited")),
+    else {
+        return Ok(login_error(state, "oidc_not_invited"));
     };
     let secure = state.config.origin.starts_with("https:");
     let mut response =

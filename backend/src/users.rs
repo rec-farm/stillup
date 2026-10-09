@@ -44,6 +44,9 @@ pub fn redact_for_viewer(value: &mut Value) {
                         *header = json!(HIDDEN);
                     }
                 }
+                if let Some(url) = config.get("url").and_then(Value::as_str).map(hide_query) {
+                    config["url"] = json!(url);
+                }
                 if config
                     .get("body")
                     .and_then(Value::as_str)
@@ -59,6 +62,26 @@ pub fn redact_for_viewer(value: &mut Value) {
     }
 }
 pub const HIDDEN: &str = "[hidden]";
+fn hide_query(value: &str) -> String {
+    let Ok(mut url) = url::Url::parse(value) else {
+        return value.to_owned();
+    };
+    if url.query().is_none() {
+        return value.to_owned();
+    }
+    let query = url
+        .query_pairs()
+        .map(|(name, _)| {
+            format!(
+                "{}={HIDDEN}",
+                url::form_urlencoded::byte_serialize(name.as_bytes()).collect::<String>()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("&");
+    url.set_query(Some(&query));
+    url.into()
+}
 
 pub fn is_user_session(value: &str) -> bool {
     value.starts_with("u.")
@@ -68,19 +91,23 @@ fn token_hash(value: &str) -> Vec<u8> {
 }
 
 pub async fn session_principal(pool: &PgPool, value: &str) -> Result<Option<Principal>, ApiError> {
-    let row = sqlx::query_as::<_, (Uuid, String)>(
-        "SELECT u.id,u.role FROM user_sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>now()",
+    let row = sqlx::query_as::<_, (Option<Uuid>, Option<String>)>(
+        "SELECT s.user_id,u.role FROM user_sessions s LEFT JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>now()",
     )
     .bind(token_hash(value))
     .fetch_optional(pool)
     .await?;
-    Ok(row.map(|(id, role)| Principal::User {
-        id,
-        admin: role == "admin",
+    Ok(row.map(|(id, role)| match id {
+        None => Principal::Installation,
+        Some(id) => Principal::User {
+            id,
+            admin: role.as_deref() == Some("admin"),
+        },
     }))
 }
 
 /// A signed installation session is current unless it was issued before the first user existed.
+/// Single sign-on no longer issues these, but sessions from before an upgrade may remain.
 pub async fn legacy_session_current(pool: &PgPool, value: &str) -> Result<bool, ApiError> {
     let Some(expires) = value
         .split_once('.')
@@ -96,17 +123,22 @@ pub async fn legacy_session_current(pool: &PgPool, value: &str) -> Result<bool, 
     Ok(first.is_none_or(|first| expires - SESSION_SECONDS * 1000 >= first))
 }
 
-pub async fn create_session(pool: &PgPool, user: Uuid) -> Result<String, sqlx::Error> {
+/// A missing user is the installation administrator, admitted by single sign-on before any
+/// users existed; adding the first user ends those sessions.
+async fn create_session(
+    connection: &mut sqlx::PgConnection,
+    user: Option<Uuid>,
+) -> Result<String, sqlx::Error> {
     // Two v4 UUIDs carry 244 random bits from the operating system generator.
     let token = format!("u.{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
     sqlx::query("DELETE FROM user_sessions WHERE expires_at<=now()")
-        .execute(pool)
+        .execute(&mut *connection)
         .await?;
     sqlx::query("INSERT INTO user_sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+make_interval(secs=>$3))")
         .bind(token_hash(&token))
         .bind(user)
         .bind(SESSION_SECONDS as f64)
-        .execute(pool)
+        .execute(&mut *connection)
         .await?;
     Ok(token)
 }
@@ -119,11 +151,6 @@ pub async fn end_session(pool: &PgPool, value: &str) -> Result<(), sqlx::Error> 
     Ok(())
 }
 
-pub enum SignIn {
-    Installation,
-    User(Uuid),
-    NotInvited,
-}
 pub struct Identity {
     pub subject: String,
     pub email: Option<String>,
@@ -131,15 +158,40 @@ pub struct Identity {
     pub name: Option<String>,
 }
 
-/// Matches a verified single sign-on identity to a user: first by its bound subject, then once
-/// by email for an invited user who has not signed in yet.
-pub async fn sign_in(pool: &PgPool, issuer: &str, identity: &Identity) -> Result<SignIn, ApiError> {
-    if !sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM users)")
-        .fetch_one(pool)
+/// Matches a verified single sign-on identity to a user, first by its bound subject, then once
+/// by email for an invited user who has not signed in yet, and returns a new session token.
+/// Returns None for people who are not invited. Runs under the shared users lock, so a
+/// concurrent first invitation or removal either precedes it or ends the session it creates.
+pub async fn sign_in(
+    pool: &PgPool,
+    issuer: &str,
+    identity: &Identity,
+) -> Result<Option<String>, ApiError> {
+    let mut transaction = pool.begin().await?;
+    sqlx::query("SELECT pg_advisory_xact_lock_shared($1)")
+        .bind(USERS_LOCK)
+        .execute(&mut *transaction)
+        .await?;
+    let user = if !sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM users)")
+        .fetch_one(&mut *transaction)
         .await?
     {
-        return Ok(SignIn::Installation);
-    }
+        None
+    } else {
+        match matching_user(&mut transaction, issuer, identity).await? {
+            Some(id) => Some(id),
+            None => return Ok(None),
+        }
+    };
+    let token = create_session(&mut transaction, user).await?;
+    transaction.commit().await?;
+    Ok(Some(token))
+}
+async fn matching_user(
+    connection: &mut sqlx::PgConnection,
+    issuer: &str,
+    identity: &Identity,
+) -> Result<Option<Uuid>, sqlx::Error> {
     let subject = format!("{issuer} {}", identity.subject);
     let name = identity
         .name
@@ -152,29 +204,28 @@ pub async fn sign_in(pool: &PgPool, issuer: &str, identity: &Identity) -> Result
     )
     .bind(&subject)
     .bind(&name)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *connection)
     .await?
     {
-        return Ok(SignIn::User(id));
+        return Ok(Some(id));
     }
     // Only an address the provider asserts it verified can claim an invitation.
-    let email = identity
+    let Some(email) = identity
         .email
         .as_deref()
         .filter(|_| identity.email_verified == Some(true))
-        .map(|email| email.trim().to_lowercase());
-    let Some(email) = email else {
-        return Ok(SignIn::NotInvited);
+        .map(|email| email.trim().to_lowercase())
+    else {
+        return Ok(None);
     };
-    let id = sqlx::query_scalar::<_, Uuid>(
+    sqlx::query_scalar::<_, Uuid>(
         "UPDATE users SET oidc_subject=$1,last_sign_in_at=now(),name=COALESCE($3,name) WHERE email=$2 AND oidc_subject IS NULL RETURNING id",
     )
     .bind(&subject)
     .bind(&email)
     .bind(&name)
-    .fetch_optional(pool)
-    .await?;
-    Ok(id.map_or(SignIn::NotInvited, SignIn::User))
+    .fetch_optional(&mut *connection)
+    .await
 }
 
 fn user(row: &PgRow) -> Result<Value, sqlx::Error> {
@@ -265,6 +316,12 @@ async fn change<T>(
         return Err(ApiError::conflict(
             "Keep at least one administrator so someone can manage StillUp with single sign-on",
         ));
+    }
+    if users > 0 {
+        // Single sign-on admitted these before anyone was invited; they may not be invited now.
+        sqlx::query("DELETE FROM user_sessions WHERE user_id IS NULL")
+            .execute(&mut *transaction)
+            .await?;
     }
     transaction.commit().await?;
     Ok(result)
@@ -376,11 +433,11 @@ mod tests {
         ] {
             assert!(!viewer_may("GET", path), "{path}");
         }
-        let mut value = json!({"monitors":[{"config":{"headers":{"authorization":"Bearer x"},"body":"{\"key\":1}","url":"https://x.io"}}],"revisions":[{"config":{"headers":{},"body":""}}]});
+        let mut value = json!({"monitors":[{"config":{"headers":{"authorization":"Bearer x"},"body":"{\"key\":1}","url":"https://x.io/a?api_key=x&b"}}],"revisions":[{"config":{"headers":{},"body":""}}]});
         redact_for_viewer(&mut value);
         assert_eq!(
             value,
-            json!({"monitors":[{"config":{"headers":{"authorization":"[hidden]"},"body":"[hidden]","url":"https://x.io"}}],"revisions":[{"config":{"headers":{},"body":""}}]})
+            json!({"monitors":[{"config":{"headers":{"authorization":"[hidden]"},"body":"[hidden]","url":"https://x.io/a?api_key=[hidden]&b=[hidden]"}}],"revisions":[{"config":{"headers":{},"body":""}}]})
         );
         assert!(!viewer_may("POST", "/v1/checks/x/run"));
         assert!(!viewer_may("PATCH", "/v1/checks/x"));

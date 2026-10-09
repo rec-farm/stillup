@@ -200,6 +200,22 @@ export type IncidentTimeline = {
   nextBefore: string | null;
 };
 
+/** Administrators manage everything; viewers read checks, incidents and the dashboard. */
+export type Role = 'admin' | 'viewer';
+export type User = {
+  id: string;
+  email: string;
+  name: string | null;
+  role: Role;
+  /** Whether this person has signed in with single sign-on at least once. */
+  linked: boolean;
+  createdAt: string;
+  lastSignInAt: string | null;
+};
+/** The installation token (or single sign-on before any users exist) acts as an administrator. */
+export type Me = ({ kind: 'user' } & User) | { kind: 'installation'; role: 'admin' };
+export type UserList = { users: User[]; oidc: boolean };
+
 export { workspaceSettingsSchema, defaultWorkspaceSettings } from './workspace';
 export type { WorkspaceSettings, WorkspaceAppearance } from './workspace';
 

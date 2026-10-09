@@ -1,14 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, LogOut } from 'lucide-react';
+import type { Me } from '@stillup/core';
 import { ThemeSwitcher } from './theme-switcher';
 
 /**
  * Top-bar account menu, same pattern as Paramtune: 32px square avatar, then identity, the theme
- * setting and sign out. StillUp has a single administrator, reached with the installation's
- * ADMIN_TOKEN or through single sign-on (OIDC, e.g. Handstamp), so the identity is the
- * administrator rather than a named user.
+ * setting and sign out. Named users come from single sign-on; the installation token (and single
+ * sign-on before any users exist) is shown as the installation administrator.
  */
-export function UserMenu({ onSignOut }: { onSignOut: () => void }) {
+export function UserMenu({ me, onSignOut }: { me: Me; onSignOut: () => void }) {
+  const name = me.kind === 'user' ? (me.name ?? me.email) : 'Administrator';
+  const detail =
+    me.kind === 'user'
+      ? `${me.name ? `${me.email} · ` : ''}${me.role === 'admin' ? 'Administrator' : 'Viewer'}`
+      : 'Signed in to this installation';
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -39,17 +44,17 @@ export function UserMenu({ onSignOut }: { onSignOut: () => void }) {
         className="user-menu-trigger"
         aria-expanded={open}
         aria-haspopup="menu"
-        aria-label="Account menu for Administrator"
+        aria-label={`Account menu for ${name}`}
         onClick={() => setOpen(!open)}
       >
-        <span className="user-avatar">A</span>
+        <span className="user-avatar">{name.slice(0, 1).toUpperCase()}</span>
         <ChevronDown size={16} aria-hidden="true" />
       </button>
       {open && (
         <div role="menu" className="user-menu-popover">
           <div className="user-menu-section">
-            <strong>Administrator</strong>
-            <small>Signed in to this installation</small>
+            <strong>{name}</strong>
+            <small>{detail}</small>
           </div>
           <div className="user-menu-section">
             <span className="label-stamp">Theme</span>

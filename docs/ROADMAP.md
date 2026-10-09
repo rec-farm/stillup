@@ -26,7 +26,9 @@ HTTP check creation; status/latency/JSON assertions; PostgreSQL persistence; dur
 
 **Secrets implemented:** encrypted named secrets, write-only management, runtime credential rotation, check/channel/delivery usage visibility, and environment compatibility.
 
-**Remaining:** project defaults, first-admin setup, user invitations and roles, and email notifications.
+**Users implemented:** single sign-on users invited by email, administrator and viewer roles enforced by the API, revocable database-backed sessions, and a break-glass installation token. Installations without users keep the previous behavior.
+
+**Remaining:** project defaults, personal API tokens, an audit log of changes, and email notifications.
 
 ## Milestone 3 — Complete status communication
 
@@ -54,13 +56,13 @@ The probe is now the same native Rust binary as the API and worker (`probe` imag
 
 ## Current operational boundaries
 
-- One trusted administrator per installation; no arbitrary uploaded code.
+- Administrators are fully trusted; viewers are read-only. No arbitrary uploaded code.
 - The local worker accesses PostgreSQL directly. Remote probes use scoped HTTPS credentials and receive only assigned jobs.
 - Local-only check rows are locked during bounded HTTP execution to serialize runs and configuration changes. Distributed checks use short transactions and reject obsolete reports. This is simple but must be benchmarked before targeting large installations.
 - A committed run is idempotent by job ID; a worker crash after a network request but before commit can repeat that request. Monitoring requests must tolerate repetition.
 - The scheduler advances overdue checks to their next interval, rather than replaying missed intervals after downtime.
 - Public incident history includes the latest 50 incidents belonging to published checks.
 - Detailed observations expire; incidents, transition snapshots, delivery history and daily uptime totals persist. Uptime history before the upgrade is backfilled only from runs still retained, using the configuration revision's interval.
-- Browser session revocation is installation-token rotation or expiry; sign-out removes the current browser cookie.
-- Rate limits are process-local. All browser API proxy traffic shares a rate-limit bucket in this initial single-admin deployment.
+- User sessions are revocable (sign-out, removal). Installation-token sessions end by token rotation or expiry; sign-out removes the current browser cookie.
+- Rate limits are process-local and keyed by the connecting address, so all traffic through one reverse proxy shares a bucket.
 - No managed geographic locations, external SaaS dependencies, or billing.

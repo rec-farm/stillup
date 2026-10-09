@@ -488,7 +488,7 @@ export const docs: Doc[] = [
         id: 'authentication',
         title: 'Connect to the management API',
         paragraphs: [
-          'Authenticate with `Authorization: Bearer <ADMIN_TOKEN>`. Browser sessions also work for dashboard requests. Never embed tokens in URLs.',
+          'Authenticate with `Authorization: Bearer <ADMIN_TOKEN>`, which always acts as an administrator. Browser sessions also work for dashboard requests and carry the signed-in user’s role. Never embed tokens in URLs.',
           'Through the web application, use the `/api/v1` prefix. The private API exposes `/v1` directly. In these examples, set `STILLUP_URL` to your web origin followed by `/api`, such as `https://monitoring.example.com/api`. Endpoint cards below use the `/v1` paths.',
         ],
         language: 'shell',
@@ -754,6 +754,41 @@ export const docs: Doc[] = [
         },
       },
       {
+        id: 'users',
+        title: 'Users and roles',
+        paragraphs: [
+          'Users sign in with single sign-on. Roles are `admin` and `viewer`. Viewers can only read the dashboard, checks and incidents, and see request headers, bodies and URL query values as `[hidden]`. Changes that would leave users without an administrator return 409.',
+        ],
+        endpoints: [
+          {
+            method: 'GET',
+            path: '/v1/me',
+            description:
+              'Read the caller: `{ kind: "installation", role: "admin" }` for the token, or the user.',
+          },
+          {
+            method: 'GET',
+            path: '/v1/users',
+            description: 'List users and whether single sign-on is configured.',
+          },
+          {
+            method: 'POST',
+            path: '/v1/users',
+            description: 'Add `{ email, name?, role }`. The first user must be an administrator.',
+          },
+          {
+            method: 'PATCH',
+            path: '/v1/users/:id',
+            description: 'Change `{ role }`. Takes effect on existing sessions immediately.',
+          },
+          {
+            method: 'DELETE',
+            path: '/v1/users/:id',
+            description: 'Remove a user and end their sessions.',
+          },
+        ],
+      },
+      {
         id: 'errors',
         title: 'Response codes and limits',
         fieldColumns: ['Status', 'Meaning', 'What to do'],
@@ -770,6 +805,11 @@ export const docs: Doc[] = [
             name: '401',
             default: 'Unauthorized',
             description: 'Supply a valid administrator token or browser session.',
+          },
+          {
+            name: '403',
+            default: 'Forbidden',
+            description: 'Your viewer role cannot do this. Ask an administrator.',
           },
           {
             name: '409',
@@ -820,11 +860,20 @@ export const docs: Doc[] = [
         id: 'sign-in',
         title: 'Sign in with Handstamp',
         paragraphs: [
-          'Besides the administrator token, StillUp can sign the administrator in through an OpenID Connect provider such as Handstamp. Register a client with the redirect URI APP_ORIGIN/api/v1/auth/oidc/callback, the post-logout redirect URI APP_ORIGIN/login, client_secret_basic and PKCE, then set the OIDC variables on the API and restart it. The button appears only when OIDC_ISSUER and OIDC_CLIENT_ID are set.',
-          'Everyone the provider lets through becomes the administrator, so decide who may sign in at the provider, for example with a required stillup-admins group in Handstamp. Signing out also ends the provider session.',
+          'Besides the administrator token, people can sign in through an OpenID Connect provider such as Handstamp. Register a client with the redirect URI APP_ORIGIN/api/v1/auth/oidc/callback, the post-logout redirect URI APP_ORIGIN/login, client_secret_basic and PKCE, then set the OIDC variables on the API and restart it. The button appears only when OIDC_ISSUER and OIDC_CLIENT_ID are set. Signing out also ends the provider session.',
         ],
         language: 'shell',
         code: 'OIDC_ISSUER=https://id.example.com\nOIDC_CLIENT_ID=stillup\nOIDC_CLIENT_SECRET=hs_sec_...\nOIDC_SCOPES="openid profile email groups"\nOIDC_DISPLAY_NAME=Handstamp',
+      },
+      {
+        id: 'users',
+        title: 'Invite users',
+        paragraphs: [
+          'Until you add a user, everyone the provider admits signs in as an administrator, so restrict access at the provider, for example with a required stillup-admins group in Handstamp. To give people their own access, open Manage users on the dashboard and add yourself first, as an administrator, then add others by email.',
+          'Once the list has anyone on it, only listed people can sign in with single sign-on, and sessions from before the first user end. The provider must report the email address as verified (the email_verified claim) for the first sign-in, which then links the account to that identity. A later email change at the provider keeps access.',
+          'Administrators manage everything, including users. Viewers see the dashboard, checks, results and incidents, but cannot change them or open notifications, secrets, locations, the status page editor or users. Request headers, bodies and URL query values are hidden from viewers because they may contain credentials. URL paths stay visible, so keep credentials out of them.',
+          'Role changes apply immediately. Removing a user ends their sessions. StillUp always keeps at least one administrator, and the ADMIN_TOKEN keeps working as a break-glass administrator.',
+        ],
       },
       {
         id: 'networks',
@@ -838,7 +887,7 @@ export const docs: Doc[] = [
         id: 'troubleshooting',
         title: 'When something looks wrong',
         steps: [
-          'Cannot sign in: confirm the current ADMIN_TOKEN, APP_ORIGIN, HTTPS setup, and that the API is running. For single sign-on, check that the registered redirect URI is exactly APP_ORIGIN/api/v1/auth/oidc/callback and that the API can reach OIDC_ISSUER.',
+          'Cannot sign in: confirm the current ADMIN_TOKEN, APP_ORIGIN, HTTPS setup, and that the API is running. For single sign-on, check that the registered redirect URI is exactly APP_ORIGIN/api/v1/auth/oidc/callback and that the API can reach OIDC_ISSUER. “Not on this installation’s user list” means users exist and this person’s verified email was not added.',
           'Checks stay unknown: inspect worker health, probe coverage, secret references, and network policy; inspect the latest execution result.',
           'Alerts do not arrive: confirm routing and enabled channels, then inspect delivery attempts and send a test.',
           'A code apply conflicts: another apply, pause, resume, or archive changed the project. Rerun diff and review before applying again.',

@@ -612,6 +612,7 @@ small {
 .user-menu-section strong {
   font-size: 14px;
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 .user-menu-section small {
   margin-top: -6px;
@@ -2051,6 +2052,12 @@ small {
 }
 .notification-card p {
   font-size: 13px;
+}
+.user-card select {
+  justify-self: start;
+}
+.user-card .archive-link {
+  justify-self: start;
 }
 .notification-actions {
   display: flex;

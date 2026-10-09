@@ -30,6 +30,7 @@ import {
   formatUptime,
   type Dashboard,
   type Health,
+  type Me,
   type Monitor,
   type Run,
   type Uptime,
@@ -45,6 +46,7 @@ import { SecretsDialog } from './secrets';
 import { LocationsDialog, RegionalResults } from './locations';
 import { StatusManagementDialog } from './status-management';
 import { UptimeBars } from './status-view';
+import { UsersDialog } from './users';
 const labels: Record<Health, string> = {
   up: 'Healthy',
   down: 'Failing',
@@ -82,8 +84,11 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   if (!res.ok) throw new Error(data.error || 'Request failed');
   return data;
 }
-export function DashboardView({ initial }: { initial: Dashboard }) {
+export function DashboardView({ initial, me }: { initial: Dashboard; me: Me }) {
   const { settings } = useWorkspace();
+  // Viewers see monitoring data only; the API enforces the same boundary.
+  const canManage = me.role === 'admin';
+  const [usersOpen, setUsersOpen] = useState(false);
   const [data, setData] = useState(initial);
   const [create, setCreate] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -234,10 +239,12 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
             <Activity size={20} />
             API checks<span className="nav-count">{activeMonitors.length}</span>
           </a>
-          <button className="nav-item" onClick={() => toggleSetup(true)}>
-            <Check size={20} />
-            Getting started
-          </button>
+          {canManage && (
+            <button className="nav-item" onClick={() => toggleSetup(true)}>
+              <Check size={20} />
+              Getting started
+            </button>
+          )}
           <a href="#incidents" className="nav-item">
             <Radio size={20} />
             Incidents
@@ -252,9 +259,11 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
             Documentation
           </a>
         </nav>
-        <button className="nav-item status-design-nav" onClick={() => setStatusEditorOpen(true)}>
-          <Palette size={20} /> Status page design
-        </button>
+        {canManage && (
+          <button className="nav-item status-design-nav" onClick={() => setStatusEditorOpen(true)}>
+            <Palette size={20} /> Status page design
+          </button>
+        )}
         <div className="sidebar-bottom">
           <div className="ownership-note">
             <Terminal size={18} />
@@ -295,7 +304,7 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
               Status page
               <ArrowUpRight size={16} />
             </a>
-            <UserMenu onSignOut={signOut} />
+            <UserMenu me={me} onSignOut={signOut} />
           </div>
         </header>
         <main className="dashboard-main">
@@ -309,13 +318,15 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
             </div>
             <WatchfulArt />
             {/* The empty state carries the one primary action until the first check exists. */}
-            <button
-              className={`button ${activeMonitors.length ? 'primary' : 'secondary'}`}
-              onClick={() => setCreate(true)}
-            >
-              <Plus size={16} />
-              Create check
-            </button>
+            {canManage && (
+              <button
+                className={`button ${activeMonitors.length ? 'primary' : 'secondary'}`}
+                onClick={() => setCreate(true)}
+              >
+                <Plus size={16} />
+                Create check
+              </button>
+            )}
           </div>
           {error && (
             <div className="error-message" role="alert">
@@ -335,7 +346,7 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
               </button>
             </div>
           )}
-          {setupOpen && (
+          {setupOpen && canManage && (
             <section className="setup-guide" aria-labelledby="setup-title">
               <div className="setup-heading">
                 <div>
@@ -565,17 +576,23 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
                 <h3>
                   Meet your first API check<span className="period">.</span>
                 </h3>
-                <p>
-                  Add a health endpoint you own. StillUp will check its response on a schedule and
-                  keep a history of failures and recoveries.
-                </p>
-                <button className="button primary" onClick={() => setCreate(true)}>
-                  <Plus size={16} />
-                  Create your first check
-                </button>
-                <span className="empty-footnote">
-                  Start with a name and URL · GET · HTTP 200 · Every minute
-                </span>
+                {canManage ? (
+                  <>
+                    <p>
+                      Add a health endpoint you own. StillUp will check its response on a schedule
+                      and keep a history of failures and recoveries.
+                    </p>
+                    <button className="button primary" onClick={() => setCreate(true)}>
+                      <Plus size={16} />
+                      Create your first check
+                    </button>
+                    <span className="empty-footnote">
+                      Start with a name and URL · GET · HTTP 200 · Every minute
+                    </span>
+                  </>
+                ) : (
+                  <p>Checks appear here once an administrator adds them.</p>
+                )}
               </div>
             ) : visible.length === 0 ? (
               <div className="empty-state compact">
@@ -722,22 +739,31 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
               </div>
               <p>
                 <CircleHelp size={14} />
-                Receive incident and recovery events through your notification channels.
+                {canManage
+                  ? 'Receive incident and recovery events through your notification channels.'
+                  : 'You have view access. Administrators manage checks, alerts and settings.'}
               </p>
-              <button className="button secondary" onClick={() => setNotificationsOpen(true)}>
-                Manage notifications
-              </button>
-              <div className="notification-actions">
-                <button className="button secondary" onClick={() => setSecretsOpen(true)}>
-                  Manage secrets
-                </button>
-                <button className="button secondary" onClick={() => setLocationsOpen(true)}>
-                  Manage locations
-                </button>
-                <button className="button secondary" onClick={() => setStatusEditorOpen(true)}>
-                  Customize status page
-                </button>
-              </div>
+              {canManage && (
+                <>
+                  <button className="button secondary" onClick={() => setNotificationsOpen(true)}>
+                    Manage notifications
+                  </button>
+                  <div className="notification-actions">
+                    <button className="button secondary" onClick={() => setSecretsOpen(true)}>
+                      Manage secrets
+                    </button>
+                    <button className="button secondary" onClick={() => setLocationsOpen(true)}>
+                      Manage locations
+                    </button>
+                    <button className="button secondary" onClick={() => setStatusEditorOpen(true)}>
+                      Customize status page
+                    </button>
+                    <button className="button secondary" onClick={() => setUsersOpen(true)}>
+                      Manage users
+                    </button>
+                  </div>
+                </>
+              )}
             </section>
           </div>
           <footer className="dashboard-footer">
@@ -747,6 +773,7 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
         </main>
       </div>
       {locationsOpen && <LocationsDialog onClose={() => setLocationsOpen(false)} />}
+      {usersOpen && <UsersDialog me={me} onClose={() => setUsersOpen(false)} />}
       {secretsOpen && <SecretsDialog onClose={() => setSecretsOpen(false)} />}
       {statusEditorOpen && (
         <StatusManagementDialog
@@ -829,6 +856,7 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
           actionError={actionError}
           onAction={(kind) => void action(current, kind)}
           busy={busy}
+          readOnly={!canManage}
         />
       )}
     </div>
@@ -866,6 +894,7 @@ function CheckDetail({
   onRevision,
   actionError,
   busy,
+  readOnly,
 }: {
   monitor: Monitor;
   onClose: () => void;
@@ -874,6 +903,7 @@ function CheckDetail({
   onRevision: (revision: number) => void;
   actionError: string;
   busy: boolean;
+  readOnly: boolean;
 }) {
   const [runs, setRuns] = useState<Run[]>([]);
   const [uptime, setUptime] = useState<Uptime | null>(null);
@@ -950,7 +980,13 @@ function CheckDetail({
         <span className="method">{monitor.config.method}</span>
         {monitor.config.url}
       </p>
-      {monitor.archivedAt ? (
+      {readOnly ? (
+        monitor.archivedAt && (
+          <p className="archive-note">
+            Archived {time(monitor.archivedAt)}. Results and configurations remain available.
+          </p>
+        )
+      ) : monitor.archivedAt ? (
         <div className="archive-note">
           <p>
             Archived {time(monitor.archivedAt)}. Results and configurations remain available. Open
