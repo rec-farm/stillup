@@ -251,6 +251,15 @@ export const docs: Doc[] = [
         ],
       },
       {
+        id: 'uptime',
+        title: 'Read the uptime history',
+        paragraphs: [
+          'Each published component shows one bar per UTC day for the last 90 days (30 on narrow screens) and its uptime across that window. Each pass or fail observation counts for one check interval. Time counts as downtime only while the check is in a confirmed outage, after its failure threshold is reached and until it recovers. A single failed request below the threshold does not lower uptime.',
+          'Runner and configuration errors are not observations, so they neither raise nor lower uptime. Days without observations, such as before a check was created or while it was paused, appear empty. Percentages are truncated, never rounded up, so 99.999% is shown as 99.99%.',
+          'Daily totals are kept independently of RUN_RETENTION_DAYS, so history outlasts detailed runs. When upgrading, the history is backfilled from runs that are still retained.',
+        ],
+      },
+      {
         id: 'design',
         title: 'Design your public page',
         paragraphs: [
@@ -263,7 +272,7 @@ export const docs: Doc[] = [
         id: 'custom-domain',
         title: 'Connect your domain or CDN',
         paragraphs: [
-          'For a self-hosted installation, set STATUS_PAGE_DOMAINS on the web service to a comma-separated list such as status.example.com,status.example.net, then restart the web service. Keep your dashboard on a separate hostname. The configured public hostnames serve the status page at / and /status and allow only the read-only public status API and required static assets.',
+          'For a self-hosted installation, set STATUS_PAGE_DOMAINS on the API service to a comma-separated list such as status.example.com,status.example.net, then restart the API. Keep your dashboard on a separate hostname. The configured public hostnames serve the status page at / and /status and allow only the read-only public status API and required static assets.',
           'Create a CNAME to your ingress hostname (or A/AAAA records to its IP), register the hostname with your hosting provider, and provision a TLS certificate. A CNAME alone does not configure HTTPS. StillUp does not provision DNS records, verify ownership, or issue certificates: those are managed by your ingress or hosting provider.',
           'A CDN can proxy the domain if it preserves the visitor’s original Host header to StillUp. Use HTTPS from the CDN to the origin with a valid certificate, strip untrusted forwarded headers at the ingress, and do not rewrite Host to the dashboard hostname. Only expose configured hostnames at your ingress; keep the API port private.',
           'Bypass CDN caching for /, /status, and /api/v1/public/status so incident updates stay current. Do not cache error responses or use a stale-on-error page that claims everything is operational. Hashed /assets assets can be cached. Check that the public root loads, the status API updates, and /login and /api/v1/status-management return 404 on the public hostname.',
@@ -276,7 +285,7 @@ export const docs: Doc[] = [
         id: 'headless',
         title: 'Build a completely custom frontend',
         paragraphs: [
-          'For full HTML, CSS, JavaScript, or framework control, use GET /api/v1/public/status on the web origin (GET /v1/public/status on the internal API). It exposes published component names and health, groups, branding, public maintenance, and incident communications without an admin token. Keep the backend and dashboard credentials on your server.',
+          'For full HTML, CSS, JavaScript, or framework control, use GET /api/v1/public/status on the web origin (GET /v1/public/status on the internal API). It exposes published component names, health and daily uptime, groups, branding, public maintenance, and incident communications without an admin token. Keep the backend and dashboard credentials on your server.',
           'Host your frontend anywhere and fetch the public JSON from its server or through a same-origin proxy. Cross-origin browser access is not enabled by default. Poll no faster than every 15 seconds, use no-store caching, and show an unavailable or stale state when refresh fails rather than reporting all systems operational.',
           'The built-in editor provides structured content and appearance controls. Arbitrary HTML, CSS, and scripts belong in your separately hosted frontend. The built-in renderer never executes user-provided markup.',
         ],

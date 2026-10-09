@@ -494,6 +494,25 @@ pub async fn admin(State(state): State<AppState>) -> Result<Json<Value>, ApiErro
     config["incidents"] = json!(communications(&state, None).await?);
     Ok(Json(config))
 }
+const UPTIME_DAYS: i32 = 90;
+
+fn uptime_percentage(observed: i64, down: i64) -> Option<f64> {
+    (observed > 0)
+        .then(|| ((observed - down) as f64 * 100_000.0 / observed as f64).floor() / 1000.0)
+}
+
+/// Daily rollups, oldest first, as `(UTC date, observed seconds, down seconds)`.
+fn uptime_summary(days: &[(String, i64, i64)]) -> Value {
+    let (observed, down) = days.iter().fold((0, 0), |(o, d), (_, observed, down)| {
+        (o + observed, d + down)
+    });
+    json!({
+        "windowDays": UPTIME_DAYS,
+        "percentage": uptime_percentage(observed, down),
+        "days": days.iter().map(|(date, observed, down)| json!({"date": date, "percentage": uptime_percentage(*observed, *down)})).collect::<Vec<_>>(),
+    })
+}
+
 pub async fn public_status(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
     let (rows, history, settings) = tokio::try_join!(
         async {
@@ -506,7 +525,7 @@ pub async fn public_status(State(state): State<AppState>) -> Result<Json<Value>,
     )?;
     let ids: Vec<Uuid> = rows.iter().map(|r| r.get("id")).collect();
     let config = &settings["settings"];
-    let (windows, impact, communication) = tokio::try_join!(
+    let (windows, impact, communication, daily) = tokio::try_join!(
         async {
             sqlx::query("SELECT * FROM maintenance_windows WHERE NOT cancelled AND ends_at>now() AND (cardinality(monitor_ids)=0 OR monitor_ids && $1::uuid[]) ORDER BY starts_at LIMIT 100").bind(&ids).fetch_all(&state.pool).await.map_err(ApiError::from)
         },
@@ -514,12 +533,16 @@ pub async fn public_status(State(state): State<AppState>) -> Result<Json<Value>,
             sqlx::query("SELECT m.id,EXISTS(SELECT 1 FROM maintenance_windows w WHERE NOT w.cancelled AND w.starts_at<=now() AND w.ends_at>now() AND (cardinality(w.monitor_ids)=0 OR m.id=ANY(w.monitor_ids))) AS maintenance,EXISTS(SELECT 1 FROM status_incidents i WHERE i.resolved_at IS NULL AND m.id=ANY(i.monitor_ids)) AS incident FROM monitors m WHERE m.id=ANY($1::uuid[])").bind(&ids).fetch_all(&state.pool).await.map_err(ApiError::from)
         },
         communications(&state, Some(&ids)),
+        async {
+            sqlx::query("SELECT monitor_id,day::text AS day,observed_seconds,down_seconds FROM monitor_daily_uptime WHERE monitor_id=ANY($1::uuid[]) AND day>(now() AT TIME ZONE 'UTC')::date-$2::integer ORDER BY day").bind(&ids).bind(UPTIME_DAYS).fetch_all(&state.pool).await.map_err(ApiError::from)
+        },
     )?;
     let components=rows.iter().map(|row|->Result<Value,ApiError>{
         let id:Uuid=row.get("id");let check:Value=row.get("config");let status:String=row.get("status");
         let current=impact.iter().find(|r|r.get::<Uuid,_>("id")==id);
         let health=if current.is_some_and(|r|r.get::<bool,_>("maintenance")){"maintenance"}else if current.is_some_and(|r|r.get::<bool,_>("incident")){"down"}else{crate::health::visible(&status,row.get("enabled"),row.get("last_observed_at"),check["intervalSeconds"].as_i64().unwrap_or(60),Utc::now())};
-        let mut component=json!({"id":id,"name":check["name"],"health":health,"lastObservedAt":timestamp(row,"last_observed_at")?});
+        let days:Vec<(String,i64,i64)>=daily.iter().filter(|r|r.get::<Uuid,_>("monitor_id")==id).map(|r|(r.get("day"),r.get("observed_seconds"),r.get("down_seconds"))).collect();
+        let mut component=json!({"id":id,"name":check["name"],"health":health,"lastObservedAt":timestamp(row,"last_observed_at")?,"uptime":uptime_summary(&days)});
         if let Some(group)=config["groups"].as_array().unwrap().iter().find(|g|g["monitorIds"].as_array().unwrap().contains(&json!(id))){component["groupId"]=group["id"].clone();}Ok(component)
     }).collect::<Result<Vec<_>,_>>()?;
     let groups = config["groups"]
@@ -561,6 +584,23 @@ pub async fn public_status(State(state): State<AppState>) -> Result<Json<Value>,
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn uptime_is_interval_weighted_and_never_rounds_up() {
+        assert_eq!(uptime_percentage(0, 0), None);
+        assert_eq!(uptime_percentage(86_400, 0), Some(100.0));
+        assert_eq!(uptime_percentage(86_400, 60), Some(99.930));
+        assert_eq!(uptime_percentage(1_000_000, 1), Some(99.999));
+        let summary = uptime_summary(&[
+            ("2026-10-07".into(), 86_400, 0),
+            ("2026-10-08".into(), 86_400, 86_400),
+        ]);
+        assert_eq!(summary["percentage"], 50.0);
+        assert_eq!(
+            summary["days"][1],
+            json!({"date":"2026-10-08","percentage":0.0})
+        );
+        assert_eq!(uptime_summary(&[])["percentage"], Value::Null);
+    }
     #[test]
     fn status_settings_and_dates_match_typescript_contracts() {
         let fixtures: Vec<Value> =

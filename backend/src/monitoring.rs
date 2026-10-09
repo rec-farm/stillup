@@ -129,6 +129,15 @@ pub async fn record_result(
     }
     sqlx::query("UPDATE monitors SET status=$2,failures=$3,successes=$4,last_run_at=$5,last_duration_ms=$6,last_outcome=$7,last_observed_at=CASE WHEN $7='error' THEN last_observed_at ELSE $5 END WHERE id=$1")
         .bind(monitor_id).bind(&next.status).bind(next.failures).bind(next.successes).bind(checked_at).bind(duration).bind(outcome).execute(&mut *connection).await?;
+    if outcome != "error" {
+        let seconds = config["intervalSeconds"]
+            .as_i64()
+            .unwrap_or(60)
+            .clamp(30, 86_400);
+        let down = if next.status == "down" { seconds } else { 0 };
+        sqlx::query("INSERT INTO monitor_daily_uptime(monitor_id,day,observed_seconds,down_seconds) VALUES($1,($2 AT TIME ZONE 'UTC')::date,$3,$4) ON CONFLICT(monitor_id,day) DO UPDATE SET observed_seconds=monitor_daily_uptime.observed_seconds+EXCLUDED.observed_seconds,down_seconds=monitor_daily_uptime.down_seconds+EXCLUDED.down_seconds")
+            .bind(monitor_id).bind(checked_at).bind(seconds).bind(down).execute(&mut *connection).await?;
+    }
     let previous: String = row.get("status");
     let incident = if next.status == "down" && previous != "down" {
         sqlx::query_scalar::<_, Uuid>(

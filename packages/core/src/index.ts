@@ -173,6 +173,12 @@ export type PublicStatus = {
     health: Health | 'maintenance';
     lastObservedAt: string | null;
     groupId?: string;
+    /** Interval-weighted daily uptime (UTC days, oldest first); only days with observations. */
+    uptime?: {
+      windowDays: number;
+      percentage: number | null;
+      days: { date: string; percentage: number | null }[];
+    };
   }[];
   incidents: Incident[];
 };
