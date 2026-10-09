@@ -1,6 +1,7 @@
 use crate::{
     auth,
     server::{AppState, cookie},
+    users,
 };
 use axum::{
     Json,
@@ -379,25 +380,38 @@ async fn finish(
     // Retry signature verification after fresh discovery so rotated signing keys work.
     let (metadata, _) = state.oidc.discovery(&state.config.oidc, false).await?;
     let verifier_client = client!(state, metadata);
-    if !verify(
+    let identity = match verify(
         &verifier_client.id_token_verifier(),
         id_token,
         &tokens,
         flow,
     ) {
-        let (metadata, _) = state.oidc.discovery(&state.config.oidc, true).await?;
-        let refreshed = client!(state, metadata);
-        if !verify(&refreshed.id_token_verifier(), id_token, &tokens, flow) {
-            return Err(());
+        Some(identity) => identity,
+        None => {
+            let (metadata, _) = state.oidc.discovery(&state.config.oidc, true).await?;
+            let refreshed = client!(state, metadata);
+            verify(&refreshed.id_token_verifier(), id_token, &tokens, flow).ok_or(())?
         }
-    }
+    };
+    let session = match users::sign_in(&state.pool, &state.config.oidc.issuer, &identity)
+        .await
+        .map_err(|_| ())?
+    {
+        users::SignIn::Installation => {
+            auth::session_value(now() + 86400000, &state.config.admin_token)
+        }
+        users::SignIn::User(id) => users::create_session(&state.pool, id)
+            .await
+            .map_err(|_| ())?,
+        users::SignIn::NotInvited => return Ok(login_error(state, "oidc_not_invited")),
+    };
     let secure = state.config.origin.starts_with("https:");
     let mut response =
         redirect(&format!("{}{}", state.config.origin, safe_next(&flow.next))).into_response();
     set_cookie(
         &mut response,
         "stillup_session",
-        &auth::session_value(now() + 86400000, &state.config.admin_token),
+        &session,
         86400,
         "Lax",
         secure,
@@ -422,25 +436,27 @@ fn verify(
     id_token: &openidconnect::core::CoreIdToken,
     tokens: &openidconnect::core::CoreTokenResponse,
     flow: &Flow,
-) -> bool {
-    let Ok(claims) = id_token.claims(verifier, &Nonce::new(flow.nonce.clone())) else {
-        return false;
-    };
+) -> Option<users::Identity> {
+    let claims = id_token
+        .claims(verifier, &Nonce::new(flow.nonce.clone()))
+        .ok()?;
     if let Some(expected) = claims.access_token_hash() {
-        let Ok(algorithm) = id_token.signing_alg() else {
-            return false;
-        };
-        let Ok(key) = id_token.signing_key(verifier) else {
-            return false;
-        };
-        let Ok(actual) = AccessTokenHash::from_token(tokens.access_token(), algorithm, key) else {
-            return false;
-        };
+        let algorithm = id_token.signing_alg().ok()?;
+        let key = id_token.signing_key(verifier).ok()?;
+        let actual = AccessTokenHash::from_token(tokens.access_token(), algorithm, key).ok()?;
         if actual != *expected {
-            return false;
+            return None;
         }
     }
-    true
+    Some(users::Identity {
+        subject: claims.subject().to_string(),
+        email: claims.email().map(|email| email.to_string()),
+        email_verified: claims.email_verified(),
+        name: claims
+            .name()
+            .and_then(|name| name.get(None))
+            .map(|name| name.to_string()),
+    })
 }
 pub async fn logout(state: &AppState, token: Option<String>) -> Option<String> {
     if !state.config.oidc.enabled() {

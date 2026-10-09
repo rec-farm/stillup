@@ -1,5 +1,9 @@
 use crate::{auth, config::Config, error::ApiError, health, web, workspace};
-use crate::{checks, json::ApiJson};
+use crate::{
+    checks,
+    json::ApiJson,
+    users::{self, Principal},
+};
 use axum::{
     Json, Router,
     extract::{ConnectInfo, DefaultBodyLimit, Request, State},
@@ -49,6 +53,15 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/auth/oidc/start", get(crate::oidc::start))
         .route("/v1/auth/oidc/callback", get(crate::oidc::callback))
         .route("/v1/dashboard", get(dashboard))
+        .route("/v1/me", get(crate::users::me))
+        .route(
+            "/v1/users",
+            get(crate::users::list).post(crate::users::create),
+        )
+        .route(
+            "/v1/users/{id}",
+            axum::routing::patch(crate::users::edit).delete(crate::users::remove),
+        )
         .route("/v1/code/plan", post(crate::code_management::plan))
         .route("/v1/code/apply", post(crate::code_management::apply))
         .route("/v1/public/status", get(crate::status::public_status))
@@ -319,17 +332,36 @@ async fn protect(State(state): State<AppState>, request: Request, next: Next) ->
             .and_then(|value| value.to_str().ok())
             .and_then(|value| value.strip_prefix("Bearer "));
         let session = cookie(request.headers(), "stillup_session");
-        if !bearer.is_some_and(|value| auth::token_matches(value, &state.config.admin_token))
-            && !session.is_some_and(|value| {
-                auth::valid_session(value, &state.config.admin_token, now_ms())
-            })
-        {
+        let principal =
+            if bearer.is_some_and(|value| auth::token_matches(value, &state.config.admin_token)) {
+                Some(Principal::Installation)
+            } else if let Some(value) = session.filter(|value| users::is_user_session(value)) {
+                match users::session_principal(&state.pool, value).await {
+                    Ok(principal) => principal,
+                    Err(error) => return error.into_response(),
+                }
+            } else {
+                session
+                    .filter(|value| auth::valid_session(value, &state.config.admin_token, now_ms()))
+                    .map(|_| Principal::Installation)
+            };
+        let Some(principal) = principal else {
             return ApiError(
                 StatusCode::UNAUTHORIZED,
                 "Sign in to manage your checks".into(),
             )
             .into_response();
+        };
+        if !principal.admin() && !users::viewer_may(method, path) {
+            return ApiError(
+                StatusCode::FORBIDDEN,
+                "Your viewer role can see checks and incidents but not change them".into(),
+            )
+            .into_response();
         }
+        let mut request = request;
+        request.extensions_mut().insert(principal);
+        return next.run(request).await;
     }
     next.run(request).await
 }
@@ -376,7 +408,15 @@ async fn sign_in(
 }
 async fn sign_out(State(state): State<AppState>, request: Request) -> Response {
     let token = cookie(request.headers(), "stillup_oidc_idt").map(str::to_owned);
+    let session = cookie(request.headers(), "stillup_session")
+        .filter(|value| users::is_user_session(value))
+        .map(str::to_owned);
     drop(request);
+    if let Some(session) = session
+        && let Err(error) = users::end_session(&state.pool, &session).await
+    {
+        return ApiError::from(error).into_response();
+    }
     let logout = crate::oidc::logout(&state, token).await;
     let mut data = json!({"ok":true});
     if let Some(url) = logout {
