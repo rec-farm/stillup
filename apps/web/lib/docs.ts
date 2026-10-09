@@ -256,6 +256,7 @@ export const docs: Doc[] = [
         paragraphs: [
           'Each published component shows one bar per UTC day for the last 90 days (30 on narrow screens) and its uptime across that window. Each pass or fail observation counts for one check interval. Time counts as downtime only while the check is in a confirmed outage, after its failure threshold is reached and until it recovers. A single failed request below the threshold does not lower uptime.',
           'Runner and configuration errors are not observations, so they neither raise nor lower uptime. Days without observations, such as before a check was created or while it was paused, appear empty. Percentages are truncated, never rounded up, so 99.999% is shown as 99.99%.',
+          'Uptime reflects what checks observed. Manual incidents and maintenance windows change the displayed health but not the uptime history; a check that fails during maintenance still records downtime. Periods when no worker or probe was running are not observed, so they are neither up nor down.',
           'Daily totals are kept independently of RUN_RETENTION_DAYS, so history outlasts detailed runs. When upgrading, the history is backfilled from runs that are still retained.',
         ],
       },
