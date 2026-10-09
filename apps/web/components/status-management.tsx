@@ -9,6 +9,7 @@ import {
   type Maintenance,
   type CommunicationIncident,
   type PublicStatus,
+  type Uptime,
 } from '@stillup/core';
 import { StatusView } from './status-view';
 import { StatusDesignFields, isWebLink } from './status-design-fields';
@@ -479,6 +480,16 @@ function ComponentChoices({
   );
 }
 const sampleNames = ['Website', 'API', 'Webhooks'];
+/** Deterministic sample history so the preview shows how uptime bars will look. */
+function sampleUptime(now: Date, index: number, today: number): Uptime {
+  const days = Array.from({ length: 90 }, (_, ago) => {
+    const date = new Date(now.getTime() - (89 - ago) * 86_400_000).toISOString().slice(0, 10);
+    const dip = (89 - ago + index * 7) % 37 === 11 ? 99.4 : 100;
+    return { date, percentage: ago === 89 ? today : dip };
+  });
+  const total = days.reduce((sum, d) => sum + d.percentage, 0) / days.length;
+  return { windowDays: 90, percentage: Math.floor(total * 1000) / 1000, days };
+}
 function previewStatus(
   settings: StatusSettings,
   monitors: Monitor[],
@@ -495,6 +506,7 @@ function previewStatus(
     health: index === 0 && sample !== 'up' ? sample : ('up' as const),
     lastObservedAt: null,
     groupId: settings.groups.find((g) => g.monitorIds.includes(c.id))?.id,
+    uptime: sampleUptime(now, index, index === 0 && sample === 'down' ? 91.2 : 100),
   }));
   const first = components[0]!;
   const minutesAgo = (n: number) => new Date(now.getTime() - n * 60000).toISOString();
