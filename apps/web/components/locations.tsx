@@ -370,7 +370,7 @@ export function RegionalResults({ monitor }: { monitor: Monitor }) {
     };
   }, [monitor.id, monitor.configRevision, monitor.enabled]);
   return (
-    <section aria-label="Regional check results">
+    <section className="detail-section" aria-label="Regional check results">
       <h3>Location results</h3>
       {error && <p className="error-message">{error}</p>}
       <ul className="location-list">

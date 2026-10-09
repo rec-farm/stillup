@@ -1690,10 +1690,10 @@ small {
   padding: 24px;
   overflow-y: auto;
 }
-.detail-uptime {
+.detail-section {
   margin: 20px 0;
 }
-.detail-uptime h3 {
+.detail-section > h3 {
   margin: 0 0 8px;
   font-size: 13px;
   font-weight: 600;

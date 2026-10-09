@@ -941,7 +941,7 @@ function CheckDetail({
       )}
       <RegionalResults monitor={monitor} />
       {uptime && (
-        <section className="detail-uptime" aria-label="Uptime history">
+        <section className="detail-section detail-uptime" aria-label="Uptime history">
           <h3>Uptime</h3>
           <UptimeBars uptime={uptime} now={new Date().toISOString()} />
         </section>
