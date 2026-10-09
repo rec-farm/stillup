@@ -1,6 +1,5 @@
 'use client';
 import { useEffect, useState, type CSSProperties } from 'react';
-import Image from 'next/image';
 import { CircleHelp, ShieldCheck, TriangleAlert, Wrench } from 'lucide-react';
 import { customizedColor, statusDesignDefaults, type PublicStatus } from '@stillup/core';
 import { Brand } from './brand';
@@ -34,6 +33,7 @@ export function StatusView({
       pending = true;
       try {
         const response = await fetch('/api/v1/public/status', {
+          credentials: 'omit',
           signal: AbortSignal.timeout(10000),
         });
         if (!response.ok) throw new Error();
@@ -122,14 +122,7 @@ export function StatusView({
     brand && (brand.logoUrl || brand.brandName !== 'StillUp') ? (
       <span className="public-brand">
         {logo && (
-          <Image
-            unoptimized
-            src={logo}
-            width={40}
-            height={40}
-            alt=""
-            onError={() => setFailedLogo(logo)}
-          />
+          <img src={logo} width={40} height={40} alt="" onError={() => setFailedLogo(logo)} />
         )}
         {brand.brandName}
       </span>
@@ -302,10 +295,9 @@ export function StatusView({
               <span className="status-attribution">
                 <span className="eyebrow">Powered by</span>
                 {(['cream', 'ink'] as const).map((tone) => (
-                  <Image
+                  <img
                     key={tone}
                     className={`status-endorsed status-endorsed-${tone}`}
-                    unoptimized
                     src={`/brand/stillup-endorsed-${tone}.svg`}
                     width={146}
                     height={53}

@@ -1,0 +1,20 @@
+{
+  "name": "@stillup/legacy-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc"
+  },
+  "devDependencies": {
+    "@fastify/cookie": "^11.1.2",
+    "@fastify/rate-limit": "^10.3.0",
+    "@stillup/core": "workspace:*",
+    "@stillup/legacy-db": "workspace:*",
+    "fastify": "5.12.4",
+    "openid-client": "^6.8.8",
+    "pg-boss": "12.31.0",
+    "tsx": "^4.20.0",
+    "zod": "4.6.2"
+  }
+}

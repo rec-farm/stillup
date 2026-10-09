@@ -1,0 +1,184 @@
+[
+  {
+    "input": {
+      "version": 1,
+      "project": "production",
+      "checks": [
+        {
+          "id": "api",
+          "config": {
+            "name": "Example",
+            "url": "https://example.com/health"
+          }
+        }
+      ]
+    },
+    "valid": true,
+    "output": {
+      "version": 1,
+      "project": "production",
+      "checks": [
+        {
+          "id": "api",
+          "config": {
+            "name": "Example",
+            "url": "https://example.com/health",
+            "method": "GET",
+            "headers": {},
+            "body": "",
+            "intervalSeconds": 60,
+            "timeoutMs": 10000,
+            "expectedStatus": 200,
+            "maxResponseMs": null,
+            "jsonAssertions": [],
+            "failureThreshold": 2,
+            "recoveryThreshold": 1,
+            "public": false
+          }
+        }
+      ]
+    }
+  },
+  {
+    "input": {
+      "version": 1,
+      "project": "production",
+      "checks": []
+    },
+    "valid": true,
+    "output": {
+      "version": 1,
+      "project": "production",
+      "checks": []
+    }
+  },
+  {
+    "input": {
+      "version": 1,
+      "project": "../production",
+      "checks": [
+        {
+          "id": "api",
+          "config": {
+            "name": "Example",
+            "url": "https://example.com/health"
+          }
+        }
+      ]
+    },
+    "valid": false
+  },
+  {
+    "input": {
+      "version": 1,
+      "project": "production",
+      "checks": [
+        {
+          "id": "api",
+          "config": {
+            "name": "Example",
+            "url": "https://example.com/health"
+          }
+        }
+      ],
+      "prune": true
+    },
+    "valid": false
+  },
+  {
+    "input": {
+      "version": 1,
+      "project": "production",
+      "checks": [
+        {
+          "id": "api",
+          "config": {
+            "name": "Example",
+            "url": "https://example.com/health"
+          }
+        },
+        {
+          "id": "api",
+          "config": {
+            "name": "Example",
+            "url": "https://example.com/health"
+          }
+        }
+      ]
+    },
+    "valid": false
+  },
+  {
+    "input": {
+      "version": 1,
+      "project": "production",
+      "checks": [
+        {
+          "id": "api",
+          "config": {
+            "name": "Example",
+            "url": "https://example.com/health",
+            "intervalseconds": 30
+          }
+        }
+      ]
+    },
+    "valid": false
+  },
+  {
+    "input": {
+      "version": 1,
+      "project": "production",
+      "checks": [
+        {
+          "id": "api",
+          "config": {
+            "name": "Example",
+            "url": "https://example.com/health",
+            "headers": {
+              "Authorization": "{{TOKEN}}"
+            },
+            "jsonAssertions": [
+              {
+                "path": "$.size",
+                "equals": 1e21
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "valid": true,
+    "output": {
+      "version": 1,
+      "project": "production",
+      "checks": [
+        {
+          "id": "api",
+          "config": {
+            "name": "Example",
+            "url": "https://example.com/health",
+            "method": "GET",
+            "headers": {
+              "Authorization": "{{TOKEN}}"
+            },
+            "body": "",
+            "intervalSeconds": 60,
+            "timeoutMs": 10000,
+            "expectedStatus": 200,
+            "maxResponseMs": null,
+            "jsonAssertions": [
+              {
+                "path": "$.size",
+                "equals": 1e21
+              }
+            ],
+            "failureThreshold": 2,
+            "recoveryThreshold": 1,
+            "public": false
+          }
+        }
+      ]
+    }
+  }
+]

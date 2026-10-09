@@ -205,7 +205,6 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
         <div className="workspace">
           <span className="workspace-avatar">
             {settings.logoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
               <img src={settings.logoUrl} width={32} height={32} alt="" />
             ) : (
               settings.name.slice(0, 1).toUpperCase()
@@ -267,7 +266,6 @@ export function DashboardView({ initial }: { initial: Dashboard }) {
             <span>
               StillUp <span className="mono">v0.1.0</span> · by
             </span>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               className="rec-chain"
               src="/brand/rec-mark-cream.svg"

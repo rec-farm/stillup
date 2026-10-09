@@ -1,0 +1,1970 @@
+[
+  {
+    "name": "all passing",
+    "patch": {
+      "expectedStatus": 200,
+      "maxResponseMs": 100,
+      "headerAssertions": [
+        {
+          "name": "x-test",
+          "operator": "contains",
+          "value": "ok"
+        }
+      ],
+      "jsonAssertions": [
+        {
+          "path": "$.items.0.id",
+          "equals": 2
+        },
+        {
+          "path": "$.items.length",
+          "operator": "equals",
+          "value": 1
+        },
+        {
+          "path": "$.missing",
+          "operator": "notExists"
+        }
+      ],
+      "responseSchema": {
+        "type": "object",
+        "required": ["items"],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id"],
+              "properties": {
+                "id": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "status": 200,
+    "duration": 50,
+    "headers": {
+      "x-test": "okay"
+    },
+    "body": "{\"items\":[{\"id\":2}]}",
+    "config": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": 100,
+      "jsonAssertions": [
+        {
+          "path": "$.items.0.id",
+          "equals": 2
+        },
+        {
+          "path": "$.items.length",
+          "operator": "equals",
+          "value": 1
+        },
+        {
+          "path": "$.missing",
+          "operator": "notExists"
+        }
+      ],
+      "headerAssertions": [
+        {
+          "name": "x-test",
+          "operator": "contains",
+          "value": "ok"
+        }
+      ],
+      "responseSchema": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": ["id"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["items"],
+        "additionalProperties": false
+      },
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    },
+    "expected": [
+      {
+        "kind": "status",
+        "label": "HTTP status",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "latency",
+        "label": "Response time",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "header",
+        "label": "x-test · contains",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "json",
+        "label": "$.items.0.id · equals",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "json",
+        "label": "$.items.length · equals",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "json",
+        "label": "$.missing · notExists",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "schema",
+        "label": "JSON Schema",
+        "passed": true,
+        "message": "Passed"
+      }
+    ]
+  },
+  {
+    "name": "status and response mismatch",
+    "patch": {
+      "maxResponseMs": 10,
+      "jsonAssertions": [
+        {
+          "path": "$.ok",
+          "equals": true
+        },
+        {
+          "path": "$.missing",
+          "operator": "equals",
+          "value": 3
+        }
+      ],
+      "responseSchema": {
+        "type": "object",
+        "required": ["ok"]
+      }
+    },
+    "status": 503,
+    "duration": 40,
+    "headers": {},
+    "body": "{}",
+    "config": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": 10,
+      "jsonAssertions": [
+        {
+          "path": "$.ok",
+          "equals": true
+        },
+        {
+          "path": "$.missing",
+          "operator": "equals",
+          "value": 3
+        }
+      ],
+      "responseSchema": {
+        "type": "object",
+        "required": ["ok"]
+      },
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    },
+    "expected": [
+      {
+        "kind": "status",
+        "label": "HTTP status",
+        "passed": false,
+        "message": "Expected HTTP 200, received 503"
+      },
+      {
+        "kind": "latency",
+        "label": "Response time",
+        "passed": false,
+        "message": "Response exceeded 10 ms"
+      },
+      {
+        "kind": "json",
+        "label": "$.ok · equals",
+        "passed": false,
+        "message": "JSON assertion failed at $.ok: Field is missing"
+      },
+      {
+        "kind": "json",
+        "label": "$.missing · equals",
+        "passed": false,
+        "message": "JSON assertion failed at $.missing: Field is missing"
+      },
+      {
+        "kind": "schema",
+        "label": "JSON Schema",
+        "passed": false,
+        "message": "JSON Schema validation failed (required)"
+      }
+    ]
+  },
+  {
+    "name": "invalid JSON",
+    "patch": {
+      "jsonAssertions": [
+        {
+          "path": "$",
+          "operator": "exists"
+        }
+      ],
+      "responseSchema": true
+    },
+    "status": 200,
+    "duration": 1,
+    "headers": {},
+    "body": "invalid",
+    "config": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$",
+          "operator": "exists"
+        }
+      ],
+      "responseSchema": true,
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    },
+    "expected": [
+      {
+        "kind": "status",
+        "label": "HTTP status",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "json",
+        "label": "$ · exists",
+        "passed": false,
+        "message": "Response is not valid JSON"
+      },
+      {
+        "kind": "schema",
+        "label": "JSON Schema",
+        "passed": false,
+        "message": "Response is not valid JSON"
+      }
+    ]
+  },
+  {
+    "name": "explicit false schema",
+    "patch": {
+      "responseSchema": false
+    },
+    "status": 200,
+    "duration": 1,
+    "headers": {},
+    "body": "{}",
+    "config": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [],
+      "responseSchema": false,
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    },
+    "expected": [
+      {
+        "kind": "status",
+        "label": "HTTP status",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "schema",
+        "label": "JSON Schema",
+        "passed": false,
+        "message": "JSON Schema validation failed (false schema)"
+      }
+    ]
+  },
+  {
+    "name": "operator exists true",
+    "patch": {
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "exists"
+        }
+      ]
+    },
+    "status": 200,
+    "duration": 1,
+    "headers": {},
+    "body": "{\"test\":true}",
+    "config": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "exists"
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    },
+    "expected": [
+      {
+        "kind": "status",
+        "label": "HTTP status",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "json",
+        "label": "$.test · exists",
+        "passed": true,
+        "message": "Passed"
+      }
+    ]
+  },
+  {
+    "name": "operator exists false",
+    "patch": {
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "exists"
+        }
+      ]
+    },
+    "status": 200,
+    "duration": 1,
+    "headers": {},
+    "body": "{\"test\":false}",
+    "config": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "exists"
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    },
+    "expected": [
+      {
+        "kind": "status",
+        "label": "HTTP status",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "json",
+        "label": "$.test · exists",
+        "passed": true,
+        "message": "Passed"
+      }
+    ]
+  },
+  {
+    "name": "operator notExists true",
+    "patch": {
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "notExists"
+        }
+      ]
+    },
+    "status": 200,
+    "duration": 1,
+    "headers": {},
+    "body": "{\"test\":true}",
+    "config": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "notExists"
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    },
+    "expected": [
+      {
+        "kind": "status",
+        "label": "HTTP status",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "json",
+        "label": "$.test · notExists",
+        "passed": false,
+        "message": "JSON assertion failed at $.test: Field exists"
+      }
+    ]
+  },
+  {
+    "name": "operator notExists false",
+    "patch": {
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "notExists"
+        }
+      ]
+    },
+    "status": 200,
+    "duration": 1,
+    "headers": {},
+    "body": "{\"test\":false}",
+    "config": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "notExists"
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    },
+    "expected": [
+      {
+        "kind": "status",
+        "label": "HTTP status",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "json",
+        "label": "$.test · notExists",
+        "passed": false,
+        "message": "JSON assertion failed at $.test: Field exists"
+      }
+    ]
+  },
+  {
+    "name": "operator equals true",
+    "patch": {
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "equals",
+          "value": true
+        }
+      ]
+    },
+    "status": 200,
+    "duration": 1,
+    "headers": {},
+    "body": "{\"test\":true}",
+    "config": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "equals",
+          "value": true
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    },
+    "expected": [
+      {
+        "kind": "status",
+        "label": "HTTP status",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "json",
+        "label": "$.test · equals",
+        "passed": true,
+        "message": "Passed"
+      }
+    ]
+  },
+  {
+    "name": "operator equals false",
+    "patch": {
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "equals",
+          "value": true
+        }
+      ]
+    },
+    "status": 200,
+    "duration": 1,
+    "headers": {},
+    "body": "{\"test\":false}",
+    "config": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "equals",
+          "value": true
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    },
+    "expected": [
+      {
+        "kind": "status",
+        "label": "HTTP status",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "json",
+        "label": "$.test · equals",
+        "passed": false,
+        "message": "JSON assertion failed at $.test: Value did not match the condition"
+      }
+    ]
+  },
+  {
+    "name": "operator notEquals true",
+    "patch": {
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "notEquals",
+          "value": true
+        }
+      ]
+    },
+    "status": 200,
+    "duration": 1,
+    "headers": {},
+    "body": "{\"test\":true}",
+    "config": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "notEquals",
+          "value": true
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    },
+    "expected": [
+      {
+        "kind": "status",
+        "label": "HTTP status",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "json",
+        "label": "$.test · notEquals",
+        "passed": false,
+        "message": "JSON assertion failed at $.test: Value did not match the condition"
+      }
+    ]
+  },
+  {
+    "name": "operator notEquals false",
+    "patch": {
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "notEquals",
+          "value": true
+        }
+      ]
+    },
+    "status": 200,
+    "duration": 1,
+    "headers": {},
+    "body": "{\"test\":false}",
+    "config": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "notEquals",
+          "value": true
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    },
+    "expected": [
+      {
+        "kind": "status",
+        "label": "HTTP status",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "json",
+        "label": "$.test · notEquals",
+        "passed": true,
+        "message": "Passed"
+      }
+    ]
+  },
+  {
+    "name": "operator contains true",
+    "patch": {
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "contains",
+          "value": "ok"
+        }
+      ]
+    },
+    "status": 200,
+    "duration": 1,
+    "headers": {},
+    "body": "{\"test\":\"okay\"}",
+    "config": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "contains",
+          "value": "ok"
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    },
+    "expected": [
+      {
+        "kind": "status",
+        "label": "HTTP status",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "json",
+        "label": "$.test · contains",
+        "passed": true,
+        "message": "Passed"
+      }
+    ]
+  },
+  {
+    "name": "operator contains false",
+    "patch": {
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "contains",
+          "value": "ok"
+        }
+      ]
+    },
+    "status": 200,
+    "duration": 1,
+    "headers": {},
+    "body": "{\"test\":\"bad\"}",
+    "config": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "contains",
+          "value": "ok"
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    },
+    "expected": [
+      {
+        "kind": "status",
+        "label": "HTTP status",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "json",
+        "label": "$.test · contains",
+        "passed": false,
+        "message": "JSON assertion failed at $.test: Value did not match the condition"
+      }
+    ]
+  },
+  {
+    "name": "operator startsWith true",
+    "patch": {
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "startsWith",
+          "value": "ok"
+        }
+      ]
+    },
+    "status": 200,
+    "duration": 1,
+    "headers": {},
+    "body": "{\"test\":\"okay\"}",
+    "config": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "startsWith",
+          "value": "ok"
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    },
+    "expected": [
+      {
+        "kind": "status",
+        "label": "HTTP status",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "json",
+        "label": "$.test · startsWith",
+        "passed": true,
+        "message": "Passed"
+      }
+    ]
+  },
+  {
+    "name": "operator startsWith false",
+    "patch": {
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "startsWith",
+          "value": "ok"
+        }
+      ]
+    },
+    "status": 200,
+    "duration": 1,
+    "headers": {},
+    "body": "{\"test\":\"bad\"}",
+    "config": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "startsWith",
+          "value": "ok"
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    },
+    "expected": [
+      {
+        "kind": "status",
+        "label": "HTTP status",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "json",
+        "label": "$.test · startsWith",
+        "passed": false,
+        "message": "JSON assertion failed at $.test: Value did not match the condition"
+      }
+    ]
+  },
+  {
+    "name": "operator endsWith true",
+    "patch": {
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "endsWith",
+          "value": "ok"
+        }
+      ]
+    },
+    "status": 200,
+    "duration": 1,
+    "headers": {},
+    "body": "{\"test\":\"okay\"}",
+    "config": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "endsWith",
+          "value": "ok"
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    },
+    "expected": [
+      {
+        "kind": "status",
+        "label": "HTTP status",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "json",
+        "label": "$.test · endsWith",
+        "passed": false,
+        "message": "JSON assertion failed at $.test: Value did not match the condition"
+      }
+    ]
+  },
+  {
+    "name": "operator endsWith false",
+    "patch": {
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "endsWith",
+          "value": "ok"
+        }
+      ]
+    },
+    "status": 200,
+    "duration": 1,
+    "headers": {},
+    "body": "{\"test\":\"bad\"}",
+    "config": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "endsWith",
+          "value": "ok"
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    },
+    "expected": [
+      {
+        "kind": "status",
+        "label": "HTTP status",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "json",
+        "label": "$.test · endsWith",
+        "passed": false,
+        "message": "JSON assertion failed at $.test: Value did not match the condition"
+      }
+    ]
+  },
+  {
+    "name": "operator gt true",
+    "patch": {
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "gt",
+          "value": 2
+        }
+      ]
+    },
+    "status": 200,
+    "duration": 1,
+    "headers": {},
+    "body": "{\"test\":3}",
+    "config": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "gt",
+          "value": 2
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    },
+    "expected": [
+      {
+        "kind": "status",
+        "label": "HTTP status",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "json",
+        "label": "$.test · gt",
+        "passed": true,
+        "message": "Passed"
+      }
+    ]
+  },
+  {
+    "name": "operator gt false",
+    "patch": {
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "gt",
+          "value": 2
+        }
+      ]
+    },
+    "status": 200,
+    "duration": 1,
+    "headers": {},
+    "body": "{\"test\":1}",
+    "config": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "gt",
+          "value": 2
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    },
+    "expected": [
+      {
+        "kind": "status",
+        "label": "HTTP status",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "json",
+        "label": "$.test · gt",
+        "passed": false,
+        "message": "JSON assertion failed at $.test: Value did not match the condition"
+      }
+    ]
+  },
+  {
+    "name": "operator gte true",
+    "patch": {
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "gte",
+          "value": 2
+        }
+      ]
+    },
+    "status": 200,
+    "duration": 1,
+    "headers": {},
+    "body": "{\"test\":3}",
+    "config": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "gte",
+          "value": 2
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    },
+    "expected": [
+      {
+        "kind": "status",
+        "label": "HTTP status",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "json",
+        "label": "$.test · gte",
+        "passed": true,
+        "message": "Passed"
+      }
+    ]
+  },
+  {
+    "name": "operator gte false",
+    "patch": {
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "gte",
+          "value": 2
+        }
+      ]
+    },
+    "status": 200,
+    "duration": 1,
+    "headers": {},
+    "body": "{\"test\":1}",
+    "config": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "gte",
+          "value": 2
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    },
+    "expected": [
+      {
+        "kind": "status",
+        "label": "HTTP status",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "json",
+        "label": "$.test · gte",
+        "passed": false,
+        "message": "JSON assertion failed at $.test: Value did not match the condition"
+      }
+    ]
+  },
+  {
+    "name": "operator lt true",
+    "patch": {
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "lt",
+          "value": 2
+        }
+      ]
+    },
+    "status": 200,
+    "duration": 1,
+    "headers": {},
+    "body": "{\"test\":3}",
+    "config": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "lt",
+          "value": 2
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    },
+    "expected": [
+      {
+        "kind": "status",
+        "label": "HTTP status",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "json",
+        "label": "$.test · lt",
+        "passed": false,
+        "message": "JSON assertion failed at $.test: Value did not match the condition"
+      }
+    ]
+  },
+  {
+    "name": "operator lt false",
+    "patch": {
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "lt",
+          "value": 2
+        }
+      ]
+    },
+    "status": 200,
+    "duration": 1,
+    "headers": {},
+    "body": "{\"test\":1}",
+    "config": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "lt",
+          "value": 2
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    },
+    "expected": [
+      {
+        "kind": "status",
+        "label": "HTTP status",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "json",
+        "label": "$.test · lt",
+        "passed": true,
+        "message": "Passed"
+      }
+    ]
+  },
+  {
+    "name": "operator lte true",
+    "patch": {
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "lte",
+          "value": 2
+        }
+      ]
+    },
+    "status": 200,
+    "duration": 1,
+    "headers": {},
+    "body": "{\"test\":3}",
+    "config": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "lte",
+          "value": 2
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    },
+    "expected": [
+      {
+        "kind": "status",
+        "label": "HTTP status",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "json",
+        "label": "$.test · lte",
+        "passed": false,
+        "message": "JSON assertion failed at $.test: Value did not match the condition"
+      }
+    ]
+  },
+  {
+    "name": "operator lte false",
+    "patch": {
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "lte",
+          "value": 2
+        }
+      ]
+    },
+    "status": 200,
+    "duration": 1,
+    "headers": {},
+    "body": "{\"test\":1}",
+    "config": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "lte",
+          "value": 2
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    },
+    "expected": [
+      {
+        "kind": "status",
+        "label": "HTTP status",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "json",
+        "label": "$.test · lte",
+        "passed": true,
+        "message": "Passed"
+      }
+    ]
+  },
+  {
+    "name": "operator length true",
+    "patch": {
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "length",
+          "value": 2
+        }
+      ]
+    },
+    "status": 200,
+    "duration": 1,
+    "headers": {},
+    "body": "{\"test\":[1,2]}",
+    "config": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "length",
+          "value": 2
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    },
+    "expected": [
+      {
+        "kind": "status",
+        "label": "HTTP status",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "json",
+        "label": "$.test · length",
+        "passed": true,
+        "message": "Passed"
+      }
+    ]
+  },
+  {
+    "name": "operator length false",
+    "patch": {
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "length",
+          "value": 2
+        }
+      ]
+    },
+    "status": 200,
+    "duration": 1,
+    "headers": {},
+    "body": "{\"test\":[]}",
+    "config": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [
+        {
+          "path": "$.test",
+          "operator": "length",
+          "value": 2
+        }
+      ],
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    },
+    "expected": [
+      {
+        "kind": "status",
+        "label": "HTTP status",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "json",
+        "label": "$.test · length",
+        "passed": false,
+        "message": "JSON assertion failed at $.test: Array length did not match"
+      }
+    ]
+  },
+  {
+    "name": "schema keyword 0",
+    "patch": {
+      "responseSchema": {
+        "type": "number",
+        "minimum": 3
+      }
+    },
+    "status": 200,
+    "duration": 1,
+    "headers": {},
+    "body": "2",
+    "config": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [],
+      "responseSchema": {
+        "type": "number",
+        "minimum": 3
+      },
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    },
+    "expected": [
+      {
+        "kind": "status",
+        "label": "HTTP status",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "schema",
+        "label": "JSON Schema",
+        "passed": false,
+        "message": "JSON Schema validation failed (minimum)"
+      }
+    ]
+  },
+  {
+    "name": "schema keyword 1",
+    "patch": {
+      "responseSchema": {
+        "type": "number",
+        "maximum": 0
+      }
+    },
+    "status": 200,
+    "duration": 1,
+    "headers": {},
+    "body": "2",
+    "config": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [],
+      "responseSchema": {
+        "type": "number",
+        "maximum": 0
+      },
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    },
+    "expected": [
+      {
+        "kind": "status",
+        "label": "HTTP status",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "schema",
+        "label": "JSON Schema",
+        "passed": false,
+        "message": "JSON Schema validation failed (maximum)"
+      }
+    ]
+  },
+  {
+    "name": "schema keyword 2",
+    "patch": {
+      "responseSchema": {
+        "type": "string",
+        "minLength": 3
+      }
+    },
+    "status": 200,
+    "duration": 1,
+    "headers": {},
+    "body": "\"a\"",
+    "config": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [],
+      "responseSchema": {
+        "type": "string",
+        "minLength": 3
+      },
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    },
+    "expected": [
+      {
+        "kind": "status",
+        "label": "HTTP status",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "schema",
+        "label": "JSON Schema",
+        "passed": false,
+        "message": "JSON Schema validation failed (minLength)"
+      }
+    ]
+  },
+  {
+    "name": "schema keyword 3",
+    "patch": {
+      "responseSchema": {
+        "type": "string",
+        "maxLength": 0
+      }
+    },
+    "status": 200,
+    "duration": 1,
+    "headers": {},
+    "body": "\"a\"",
+    "config": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [],
+      "responseSchema": {
+        "type": "string",
+        "maxLength": 0
+      },
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    },
+    "expected": [
+      {
+        "kind": "status",
+        "label": "HTTP status",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "schema",
+        "label": "JSON Schema",
+        "passed": false,
+        "message": "JSON Schema validation failed (maxLength)"
+      }
+    ]
+  },
+  {
+    "name": "schema keyword 4",
+    "patch": {
+      "responseSchema": {
+        "type": "array",
+        "minItems": 3
+      }
+    },
+    "status": 200,
+    "duration": 1,
+    "headers": {},
+    "body": "[1]",
+    "config": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [],
+      "responseSchema": {
+        "type": "array",
+        "minItems": 3
+      },
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    },
+    "expected": [
+      {
+        "kind": "status",
+        "label": "HTTP status",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "schema",
+        "label": "JSON Schema",
+        "passed": false,
+        "message": "JSON Schema validation failed (minItems)"
+      }
+    ]
+  },
+  {
+    "name": "schema keyword 5",
+    "patch": {
+      "responseSchema": {
+        "type": "array",
+        "maxItems": 0
+      }
+    },
+    "status": 200,
+    "duration": 1,
+    "headers": {},
+    "body": "[1]",
+    "config": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [],
+      "responseSchema": {
+        "type": "array",
+        "maxItems": 0
+      },
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    },
+    "expected": [
+      {
+        "kind": "status",
+        "label": "HTTP status",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "schema",
+        "label": "JSON Schema",
+        "passed": false,
+        "message": "JSON Schema validation failed (maxItems)"
+      }
+    ]
+  },
+  {
+    "name": "schema keyword 6",
+    "patch": {
+      "responseSchema": {
+        "enum": ["a"]
+      }
+    },
+    "status": 200,
+    "duration": 1,
+    "headers": {},
+    "body": "{\"extra\":true}",
+    "config": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [],
+      "responseSchema": {
+        "enum": ["a"]
+      },
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    },
+    "expected": [
+      {
+        "kind": "status",
+        "label": "HTTP status",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "schema",
+        "label": "JSON Schema",
+        "passed": false,
+        "message": "JSON Schema validation failed (enum)"
+      }
+    ]
+  },
+  {
+    "name": "schema keyword 7",
+    "patch": {
+      "responseSchema": {
+        "type": "object",
+        "required": ["missing"]
+      }
+    },
+    "status": 200,
+    "duration": 1,
+    "headers": {},
+    "body": "{\"extra\":true}",
+    "config": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [],
+      "responseSchema": {
+        "type": "object",
+        "required": ["missing"]
+      },
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    },
+    "expected": [
+      {
+        "kind": "status",
+        "label": "HTTP status",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "schema",
+        "label": "JSON Schema",
+        "passed": false,
+        "message": "JSON Schema validation failed (required)"
+      }
+    ]
+  },
+  {
+    "name": "schema keyword 8",
+    "patch": {
+      "responseSchema": {
+        "type": "object",
+        "additionalProperties": false
+      }
+    },
+    "status": 200,
+    "duration": 1,
+    "headers": {},
+    "body": "{\"extra\":true}",
+    "config": {
+      "name": "Example",
+      "url": "https://example.com/health",
+      "method": "GET",
+      "headers": {},
+      "body": "",
+      "intervalSeconds": 60,
+      "timeoutMs": 10000,
+      "expectedStatus": 200,
+      "maxResponseMs": null,
+      "jsonAssertions": [],
+      "responseSchema": {
+        "type": "object",
+        "additionalProperties": false
+      },
+      "failureThreshold": 2,
+      "recoveryThreshold": 1,
+      "public": false
+    },
+    "expected": [
+      {
+        "kind": "status",
+        "label": "HTTP status",
+        "passed": true,
+        "message": "Passed"
+      },
+      {
+        "kind": "schema",
+        "label": "JSON Schema",
+        "passed": false,
+        "message": "JSON Schema validation failed (additionalProperties)"
+      }
+    ]
+  }
+]

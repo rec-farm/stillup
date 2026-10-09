@@ -266,7 +266,7 @@ export const docs: Doc[] = [
           'For a self-hosted installation, set STATUS_PAGE_DOMAINS on the web service to a comma-separated list such as status.example.com,status.example.net, then restart the web service. Keep your dashboard on a separate hostname. The configured public hostnames serve the status page at / and /status and allow only the read-only public status API and required static assets.',
           'Create a CNAME to your ingress hostname (or A/AAAA records to its IP), register the hostname with your hosting provider, and provision a TLS certificate. A CNAME alone does not configure HTTPS. StillUp does not provision DNS records, verify ownership, or issue certificates: those are managed by your ingress or hosting provider.',
           'A CDN can proxy the domain if it preserves the visitor’s original Host header to StillUp. Use HTTPS from the CDN to the origin with a valid certificate, strip untrusted forwarded headers at the ingress, and do not rewrite Host to the dashboard hostname. Only expose configured hostnames at your ingress; keep the API port private.',
-          'Bypass CDN caching for /, /status, and /api/v1/public/status so incident updates stay current. Do not cache error responses or use a stale-on-error page that claims everything is operational. Hashed /_next/static assets can be cached. Check that the public root loads, the status API updates, and /login and /api/v1/status-management return 404 on the public hostname.',
+          'Bypass CDN caching for /, /status, and /api/v1/public/status so incident updates stay current. Do not cache error responses or use a stale-on-error page that claims everything is operational. Hashed /assets assets can be cached. Check that the public root loads, the status API updates, and /login and /api/v1/status-management return 404 on the public hostname.',
           'This remains one status page per installation, shared across its configured domains. A custom domain or CDN does not make the monitoring installation independent: if its origin fails, live status observations can become unavailable.',
         ],
         code: 'STATUS_PAGE_DOMAINS=status.example.com,status.example.net',
@@ -313,7 +313,7 @@ export const docs: Doc[] = [
         id: 'setup',
         title: 'Start from the checkout',
         paragraphs: [
-          'This release includes a workspace SDK and CLI; they are not published to npm yet. Use Node.js 24 and pnpm 11.9.0, run pnpm install in your StillUp checkout, and copy examples/monitoring/stillup.config.ts for your project.',
+          'This release includes a workspace SDK and CLI; they are not published to npm yet. Use Node.js 24 and pnpm 12.6.0, run pnpm install in your StillUp checkout, and copy examples/monitoring/stillup.config.ts for your project.',
           'TypeScript and JavaScript configuration files execute locally in the CLI process. Only validated JSON is sent to the server. Use trusted config files; no user code is evaluated in the API or probes. JSON files are also supported.',
         ],
         language: 'typescript',
@@ -781,14 +781,14 @@ export const docs: Doc[] = [
         id: 'local',
         title: 'Run locally',
         paragraphs: [
-          'Use Node.js 24 LTS, pnpm 11.9.0, and Docker Compose. From your checkout, install dependencies and create a private environment file. Generate a strong ADMIN_TOKEN and put it in .env before starting.',
+          'Use Rust 1.92 or later, Node.js 24 LTS, pnpm 12.6.0, and Docker Compose. From your checkout, install dependencies and create a private environment file. Generate a strong ADMIN_TOKEN and put it in .env before starting.',
         ],
         language: 'shell',
-        code: 'pnpm install\ncp .env.example .env\nopenssl rand -hex 32\n# Set ADMIN_TOKEN in .env, then:\ndocker compose up -d db\npnpm dev',
+        code: 'pnpm install\ncp .env.example .env\nopenssl rand -hex 32\n# Set ADMIN_TOKEN in .env, then:\ndocker compose up -d db\n# Run each in its own terminal (use herdr-run inside Herdr):\npnpm dev:api\npnpm dev:worker\npnpm dev',
         steps: [
-          'Open http://localhost:3000 and sign in with your administrator token.',
-          'The development command starts the web application, API, and worker. Database migrations run automatically under a lock.',
-          'Public status is at http://localhost:3000/status. No checks are public until explicitly selected.',
+          'Open http://stillup.localhost:1355 and sign in with your administrator token. For plain port 3000, use PORTLESS=0 pnpm dev and set APP_ORIGIN=http://localhost:3000.',
+          'The three commands start Vite, the Rust API, and the Rust worker. Database migrations run automatically under a lock.',
+          'Public status is at /status on the same origin. No checks are public until explicitly selected.',
         ],
       },
       {
@@ -796,7 +796,7 @@ export const docs: Doc[] = [
         title: 'Deploy with Docker',
         paragraphs: [
           'Set strong POSTGRES_PASSWORD and ADMIN_TOKEN values and set APP_ORIGIN to your actual browser-facing HTTPS origin. Put a TLS reverse proxy in front of the loopback-bound web port 3000. Keep the API and database private.',
-          'Keep a backup of PostgreSQL, environment configuration, and the separate secrets encryption key. Stop older API and worker processes when upgrading, then restart all services on the same version so migrations and queue behavior agree.',
+          'Keep a backup of PostgreSQL, environment configuration, and the separate secrets encryption key. When replacing the TypeScript runtime, stop every old API and worker writer first, preserve database/probe volumes, then run the native migrate and handoff commands before starting services. Handoff refuses active legacy leases; wait for expiry and retry. The README includes the exact upgrade sequence.',
         ],
         language: 'shell',
         code: 'docker compose --profile app up --build -d',

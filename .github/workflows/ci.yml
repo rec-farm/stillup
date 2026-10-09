@@ -4,6 +4,9 @@ on:
   pull_request:
 permissions:
   contents: read
+concurrency:
+  group: ci-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -34,5 +37,37 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm test:integration
+      - run: pnpm exec tsx scripts/generate-contract-fixtures.ts
+      - run: git diff --exit-code -- backend/tests/fixtures/check-contracts.json backend/tests/fixtures/assertion-contracts.json backend/tests/fixtures/network-contracts.json backend/tests/fixtures/status-contracts.json backend/tests/fixtures/status-date-contracts.json backend/tests/fixtures/code-contracts.json backend/tests/fixtures/canonical-contracts.json backend/tests/fixtures/route-integer-contracts.json
+      - run: rustup toolchain install 1.92.0 --profile minimal --component clippy,rustfmt
+      - run: cargo +1.92.0 fmt --manifest-path backend/Cargo.toml --check
+      - run: cargo +1.92.0 clippy --manifest-path backend/Cargo.toml --all-targets --locked -- -D warnings
+      - run: cargo +1.92.0 test --manifest-path backend/Cargo.toml --locked
+      - run: cargo +1.92.0 test --manifest-path backend/Cargo.toml --locked --test runtime -- --ignored
+        env:
+          TEST_DATABASE_URL: postgres://stillup:stillup@127.0.0.1:5437/stillup
       - run: pnpm build
+        env:
+          RUSTUP_TOOLCHAIN: 1.92.0
+      - run: docker build --target api -t stillup-api:ci .
       - run: docker build --target probe -t stillup-probe:ci .
+      - name: Verify native container runtime
+        timeout-minutes: 2
+        run: |
+          set -eu
+          docker run --rm --entrypoint sh stillup-api:ci -ec 'test "$(id -u)" = 1000; test -x /usr/local/bin/stillup-api; test -f /app/client/index.html; ! command -v node; ! command -v npm; ! command -v pnpm'
+          docker run --rm --entrypoint sh stillup-probe:ci -ec 'test -x /usr/local/bin/stillup-probe; test -x /usr/local/bin/stillup-probe-entrypoint; test "$(stat -c %a /data)" = 700; ! command -v node; ! command -v npm; ! command -v pnpm'
+          trap 'docker logs stillup-native-ci; docker rm -f stillup-native-ci' EXIT
+          docker run -d --name stillup-native-ci --network host \
+            -e DATABASE_URL=postgres://stillup:stillup@127.0.0.1:5437/stillup \
+            -e ADMIN_TOKEN=ci-only-token-012345678901234567890123456789 \
+            -e APP_ORIGIN=http://127.0.0.1:3001 stillup-api:ci
+          ready=false
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:3001/health >/dev/null; then ready=true; break; fi
+            sleep 1
+          done
+          test "$ready" = true
+          curl --fail --silent http://127.0.0.1:3001/login | grep -q 'data-product="stillup"'
+          curl --fail --silent http://127.0.0.1:3001/docs | grep -q 'data-prerendered="docs"'
+          curl --fail --silent -H 'Authorization: Bearer ci-only-token-012345678901234567890123456789' http://127.0.0.1:3001/v1/dashboard | python3 -c 'import json,sys; assert isinstance(json.load(sys.stdin)["monitors"], list)'

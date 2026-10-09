@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-product="stillup">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Open-source API monitoring. Know before your users do." />
+    <meta name="robots" content="noindex,nofollow" />
+    <link rel="icon" href="/brand/stillup-favicon.svg" />
+    <title>StillUp · API monitoring</title>
+    <script>
+      try {
+        const media = matchMedia('(prefers-color-scheme: light)');
+        function apply() {
+          const saved = document.cookie.match(/(?:^|; )stillup-theme=([^;]*)/)?.[1];
+          document.documentElement.dataset.theme =
+            saved === 'light' || (saved === 'system' && media.matches) ? 'light' : 'dark';
+        }
+        apply();
+        media.addEventListener('change', apply);
+      } catch {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>StillUp requires JavaScript to display live monitoring data.</noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

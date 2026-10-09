@@ -5,3 +5,6 @@ artifacts
 
 # Next.js regenerates these declarations during dev/build.
 **/next-env.d.ts
+
+backend/target/
+**/dist/

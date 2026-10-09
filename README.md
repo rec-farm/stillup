@@ -4,7 +4,7 @@
 
 Know before your users do.
 
-Self-hosted HTTP checks, configurable assertions, incident detection, webhook alerts, and a public status page. Built with TypeScript, Next.js, Fastify, PostgreSQL, Drizzle, and pg-boss. No browsers are required to execute checks.
+Self-hosted HTTP checks, configurable assertions, incident detection, webhook alerts, and a public status page. Built with React, Vite, Rust, Axum, and PostgreSQL. No browsers are required to execute checks.
 
 ## Current milestone
 
@@ -35,7 +35,7 @@ Code-owned checks have stable project/check IDs, transactional apply with stale-
 
 ## Run locally
 
-Requirements: Node.js 24 LTS, pnpm 11.9.0, and Docker Compose.
+Requirements: Rust 1.92 or later, Node.js 24 LTS, pnpm 12.6.0, and Docker Compose. Node is used for frontend/client tooling.
 
 ```sh
 pnpm install
@@ -47,10 +47,14 @@ Put the generated value in `ADMIN_TOKEN` in `.env`. Keep this file private.
 
 ```sh
 docker compose up -d db
+pnpm dev:api
+# In a second terminal:
+pnpm dev:worker
+# In a third terminal:
 pnpm dev
 ```
 
-Open **http://stillup.localhost:1355** and sign in with your administrator token. The development command starts the web application, API, and worker. The web app runs behind [portless](https://github.com/vercel-labs/portless) (`npm install -g portless`); run `PORTLESS=0 pnpm dev` and set `APP_ORIGIN=http://localhost:3000` to use the plain port instead. Migrations apply automatically under a database lock. The default database port is 5437 to avoid the common local PostgreSQL port.
+Open **http://stillup.localhost:1355** and sign in with your administrator token. The three commands start the native API, native worker, and Vite frontend. In Herdr, run each persistent command through `herdr-run`. The web app runs behind [portless](https://github.com/vercel-labs/portless) (`npm install -g portless`); run `PORTLESS=0 pnpm dev` and set `APP_ORIGIN=http://localhost:3000` to use the plain port instead. Migrations apply automatically under a database lock. The default database port is 5437 to avoid the common local PostgreSQL port.
 
 Public status: **http://stillup.localhost:1355/status**. No checks are published until you explicitly select that option when creating one.
 
@@ -68,7 +72,30 @@ Create `.env` as above, set a strong `POSTGRES_PASSWORD` and `ADMIN_TOKEN`, and 
 docker compose --profile app up --build -d
 ```
 
-The web port is bound to loopback (`STILLUP_WEB_PORT`, default 3000, sets the host port). Put a TLS reverse proxy in front of it for remote access, and keep the API and database private. `APP_ORIGIN=https://...` enables secure session cookies and controls allowed browser write origins. The API requires a token independently of the frontend.
+The Rust API serves the Vite frontend and both `/api/v1` and `/v1` endpoints from one process. The worker uses the same native image with the `worker` command; production images contain no Node runtime. The web port is bound to loopback (`STILLUP_WEB_PORT`, default 3000, sets the host port). Put a TLS reverse proxy in front of it for remote access, and keep the API and database private. `APP_ORIGIN=https://...` enables secure session cookies and controls allowed browser write origins. The API requires a token independently of the frontend.
+
+### Upgrade from the TypeScript runtime
+
+Back up PostgreSQL before upgrading. Stop every old API and worker writer, including any development processes outside Compose, before starting the native worker. Preserve the `postgres-data` volume and remote probe identity volumes.
+
+For an existing Compose deployment, stop the old services before replacing their configuration:
+
+```sh
+docker compose --profile app stop api worker web
+```
+
+After checking out the native deployment, build and apply the embedded migrations and queue handoff:
+
+```sh
+docker compose build api worker
+docker compose run --rm api migrate
+docker compose run --rm api handoff
+docker compose --profile app up -d --remove-orphans
+```
+
+The handoff transaction retains pg-boss job IDs, scheduled times and retry counts, and marks transferred legacy rows complete for audit. It refuses unexpired active claims: wait for those leases to expire and rerun `handoff`. Repeating a successful handoff is safe. Worker startup also performs the handoff before scheduling. Do not restart old writers after transfer.
+
+The old `web` service is replaced by static assets inside the API image. The existing loopback web port remains the entry point; update custom reverse proxies to target the API on port 3001 inside the Compose network. Remote probes can be upgraded separately with the `probe` image target; their existing `identity.json` and `/data` volume remain compatible. API, worker and probe receive sixty seconds to drain on shutdown.
 
 ### Sign in with Handstamp (optional)
 
@@ -123,7 +150,7 @@ The visual editor supports JSON equality (string, number, boolean, or null), ine
 
 The API accepts the original `{ "path": "$.status", "equals": "ok" }` format and operator rules such as `{ "path": "$.count", "operator": "gte", "value": 1 }`. Configure response headers with `headerAssertions`, for example `[{ "name": "content-type", "operator": "contains", "value": "json" }]`. Each list allows 20 rules.
 
-Optional `responseSchema` uses a bounded JSON Schema draft-07 subset validated with Ajv on the worker: `type`, `properties`, `required`, boolean `additionalProperties`, `items`, scalar `enum`, `minimum`, `maximum`, `minLength`, `maxLength`, `minItems`, `maxItems`, `title`, and `description`. Boolean schemas are supported. Schemas are limited to 16 KiB and eight nested levels; references, patterns, formats, and composition keywords are rejected. The schema editor uses JSON; field and header rules use visual controls. Omit `responseSchema` to disable it.
+Optional `responseSchema` uses a bounded JSON Schema draft-07 subset validated by the native worker: `type`, `properties`, `required`, boolean `additionalProperties`, `items`, scalar `enum`, `minimum`, `maximum`, `minLength`, `maxLength`, `minItems`, `maxItems`, `title`, and `description`. Boolean schemas are supported. Schemas are limited to 16 KiB and eight nested levels; references, patterns, formats, and composition keywords are rejected. The schema editor uses JSON; field and header rules use visual controls. Omit `responseSchema` to disable it.
 
 New runs store per-assertion pass/fail results and redacted explanations under `assertions`. Responses and actual values are never stored; schema diagnostics identify the failed keyword without saving response paths or property names. Invalid JSON fails all JSON-dependent rules. Historical runs retain their original summary and have an empty assertion list. Migration `003_assertion_results.sql` adds this field automatically at startup; restart all API and worker processes together when upgrading.
 
@@ -208,17 +235,21 @@ Check input contracts live in [`packages/core/src/index.ts`](packages/core/src/i
 pnpm typecheck
 pnpm test
 pnpm test:integration
+pnpm test:rust
+# Supply TEST_DATABASE_URL pointing at the test PostgreSQL instance:
+pnpm test:rust:integration
 pnpm build
 pnpm format:check
 ```
 
-Integration tests require the local PostgreSQL service and `.env`. They create and remove their own uniquely named database; the configured development database is not reseeded. Tests exercise real queued execution, incident thresholds, webhook delivery, recovery, authentication, privacy, and pause behavior. They also verify migration backfill, conflicting edits, queued-job invalidation, in-flight edit/archive serialization, historical run attribution, and restoration.
+Legacy parity integration tests require the local PostgreSQL service and `.env`. Native integration tests require explicit `TEST_DATABASE_URL` and create disposable uniquely named schemas that are dropped after success. They create and remove their own uniquely named database; the configured development database is not reseeded. Tests exercise real queued execution, incident thresholds, webhook delivery, recovery, authentication, privacy, and pause behavior. They also verify migration backfill, conflicting edits, queued-job invalidation, in-flight edit/archive serialization, historical run attribution, and restoration.
 
 ```text
-apps/web       Dashboard, sign-in, public status, same-origin API gateway
-apps/api       Fastify API, scheduler, HTTP worker, notification worker
-packages/core  Validation, network execution, health rules, shared contracts
-packages/db    PostgreSQL connection, Drizzle schema, SQL migrations
+apps/web       Vite dashboard, sign-in, public status and documentation
+backend        Rust API/static server, scheduler, workers and remote probe
+packages/core  TypeScript client validation and shared contract fixtures
+packages/db    Embedded SQL migration sources
+tests/legacy-* Test-only previous implementation for parity comparisons
 ```
 
 Detailed runs are retained for `RUN_RETENTION_DAYS` (default 30); the worker cleans them hourly. Incidents and configuration revisions are retained. Archiving does not change the run-retention policy. No uptime percentage is advertised until interval-aware aggregation is implemented.
@@ -259,7 +290,7 @@ Open **Manage secrets** to create, replace, enable, or disable named secrets and
 
 Configure `SECRETS_ENCRYPTION_KEY` with a randomly generated 32-byte key encoded as 64 hexadecimal characters (`openssl rand -hex 32`). Supply the same key to the API and workers through the environment or your deployment’s secret manager. Keep it outside PostgreSQL, do not commit it, and keep a secure backup. Losing or replacing this installation key makes existing stored secrets unreadable; changing it is not a credential-rotation procedure. The API refuses writes if its key cannot unlock existing encrypted data. With the key unset, environment-based references still work and stored-secret management is unavailable.
 
-Stored values use AES-256-GCM with a fresh random 12-byte nonce, a 16-byte authentication tag, and the secret name authenticated as additional data through Node’s crypto API. Ciphertext is the only value stored in `managed_secrets`; plaintext and encryption keys are not returned by management APIs. This protects database contents, not a compromised worker that must decrypt credentials to execute checks.
+Stored values use AES-256-GCM with a fresh random 12-byte nonce, a 16-byte authentication tag, and the secret name authenticated as additional data using the existing Node-compatible ciphertext format. Ciphertext is the only value stored in `managed_secrets`; plaintext and encryption keys are not returned by management APIs. This protects database contents, not a compromised worker that must decrypt credentials to execute checks.
 
 Use `{{API_TOKEN}}` in a request header/body and `{{WEBHOOK_URL}}` as a complete webhook destination. References in webhook paths and query strings also work. Substitution is literal: supply the appropriate JSON or URL escaping when embedding a value. References are resolved once, never recursively. Use a full-URL secret when its characters would otherwise need URL escaping.
 

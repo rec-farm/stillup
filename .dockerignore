@@ -7,3 +7,6 @@
 !.env.example
 artifacts
 coverage
+
+**/target
+**/dist

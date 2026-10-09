@@ -1,6 +1,6 @@
 # Monitoring as code
 
-StillUp provides a workspace TypeScript SDK and CLI for declarative HTTP checks. Read the full user guide at `/docs/monitoring-as-code` on your installation. The SDK and CLI are not published to npm yet; run the commands from a StillUp checkout with Node.js 24 and pnpm 11.9.0.
+StillUp provides a workspace TypeScript SDK and CLI for declarative HTTP checks. Read the full user guide at `/docs/monitoring-as-code` on your installation. The SDK and CLI are not published to npm yet; run the commands from a StillUp checkout with Node.js 24 and pnpm 12.6.0.
 
 ## Quickstart
 

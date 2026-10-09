@@ -24,6 +24,11 @@ services:
     environment:
       DATABASE_URL: postgres://stillup:${POSTGRES_PASSWORD:-stillup}@db:5432/stillup
       HOST: 0.0.0.0
+      PORT: 3001
+      CLIENT_DIR: /app/client
+    ports:
+      - '127.0.0.1:${STILLUP_WEB_PORT:-3000}:3001'
+    stop_grace_period: 60s
     depends_on:
       db:
         condition: service_healthy
@@ -33,27 +38,14 @@ services:
     build:
       context: .
       target: api
-    command: ['./node_modules/.bin/tsx', 'src/worker-main.ts']
+    command: ['worker']
     env_file: .env
     environment:
       DATABASE_URL: postgres://stillup:${POSTGRES_PASSWORD:-stillup}@db:5432/stillup
     depends_on:
       db:
         condition: service_healthy
-    restart: unless-stopped
-  web:
-    profiles: [app]
-    build:
-      context: .
-      target: web
-    environment:
-      API_URL: http://api:3001
-      STATUS_PAGE_DOMAINS: ${STATUS_PAGE_DOMAINS:-}
-      HOSTNAME: 0.0.0.0
-      PORT: 3000
-    ports:
-      - '127.0.0.1:${STILLUP_WEB_PORT:-3000}:3000'
-    depends_on: [api]
+    stop_grace_period: 60s
     restart: unless-stopped
 volumes:
   postgres-data:

@@ -17,7 +17,6 @@ export function Illustration({
   return (
     <span className={`illustration ${className}`} aria-hidden="true">
       {(['light', 'dark'] as const).map((tone) => (
-        // eslint-disable-next-line @next/next/no-img-element
         <img
           key={tone}
           className={`illustration-${tone}`}

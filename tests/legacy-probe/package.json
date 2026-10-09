@@ -1,0 +1,14 @@
+{
+  "name": "@stillup/legacy-probe",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc"
+  },
+  "devDependencies": {
+    "@stillup/core": "workspace:*",
+    "tsx": "^4.20.0",
+    "zod": "4.6.2"
+  }
+}

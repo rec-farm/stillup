@@ -8,16 +8,20 @@
     "node": ">=24"
   },
   "scripts": {
-    "dev": "pnpm --parallel --filter './apps/*' dev",
-    "build": "pnpm -r build",
+    "dev": "pnpm --filter @stillup/web dev",
+    "build": "pnpm --filter @stillup/web build && cargo build --manifest-path backend/Cargo.toml --release --locked --bins",
     "typecheck": "pnpm -r typecheck",
-    "test": "vitest run packages/core apps/api/src/oidc-state.test.ts",
-    "db:migrate": "pnpm --filter @stillup/api db:migrate",
-    "check": "pnpm typecheck && pnpm test && pnpm build",
-    "test:integration": "node --env-file=.env ./node_modules/vitest/vitest.mjs run apps/api/src/integration.test.ts",
+    "test": "vitest run packages/core tests/legacy-api/src/oidc-state.test.ts",
+    "db:migrate": "cargo run --manifest-path backend/Cargo.toml --bin stillup-api -- migrate",
+    "check": "pnpm typecheck && pnpm test && pnpm test:rust && pnpm build",
+    "test:integration": "node --env-file=.env ./node_modules/vitest/vitest.mjs run tests/legacy-api/src/integration.test.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "stillup": "tsx apps/cli/src/main.ts"
+    "stillup": "tsx apps/cli/src/main.ts",
+    "test:rust": "cargo test --manifest-path backend/Cargo.toml",
+    "test:rust:integration": "cargo test --manifest-path backend/Cargo.toml --test runtime -- --ignored",
+    "dev:api": "cargo run --manifest-path backend/Cargo.toml --bin stillup-api",
+    "dev:worker": "cargo run --manifest-path backend/Cargo.toml --bin stillup-api -- worker"
   },
   "devDependencies": {
     "typescript": "^6.0.2",

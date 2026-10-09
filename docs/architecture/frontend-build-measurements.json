@@ -1,0 +1,54 @@
+{
+  "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "architecture": "arm64",
+  "node": "v26.10.0",
+  "pnpm": "12.6.0",
+  "method": "One unmeasured warm-up build, followed by repeated frontend production builds; dependencies installed before measurement. Gzip uses Python gzip.compress with mtime=0. Total output bytes include all routes, not a browser navigation payload.",
+  "variants": {
+    "next": {
+      "revision": "30c1b36f5f97236dc79ceff9c8f2e3f3c688407f",
+      "build_seconds": [3.2410918339155614, 3.49370045773685, 3.4204167500138283],
+      "median_build_seconds": 3.4204167500138283,
+      "static_output": {
+        ".js": {
+          "files": 18,
+          "bytes": 1190478,
+          "gzip_bytes": 334886
+        },
+        ".css": {
+          "files": 2,
+          "bytes": 89530,
+          "gzip_bytes": 17193
+        },
+        ".woff2": {
+          "files": 11,
+          "bytes": 311692,
+          "gzip_bytes": 311944
+        }
+      }
+    },
+    "vite": {
+      "revision": "e1a7ec00312c617431b81486a1b7683e48135600",
+      "build_seconds": [0.6666404576972127, 0.6438506660051644, 0.6723497076891363],
+      "median_build_seconds": 0.6666404576972127,
+      "static_output": {
+        ".js": {
+          "files": 12,
+          "bytes": 541277,
+          "gzip_bytes": 152792
+        },
+        ".css": {
+          "files": 2,
+          "bytes": 89367,
+          "gzip_bytes": 17155
+        },
+        ".woff2": {
+          "files": 11,
+          "bytes": 311692,
+          "gzip_bytes": 311944
+        }
+      }
+    }
+  },
+  "recorded_at": "2026-10-05T06:03:11.894110+00:00"
+}
