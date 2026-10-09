@@ -62,25 +62,23 @@ pub fn redact_for_viewer(value: &mut Value) {
     }
 }
 pub const HIDDEN: &str = "[hidden]";
+/// Keeps parameter names but hides every value. String-based, so unparseable URLs such as
+/// those with secret references in the host are covered too.
 fn hide_query(value: &str) -> String {
-    let Ok(mut url) = url::Url::parse(value) else {
+    let Some((base, query)) = value.split_once('?') else {
         return value.to_owned();
     };
-    if url.query().is_none() {
-        return value.to_owned();
-    }
-    let query = url
-        .query_pairs()
-        .map(|(name, _)| {
+    let query = query
+        .split('&')
+        .map(|pair| {
             format!(
                 "{}={HIDDEN}",
-                url::form_urlencoded::byte_serialize(name.as_bytes()).collect::<String>()
+                pair.split_once('=').map_or(pair, |(name, _)| name)
             )
         })
         .collect::<Vec<_>>()
         .join("&");
-    url.set_query(Some(&query));
-    url.into()
+    format!("{base}?{query}")
 }
 
 pub fn is_user_session(value: &str) -> bool {
@@ -439,6 +437,11 @@ mod tests {
             value,
             json!({"monitors":[{"config":{"headers":{"authorization":"[hidden]"},"body":"[hidden]","url":"https://x.io/a?api_key=[hidden]&b=[hidden]"}}],"revisions":[{"config":{"headers":{},"body":""}}]})
         );
+        assert_eq!(
+            hide_query("https://{{HOST}}/x?key={{K}}&raw"),
+            "https://{{HOST}}/x?key=[hidden]&raw=[hidden]"
+        );
+        assert_eq!(hide_query("https://x.io/a"), "https://x.io/a");
         assert!(!viewer_may("POST", "/v1/checks/x/run"));
         assert!(!viewer_may("PATCH", "/v1/checks/x"));
     }
