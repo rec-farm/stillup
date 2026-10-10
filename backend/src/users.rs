@@ -126,16 +126,20 @@ pub async fn legacy_session_current(pool: &PgPool, value: &str) -> Result<bool, 
 async fn create_session(
     connection: &mut sqlx::PgConnection,
     user: Option<Uuid>,
+    subject: &str,
+    sid: Option<&str>,
 ) -> Result<String, sqlx::Error> {
     // Two v4 UUIDs carry 244 random bits from the operating system generator.
     let token = format!("u.{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
     sqlx::query("DELETE FROM user_sessions WHERE expires_at<=now()")
         .execute(&mut *connection)
         .await?;
-    sqlx::query("INSERT INTO user_sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+make_interval(secs=>$3))")
+    sqlx::query("INSERT INTO user_sessions(token_hash,user_id,expires_at,oidc_subject,oidc_sid) VALUES($1,$2,now()+make_interval(secs=>$3),$4,$5)")
         .bind(token_hash(&token))
         .bind(user)
         .bind(SESSION_SECONDS as f64)
+        .bind(subject)
+        .bind(sid)
         .execute(&mut *connection)
         .await?;
     Ok(token)
@@ -149,8 +153,56 @@ pub async fn end_session(pool: &PgPool, value: &str) -> Result<(), sqlx::Error> 
     Ok(())
 }
 
+/// How a provider's subject is stored: the issuer and subject, as users bind it.
+fn subject_key(issuer: &str, subject: &str) -> String {
+    format!("{issuer} {subject}")
+}
+
+/// Ends the single sign-on sessions a verified back-channel logout names: those from its
+/// provider session (sid), of its person (sub), or both. Sessions from before sessions recorded
+/// either are matched through their user's bound subject. A replayed token ID changes nothing.
+pub async fn end_provider_sessions(
+    pool: &PgPool,
+    issuer: &str,
+    subject: Option<&str>,
+    sid: Option<&str>,
+    token_id: &str,
+) -> Result<u64, ApiError> {
+    if subject.is_none() && sid.is_none() {
+        return Ok(0);
+    }
+    let subject = subject.map(|subject| subject_key(issuer, subject));
+    let mut transaction = pool.begin().await?;
+    sqlx::query("DELETE FROM oidc_logout_tokens WHERE expires_at<=now()")
+        .execute(&mut *transaction)
+        .await?;
+    let fresh = sqlx::query(
+        "INSERT INTO oidc_logout_tokens(jti_hash,expires_at) VALUES($1,now()+interval '10 minutes') ON CONFLICT DO NOTHING",
+    )
+    .bind(token_hash(&format!("{issuer}\n{token_id}")))
+    .execute(&mut *transaction)
+    .await?
+    .rows_affected()
+        == 1;
+    if !fresh {
+        return Ok(0);
+    }
+    let ended = sqlx::query(
+        "DELETE FROM user_sessions s WHERE ($1::text IS NULL OR s.oidc_subject=$1 OR (s.oidc_subject IS NULL AND s.user_id IN (SELECT id FROM users WHERE oidc_subject=$1))) AND ($2::text IS NULL OR s.oidc_sid=$2 OR (s.oidc_sid IS NULL AND $1::text IS NOT NULL))",
+    )
+    .bind(&subject)
+    .bind(sid)
+    .execute(&mut *transaction)
+    .await?
+    .rows_affected();
+    transaction.commit().await?;
+    Ok(ended)
+}
+
 pub struct Identity {
     pub subject: String,
+    /// The provider's session, named again by its back-channel logout.
+    pub sid: Option<String>,
     pub email: Option<String>,
     pub email_verified: Option<bool>,
     pub name: Option<String>,
@@ -181,7 +233,8 @@ pub async fn sign_in(
             None => return Ok(None),
         }
     };
-    let token = create_session(&mut transaction, user).await?;
+    let subject = subject_key(issuer, &identity.subject);
+    let token = create_session(&mut transaction, user, &subject, identity.sid.as_deref()).await?;
     transaction.commit().await?;
     Ok(Some(token))
 }
@@ -190,7 +243,7 @@ async fn matching_user(
     issuer: &str,
     identity: &Identity,
 ) -> Result<Option<Uuid>, sqlx::Error> {
-    let subject = format!("{issuer} {}", identity.subject);
+    let subject = subject_key(issuer, &identity.subject);
     let name = identity
         .name
         .as_deref()

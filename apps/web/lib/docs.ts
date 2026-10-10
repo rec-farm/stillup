@@ -851,6 +851,7 @@ export const docs: Doc[] = [
         title: 'Deploy with Docker',
         paragraphs: [
           'Set strong POSTGRES_PASSWORD and ADMIN_TOKEN values and set APP_ORIGIN to your actual browser-facing HTTPS origin. Put a TLS reverse proxy in front of the loopback-bound web port 3000. Keep the API and database private.',
+          'Compose marks the API healthy once /readyz answers. For other orchestrators, use /healthz for liveness (it never touches the database) and /readyz for readiness (503 while PostgreSQL is unreachable). /health remains as an alias of readiness.',
           'Keep a backup of PostgreSQL, environment configuration, and the separate secrets encryption key. When replacing the TypeScript runtime, stop every old API and worker writer first, preserve database/probe volumes, then run the native migrate and handoff commands before starting services. Handoff refuses active legacy leases; wait for expiry and retry. The README includes the exact upgrade sequence.',
         ],
         language: 'shell',
@@ -861,6 +862,7 @@ export const docs: Doc[] = [
         title: 'Sign in with Handstamp',
         paragraphs: [
           'Besides the administrator token, people can sign in through an OpenID Connect provider such as Handstamp. Register a client with the redirect URI APP_ORIGIN/api/v1/auth/oidc/callback, the post-logout redirect URI APP_ORIGIN/login, client_secret_basic and PKCE, then set the OIDC variables on the API and restart it. The button appears only when OIDC_ISSUER and OIDC_CLIENT_ID are set. Signing out also ends the provider session.',
+          'Register the back-channel logout URI APP_ORIGIN/api/v1/auth/oidc/backchannel-logout too, and signing out at the provider, or in another app that shares the provider session, ends the matching StillUp sessions. The provider calls it from its server, so it must be reachable from there. Sessions from the administrator token are not affected.',
         ],
         language: 'shell',
         code: 'OIDC_ISSUER=https://id.example.com\nOIDC_CLIENT_ID=stillup\nOIDC_CLIENT_SECRET=hs_sec_...\nOIDC_SCOPES="openid profile email groups"\nOIDC_DISPLAY_NAME=Handstamp',

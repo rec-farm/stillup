@@ -241,7 +241,7 @@ async fn migrations_preserve_data_and_workspace_revisions_are_atomic() {
         .fetch_one(&fixture.pool)
         .await
         .unwrap();
-    assert_eq!(count, 11);
+    assert_eq!(count, 12);
     let response = app
         .oneshot(
             Request::builder()
@@ -385,7 +385,10 @@ async fn upgrade_current_legacy_schema_preserves_every_existing_table_and_ledger
             path.extension().is_some_and(|extension| extension == "sql")
                 && !matches!(
                     path.file_name().unwrap().to_str().unwrap(),
-                    "008_rust_check_jobs.sql" | "009_uptime_rollups.sql" | "010_users.sql"
+                    "008_rust_check_jobs.sql"
+                        | "009_uptime_rollups.sql"
+                        | "010_users.sql"
+                        | "011_backchannel_logout.sql"
                 )
         })
         .collect();
@@ -450,7 +453,7 @@ async fn upgrade_current_legacy_schema_preserves_every_existing_table_and_ledger
         database::migrate(&fixture.pool).await.unwrap();
         for (table, query, before) in &snapshots {
             let query = if table == "stillup_migrations" {
-                "SELECT jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text) FROM stillup_migrations t WHERE name NOT IN ('008_rust_check_jobs.sql','009_uptime_rollups.sql','010_users.sql')"
+                "SELECT jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text) FROM stillup_migrations t WHERE name NOT IN ('008_rust_check_jobs.sql','009_uptime_rollups.sql','010_users.sql','011_backchannel_logout.sql')"
             } else {
                 query.as_str()
             };
@@ -464,7 +467,7 @@ async fn upgrade_current_legacy_schema_preserves_every_existing_table_and_ledger
             .fetch_one(&fixture.pool)
             .await
             .unwrap();
-        assert_eq!(count, 11);
+        assert_eq!(count, 12);
         let uptime: (String, i64, i64) = sqlx::query_as(
             "SELECT day::text,observed_seconds,down_seconds FROM monitor_daily_uptime",
         )
@@ -586,6 +589,47 @@ async fn unsupported_api_methods_match_legacy_not_found_and_keep_authentication(
             assert!(body["error"].is_string());
         }
     }
+    fixture.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL"]
+async fn liveness_ignores_the_database_and_readiness_reports_it() {
+    let fixture = Fixture::new().await;
+    let app = fixture.app();
+    for path in ["/healthz", "/api/healthz"] {
+        let (status, data, _) = request(app.clone(), "GET", path, Value::Null, false).await;
+        assert_eq!(
+            (status, data),
+            (StatusCode::OK, json!({"ok":true})),
+            "{path}"
+        );
+    }
+    for path in ["/readyz", "/api/readyz"] {
+        let (status, data, headers) = request(app.clone(), "GET", path, Value::Null, false).await;
+        assert_eq!(
+            (status, data),
+            (
+                StatusCode::OK,
+                json!({"ok":true,"checks":{"database":"ok"}})
+            ),
+            "{path}"
+        );
+        assert_eq!(headers[header::CACHE_CONTROL], "no-store");
+    }
+    let (status, data, _) = request(app.clone(), "GET", "/health", Value::Null, false).await;
+    assert_eq!((status, data), (StatusCode::OK, json!({"status":"ok"})));
+    fixture.pool.close().await;
+    let (status, data, _) = request(app.clone(), "GET", "/readyz", Value::Null, false).await;
+    assert_eq!(
+        (status, data),
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            json!({"ok":false,"checks":{"database":"unavailable"}})
+        )
+    );
+    let (status, _, _) = request(app, "GET", "/healthz", Value::Null, false).await;
+    assert_eq!(status, StatusCode::OK);
     fixture.close().await;
 }
 
@@ -741,7 +785,6 @@ async fn oidc_pkce_signed_tokens_callback_and_logout() {
         }
         flow.2 = true;
         let mode = p.mode.lock().unwrap().clone();
-        let header = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&json!({"alg":"RS256","kid":if mode=="rotate" { "rotated" } else { "fixture" },"typ":"JWT"})).unwrap());
         let now = chrono::Utc::now().timestamp();
         let mut claims = json!({"iss":p.issuer,"aud":"fixture-client","sub":"administrator","iat":now,"exp":now+300,"nonce":flow.0});
         match mode.as_str() {
@@ -774,25 +817,43 @@ async fn oidc_pkce_signed_tokens_callback_and_logout() {
                 claims["sub"] = json!("trent");
                 claims["email"] = json!("viewer@example.com");
             }
+            _ if mode.starts_with("viewer ") => {
+                claims["sub"] = json!("viewer-sub");
+                claims["sid"] = json!(mode.trim_start_matches("viewer "));
+            }
             _ => (),
         }
-        let payload = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).unwrap());
-        let message = format!("{header}.{payload}");
-        // This checked-in key is only a disposable local test fixture.
-        let key =
-            rsa::RsaPrivateKey::from_pkcs8_pem(include_str!("fixtures/oidc-test-key.pem")).unwrap();
-        let signature = SigningKey::<Sha256>::new(key).sign(message.as_bytes());
-        let mut signature = signature.to_vec();
-        if mode == "signature" {
-            signature[0] ^= 1;
-        }
-        let jwt = format!("{message}.{}", URL_SAFE_NO_PAD.encode(signature));
+        let jwt = sign(
+            &claims,
+            if mode == "rotate" {
+                "rotated"
+            } else {
+                "fixture"
+            },
+            mode == "signature",
+        );
         (
             StatusCode::OK,
             Json(
                 json!({"access_token":"fixture-access","token_type":"Bearer","expires_in":300,"id_token":jwt}),
             ),
         )
+    }
+    fn sign(claims: &Value, kid: &str, tamper: bool) -> String {
+        let header = URL_SAFE_NO_PAD
+            .encode(serde_json::to_vec(&json!({"alg":"RS256","kid":kid,"typ":"JWT"})).unwrap());
+        let payload = URL_SAFE_NO_PAD.encode(serde_json::to_vec(claims).unwrap());
+        let message = format!("{header}.{payload}");
+        // This checked-in key is only a disposable local test fixture.
+        let key =
+            rsa::RsaPrivateKey::from_pkcs8_pem(include_str!("fixtures/oidc-test-key.pem")).unwrap();
+        let mut signature = SigningKey::<Sha256>::new(key)
+            .sign(message.as_bytes())
+            .to_vec();
+        if tamper {
+            signature[0] ^= 1;
+        }
+        format!("{message}.{}", URL_SAFE_NO_PAD.encode(signature))
     }
     let fixture = Fixture::new().await;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -1333,6 +1394,109 @@ async fn oidc_pkce_signed_tokens_callback_and_logout() {
             .unwrap(),
         0
     );
+    // Back-channel logout ends the sessions of the provider session or person it names.
+    async fn backchannel(app: &Router, token: &str) -> StatusCode {
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/auth/oidc/backchannel-logout")
+                    .header(header::HOST, "dashboard.example.com")
+                    .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                    .body(Body::from(format!("logout_token={token}")))
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+            .status()
+    }
+    // Again a fresh process state, for empty single sign-on rate-limit buckets.
+    let app = fixture.app_with_oidc(stillup_api::oidc::OidcConfig {
+        issuer: issuer.clone(),
+        client_id: "fixture-client".into(),
+        ..Default::default()
+    });
+    let first = sso(&app, &provider, "viewer hs-session-1").await.1.unwrap();
+    let second = sso(&app, &provider, "viewer hs-session-2").await.1.unwrap();
+    let earlier = sso(&app, &provider, "viewer").await.1.unwrap();
+    // A session from before sessions recorded their subject.
+    sqlx::query("UPDATE user_sessions SET oidc_subject=NULL WHERE oidc_sid IS NULL")
+        .execute(&fixture.pool)
+        .await
+        .unwrap();
+    let now = chrono::Utc::now().timestamp();
+    let logout = |changes: Value| {
+        let mut claims = json!({"iss":issuer,"aud":"fixture-client","sub":"viewer-sub","sid":"hs-session-1","iat":now,"jti":format!("jti-{}",uuid::Uuid::new_v4()),"events":{"http://schemas.openid.net/event/backchannel-logout":{}}});
+        for (name, value) in changes.as_object().unwrap() {
+            if value.is_null() {
+                claims.as_object_mut().unwrap().remove(name);
+            } else {
+                claims[name] = value.clone();
+            }
+        }
+        claims
+    };
+    for (changes, tamper) in [
+        (json!({"nonce":"n"}), false),
+        (json!({"aud":"other-client"}), false),
+        (json!({"iss":"https://other.example.com"}), false),
+        (json!({"events":null}), false),
+        (json!({"events":{"other":{}}}), false),
+        (json!({"iat":now - 3600}), false),
+        (json!({"jti":null}), false),
+        (json!({"sub":null,"sid":null}), false),
+        (json!({}), true),
+    ] {
+        assert_eq!(
+            backchannel(&app, &sign(&logout(changes.clone()), "fixture", tamper)).await,
+            StatusCode::BAD_REQUEST,
+            "{changes} {tamper}"
+        );
+    }
+    assert_eq!(
+        backchannel(&app, &sign(&logout(json!({})), "unknown", false)).await,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        backchannel(&app, "not-a-jwt").await,
+        StatusCode::BAD_REQUEST
+    );
+    for session in [&first, &second, &earlier] {
+        assert_eq!(
+            as_user(&app, session, "GET", "/v1/me", Value::Null).await.0,
+            StatusCode::OK,
+            "rejected logout tokens end nothing"
+        );
+    }
+    let token = sign(&logout(json!({"sub":null})), "fixture", false);
+    assert_eq!(backchannel(&app, &token).await, StatusCode::OK);
+    let signed_in = |session: String| {
+        let app = app.clone();
+        async move {
+            as_user(&app, &session, "GET", "/v1/me", Value::Null)
+                .await
+                .0
+                == StatusCode::OK
+        }
+    };
+    assert!(!signed_in(first.clone()).await, "its provider session ends");
+    assert!(
+        signed_in(second.clone()).await,
+        "other provider sessions stay"
+    );
+    assert!(signed_in(earlier.clone()).await);
+    // A replayed token is accepted but ends nothing, even a session that matches it.
+    let replayed = sso(&app, &provider, "viewer hs-session-1").await.1.unwrap();
+    assert_eq!(backchannel(&app, &token).await, StatusCode::OK);
+    assert!(signed_in(replayed.clone()).await);
+    let token = sign(&logout(json!({"sid":null})), "fixture", false);
+    assert_eq!(backchannel(&app, &token).await, StatusCode::OK);
+    for session in [replayed, second, earlier] {
+        assert!(
+            !signed_in(session).await,
+            "a subject logout ends every session"
+        );
+    }
     // The installation token keeps working as a break-glass administrator.
     assert_eq!(
         request(app.clone(), "GET", "/v1/me", Value::Null, true)

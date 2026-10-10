@@ -65,10 +65,13 @@ jobs:
             -e APP_ORIGIN=http://127.0.0.1:3001 stillup-api:ci
           ready=false
           for attempt in $(seq 1 30); do
-            if curl --fail --silent http://127.0.0.1:3001/health >/dev/null; then ready=true; break; fi
+            if curl --fail --silent http://127.0.0.1:3001/readyz >/dev/null; then ready=true; break; fi
             sleep 1
           done
           test "$ready" = true
+          curl --fail --silent http://127.0.0.1:3001/healthz | grep -q '"ok":true'
+          curl --fail --silent http://127.0.0.1:3001/health | grep -q '"status":"ok"'
+          docker exec stillup-native-ci /usr/local/bin/stillup-api healthcheck
           curl --fail --silent http://127.0.0.1:3001/login | grep -q 'data-product="stillup"'
           curl --fail --silent http://127.0.0.1:3001/docs | grep -q 'data-prerendered="docs"'
           curl --fail --silent -H 'Authorization: Bearer ci-only-token-012345678901234567890123456789' http://127.0.0.1:3001/v1/dashboard | python3 -c 'import json,sys; assert isinstance(json.load(sys.stdin)["monitors"], list)'

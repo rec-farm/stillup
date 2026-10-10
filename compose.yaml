@@ -28,6 +28,12 @@ services:
       CLIENT_DIR: /app/client
     ports:
       - '127.0.0.1:${STILLUP_WEB_PORT:-3000}:3001'
+    healthcheck:
+      test: ['CMD', '/usr/local/bin/stillup-api', 'healthcheck']
+      interval: 10s
+      timeout: 6s
+      start_period: 30s
+      retries: 3
     stop_grace_period: 60s
     depends_on:
       db:

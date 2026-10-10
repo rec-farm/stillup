@@ -48,10 +48,16 @@ impl AppState {
 pub fn router(state: AppState) -> Router {
     let api = Router::new()
         .route("/health", get(health_check))
+        .route("/healthz", get(liveness))
+        .route("/readyz", get(readiness))
         .route("/v1/session", post(sign_in).delete(sign_out))
         .route("/v1/auth/config", get(crate::oidc::config))
         .route("/v1/auth/oidc/start", get(crate::oidc::start))
         .route("/v1/auth/oidc/callback", get(crate::oidc::callback))
+        .route(
+            "/v1/auth/oidc/backchannel-logout",
+            post(crate::oidc::backchannel_logout),
+        )
         .route("/v1/dashboard", get(dashboard))
         .route("/v1/me", get(crate::users::me))
         .route(
@@ -250,7 +256,9 @@ async fn protect(State(state): State<AppState>, request: Request, next: Next) ->
         let now = Instant::now();
         buckets.retain(|_, (start, _)| now.duration_since(*start) < Duration::from_secs(60));
         let signin = path == "/v1/session" && method == "POST";
-        let oidc = path.starts_with("/v1/auth/");
+        // The provider's back-channel calls share one address, so only the global limit applies.
+        let backchannel = path == "/v1/auth/oidc/backchannel-logout";
+        let oidc = path.starts_with("/v1/auth/") && !backchannel;
         let request_test = path == "/v1/checks/test";
         let notification_test = method == "POST"
             && path.starts_with("/v1/notification-channels/")
@@ -321,7 +329,8 @@ async fn protect(State(state): State<AppState>, request: Request, next: Next) ->
         path,
         "/v1/auth/config" | "/v1/auth/oidc/start" | "/v1/auth/oidc/callback"
     ) && matches!(method, "GET" | "HEAD"))
-        || (path == "/health" && matches!(method, "GET" | "HEAD"))
+        || (path == "/v1/auth/oidc/backchannel-logout" && method == "POST")
+        || (matches!(path, "/health" | "/healthz" | "/readyz") && matches!(method, "GET" | "HEAD"))
         || (path == "/v1/session" && matches!(method, "POST" | "DELETE"))
         || (matches!(path, "/v1/public/workspace" | "/v1/public/status")
             && matches!(method, "GET" | "HEAD"));
@@ -394,9 +403,36 @@ async fn protect(State(state): State<AppState>, request: Request, next: Next) ->
     next.run(request).await
 }
 
+/// Kept for existing monitors and deployments; `/readyz` reports the same with details.
 async fn health_check(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
     sqlx::query("SELECT 1").execute(&state.pool).await?;
     Ok(Json(json!({"status":"ok"})))
+}
+/// Liveness: the process answers. Never touches the database, so an outage there does not
+/// get a healthy API restarted.
+async fn liveness() -> Json<Value> {
+    Json(json!({"ok":true}))
+}
+/// Readiness: the database answers within two seconds.
+async fn readiness(State(state): State<AppState>) -> Response {
+    let database = tokio::time::timeout(
+        Duration::from_secs(2),
+        sqlx::query("SELECT 1").execute(&state.pool),
+    )
+    .await
+    .is_ok_and(|result| result.is_ok());
+    if !database {
+        tracing::warn!("Readiness check failed: database unavailable");
+    }
+    (
+        if database {
+            StatusCode::OK
+        } else {
+            StatusCode::SERVICE_UNAVAILABLE
+        },
+        Json(json!({"ok":database,"checks":{"database":if database { "ok" } else { "unavailable" }}})),
+    )
+        .into_response()
 }
 async fn sign_in(
     State(state): State<AppState>,

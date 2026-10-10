@@ -62,6 +62,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "010_users.sql",
         include_str!("../../packages/db/migrations/010_users.sql"),
     ),
+    (
+        "011_backchannel_logout.sql",
+        include_str!("../../packages/db/migrations/011_backchannel_logout.sql"),
+    ),
 ];
 
 // Reuse the deployed migration ledger and lock. Two 007 migrations exist; their full

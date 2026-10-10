@@ -76,6 +76,8 @@ docker compose --profile app up --build -d
 
 The Rust API serves the Vite frontend and both `/api/v1` and `/v1` endpoints from one process. The worker uses the same native image with the `worker` command; production images contain no Node runtime. The web port is bound to loopback (`STILLUP_WEB_PORT`, default 3000, sets the host port). Put a TLS reverse proxy in front of it for remote access, and keep the API and database private. `APP_ORIGIN=https://...` enables secure session cookies and controls allowed browser write origins. The API requires a token independently of the frontend.
 
+Compose marks the API healthy once `/readyz` answers, using the image's own `stillup-api healthcheck` command (the image has no curl). For other orchestrators, point liveness probes at `/healthz`, which never touches the database, and readiness probes at `/readyz`, which answers 503 while PostgreSQL is unreachable. `/health` remains as an alias of readiness for existing monitors.
+
 ### Upgrade from the TypeScript runtime
 
 Back up PostgreSQL before upgrading. Stop every old API and worker writer, including any development processes outside Compose, before starting the native worker. Preserve the `postgres-data` volume and remote probe identity volumes.
@@ -105,6 +107,7 @@ StillUp can also sign the administrator in through an OpenID Connect provider su
 
 - Redirect URI: `$APP_ORIGIN/api/v1/auth/oidc/callback`
 - Post-logout redirect URI: `$APP_ORIGIN/login`
+- Back-channel logout URI: `$APP_ORIGIN/api/v1/auth/oidc/backchannel-logout`
 - Client authentication: `client_secret_basic`, PKCE required, scopes `openid profile email groups`
 
 Then set the API's environment:
@@ -118,6 +121,8 @@ Then set the API's environment:
 | `OIDC_DISPLAY_NAME`  | `Handstamp`                   | Button label: “Sign in with Handstamp” (default shown)             |
 
 The login page shows the button only when `OIDC_ISSUER` and `OIDC_CLIENT_ID` are set; the token form keeps working either way. Signing out of a single sign-on session also ends it at the provider and returns to `/login`.
+
+With the back-channel logout URI registered, signing out at the provider, or in another app that shares the provider session, also ends the matching StillUp sessions. The provider sends a signed logout token from its server; StillUp verifies it against the provider's keys (issuer, audience, age, the logout event, no nonce, a single use of its ID) and ends the sessions that came from its `sid`, or every session of its `sub`. The URI must be reachable from the provider's server. Sessions from the administrator token are not single sign-on sessions and are not affected.
 
 ### Users and roles
 
@@ -218,7 +223,9 @@ Management endpoints accept `Authorization: Bearer <ADMIN_TOKEN>` or the dashboa
 
 | Method        | Endpoint              | Purpose                                    |
 | ------------- | --------------------- | ------------------------------------------ |
-| GET           | `/health`             | Database readiness                         |
+| GET           | `/healthz`            | Liveness; does not touch the database      |
+| GET           | `/readyz`             | Readiness; 503 while the database is down  |
+| GET           | `/health`             | Readiness (kept for existing monitors)     |
 | POST / DELETE | `/v1/session`         | Sign in / sign out                         |
 | GET           | `/v1/auth/config`     | Whether single sign-on is configured       |
 | GET           | `/v1/dashboard`       | Checks, recent incidents, worker heartbeat |
