@@ -1,6 +1,6 @@
 # Vite and Rust replacement
 
-Branch: `feat/vite-rust-migration`. The runtime replacement is delivered through [PR #2](https://github.com/RodrigoEspinosa/stillup/pull/2), retaining existing data and features. The implementation gates below are verified within their stated scope. The PR records final-head CI and delivery status; deployment follows the README backup, stop-writers, migration and handoff procedure.
+Branch: `feat/vite-rust-migration`. The runtime replacement is delivered through [PR #2](https://github.com/rec-farm/stillup/pull/2), retaining existing data and features. The implementation gates below are verified within their stated scope. The PR records final-head CI and delivery status; deployment follows the README backup, stop-writers, migration and handoff procedure.
 
 ## Implementation history
 
