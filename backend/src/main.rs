@@ -6,6 +6,9 @@ use stillup_api::{
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenvy::dotenv().ok();
+    if std::env::args().nth(1).as_deref() == Some("healthcheck") {
+        return healthcheck().await;
+    }
     tracing_subscriber::fmt()
         .with_env_filter(std::env::var("RUST_LOG").unwrap_or_else(|_| "stillup_api=info".into()))
         .init();
@@ -67,5 +70,24 @@ async fn shutdown() {
     #[cfg(not(unix))]
     {
         tokio::signal::ctrl_c().await.expect("signal handler");
+    }
+}
+/// Container health check: asks this container's API whether it is ready. The image has no
+/// curl, and this needs no configuration beyond `PORT`.
+async fn healthcheck() -> Result<(), Box<dyn std::error::Error>> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let port = std::env::var("PORT").unwrap_or_else(|_| "3001".into());
+    let check = async {
+        let mut stream = tokio::net::TcpStream::connect(format!("127.0.0.1:{port}")).await?;
+        stream
+            .write_all(b"GET /readyz HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+            .await?;
+        let mut status = [0; 12];
+        stream.read_exact(&mut status).await?;
+        Ok::<_, std::io::Error>(status)
+    };
+    match tokio::time::timeout(std::time::Duration::from_secs(5), check).await {
+        Ok(Ok(status)) if status.starts_with(b"HTTP/1.1 200") => Ok(()),
+        _ => Err("StillUp is not ready".into()),
     }
 }

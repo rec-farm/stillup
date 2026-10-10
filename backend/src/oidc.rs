@@ -461,6 +461,7 @@ fn verify(
     }
     Some(users::Identity {
         subject: claims.subject().to_string(),
+        sid: payload_claim(&id_token.to_string(), "sid"),
         email: claims.email().map(|email| email.to_string()),
         email_verified: claims.email_verified(),
         name: claims
@@ -468,6 +469,141 @@ fn verify(
             .and_then(|name| name.get(None))
             .map(|name| name.to_string()),
     })
+}
+/// Reads a string claim from a JWT whose signature has already been verified.
+fn payload_claim(jwt: &str, name: &str) -> Option<String> {
+    let payload = jwt.split('.').nth(1)?;
+    let claims: Value = serde_json::from_slice(&URL_SAFE_NO_PAD.decode(payload).ok()?).ok()?;
+    claims[name]
+        .as_str()
+        .filter(|value| !value.is_empty() && value.len() <= 255)
+        .map(str::to_owned)
+}
+
+const BACKCHANNEL_LOGOUT_EVENT: &str = "http://schemas.openid.net/event/backchannel-logout";
+/// How old a logout token may be. Its ID is remembered for longer than this, so replays fail.
+const LOGOUT_TOKEN_AGE: i64 = 300;
+/// What a verified logout token asks for.
+#[derive(Debug, PartialEq)]
+pub struct LogoutRequest {
+    pub subject: Option<String>,
+    pub sid: Option<String>,
+    pub token_id: String,
+}
+/// Checks the claims of a logout token whose signature, issuer and audience are verified,
+/// as OpenID Connect Back-Channel Logout 1.0 section 2.6 asks.
+pub fn logout_request(claims: &Value, now: i64) -> Option<LogoutRequest> {
+    let text = |name: &str| {
+        claims
+            .get(name)
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty() && value.len() <= 255)
+            .map(str::to_owned)
+    };
+    let issued = claims.get("iat")?.as_i64()?;
+    if issued < now - LOGOUT_TOKEN_AGE
+        || issued > now + 30
+        || claims.get("nonce").is_some()
+        || !claims["events"][BACKCHANNEL_LOGOUT_EVENT].is_object()
+    {
+        return None;
+    }
+    let request = LogoutRequest {
+        subject: text("sub"),
+        sid: text("sid"),
+        token_id: text("jti")?,
+    };
+    (request.subject.is_some() || request.sid.is_some()).then_some(request)
+}
+fn logout_error() -> Response {
+    crate::error::ApiError::bad("invalid_request").into_response()
+}
+/// OpenID Connect Back-Channel Logout: the provider ends the StillUp sessions that came from a
+/// provider session or person it signed out. Called server to server, without cookies.
+pub async fn backchannel_logout(State(state): State<AppState>, request: Request) -> Response {
+    use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header, jwk::JwkSet};
+    if !state.config.oidc.enabled() {
+        return crate::error::ApiError(axum::http::StatusCode::NOT_FOUND, "Not found".into())
+            .into_response();
+    }
+    let Ok(bytes) = axum::body::to_bytes(request.into_body(), 16384).await else {
+        return logout_error();
+    };
+    let Some(token) = url::form_urlencoded::parse(&bytes)
+        .find(|(name, _)| name == "logout_token")
+        .map(|(_, value)| value.into_owned())
+    else {
+        return logout_error();
+    };
+    let Ok(header) = decode_header(&token) else {
+        return logout_error();
+    };
+    let Some(kid) = header.kid.as_deref().filter(|_| {
+        matches!(
+            header.alg,
+            Algorithm::RS256 | Algorithm::ES256 | Algorithm::EdDSA
+        )
+    }) else {
+        return logout_error();
+    };
+    let unavailable = || {
+        crate::error::ApiError(
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            "The identity provider cannot be reached".into(),
+        )
+        .into_response()
+    };
+    // Fetched for each logout, which is rare, so rotated signing keys always verify.
+    let Ok((metadata, _)) = state.oidc.discovery(&state.config.oidc, false).await else {
+        return unavailable();
+    };
+    let keys: JwkSet = match async {
+        state
+            .oidc
+            .client
+            .get(metadata.jwks_uri().as_str())
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await
+    }
+    .await
+    {
+        Ok(keys) => keys,
+        Err(_) => return unavailable(),
+    };
+    let Some(key) = keys
+        .find(kid)
+        .and_then(|key| DecodingKey::from_jwk(key).ok())
+    else {
+        return logout_error();
+    };
+    let mut validation = Validation::new(header.alg);
+    validation.set_issuer(&[&state.config.oidc.issuer]);
+    validation.set_audience(&[&state.config.oidc.client_id]);
+    validation.set_required_spec_claims(&["iss", "aud", "iat", "jti"]);
+    let Ok(claims) = decode::<Value>(&token, &key, &validation) else {
+        return logout_error();
+    };
+    let Some(logout) = logout_request(&claims.claims, chrono::Utc::now().timestamp()) else {
+        return logout_error();
+    };
+    match users::end_provider_sessions(
+        &state.pool,
+        &state.config.oidc.issuer,
+        logout.subject.as_deref(),
+        logout.sid.as_deref(),
+        &logout.token_id,
+    )
+    .await
+    {
+        Ok(ended) => {
+            tracing::info!(sessions = ended, "Back-channel logout ended sessions");
+            axum::http::StatusCode::OK.into_response()
+        }
+        Err(error) => error.into_response(),
+    }
 }
 pub async fn logout(state: &AppState, token: Option<String>) -> Option<String> {
     if !state.config.oidc.enabled() {
@@ -535,6 +671,64 @@ mod tests {
             "file:///tmp/keys",
         ] {
             assert!(!allowed_endpoint(&url::Url::parse(value).unwrap(), true));
+        }
+    }
+    #[test]
+    fn logout_tokens_follow_the_back_channel_logout_rules() {
+        let now = 1_000_000;
+        let valid = json!({"iss":"https://id.example","aud":"stillup","iat":now,"jti":"j1","sub":"ada","sid":"s1","events":{BACKCHANNEL_LOGOUT_EVENT:{}}});
+        assert_eq!(
+            logout_request(&valid, now),
+            Some(LogoutRequest {
+                subject: Some("ada".into()),
+                sid: Some("s1".into()),
+                token_id: "j1".into()
+            })
+        );
+        let with = |name: &str, value: Value| {
+            let mut claims = valid.clone();
+            if value.is_null() {
+                claims.as_object_mut().unwrap().remove(name);
+            } else {
+                claims[name] = value;
+            }
+            claims
+        };
+        assert_eq!(
+            logout_request(&with("sub", Value::Null), now)
+                .unwrap()
+                .subject,
+            None
+        );
+        assert_eq!(
+            logout_request(&with("sid", Value::Null), now).unwrap().sid,
+            None
+        );
+        for claims in [
+            with("nonce", json!("n")),
+            with("events", Value::Null),
+            with("events", json!({BACKCHANNEL_LOGOUT_EVENT:true})),
+            with("events", json!({"other":{}})),
+            with("iat", Value::Null),
+            with("iat", json!(now - LOGOUT_TOKEN_AGE - 1)),
+            with("iat", json!(now + 31)),
+            with("jti", Value::Null),
+            with("jti", json!("")),
+            with("sub", json!("")),
+            {
+                let mut claims = with("sub", Value::Null);
+                claims.as_object_mut().unwrap().remove("sid");
+                claims
+            },
+        ] {
+            let claims = if claims.get("sub") == Some(&json!("")) {
+                let mut claims = claims;
+                claims.as_object_mut().unwrap().remove("sid");
+                claims
+            } else {
+                claims
+            };
+            assert_eq!(logout_request(&claims, now), None, "{claims}");
         }
     }
     #[test]
