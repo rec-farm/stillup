@@ -241,7 +241,7 @@ async fn migrations_preserve_data_and_workspace_revisions_are_atomic() {
         .fetch_one(&fixture.pool)
         .await
         .unwrap();
-    assert_eq!(count, 9);
+    assert_eq!(count, 10);
     let response = app
         .oneshot(
             Request::builder()
@@ -383,7 +383,10 @@ async fn upgrade_current_legacy_schema_preserves_every_existing_table_and_ledger
         .map(|entry| entry.unwrap().path())
         .filter(|path| {
             path.extension().is_some_and(|extension| extension == "sql")
-                && path.file_name().unwrap() != "008_rust_check_jobs.sql"
+                && !matches!(
+                    path.file_name().unwrap().to_str().unwrap(),
+                    "008_rust_check_jobs.sql" | "009_uptime_rollups.sql"
+                )
         })
         .collect();
     migrations.sort();
@@ -447,7 +450,7 @@ async fn upgrade_current_legacy_schema_preserves_every_existing_table_and_ledger
         database::migrate(&fixture.pool).await.unwrap();
         for (table, query, before) in &snapshots {
             let query = if table == "stillup_migrations" {
-                "SELECT jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text) FROM stillup_migrations t WHERE name <> '008_rust_check_jobs.sql'"
+                "SELECT jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text) FROM stillup_migrations t WHERE name NOT IN ('008_rust_check_jobs.sql','009_uptime_rollups.sql')"
             } else {
                 query.as_str()
             };
@@ -461,7 +464,14 @@ async fn upgrade_current_legacy_schema_preserves_every_existing_table_and_ledger
             .fetch_one(&fixture.pool)
             .await
             .unwrap();
-        assert_eq!(count, 9);
+        assert_eq!(count, 10);
+        let uptime: (String, i64, i64) = sqlx::query_as(
+            "SELECT day::text,observed_seconds,down_seconds FROM monitor_daily_uptime",
+        )
+        .fetch_one(&fixture.pool)
+        .await
+        .unwrap();
+        assert_eq!(uptime, ("2026-10-01".into(), 60, 60));
         let jobs: i64 = sqlx::query_scalar("SELECT count(*) FROM check_jobs")
             .fetch_one(&fixture.pool)
             .await
@@ -1888,6 +1898,46 @@ async fn native_queue_executes_http_and_records_incident_lifecycle_atomically() 
     assert_eq!(timeline["events"][0]["type"], "incident.opened");
     assert_eq!(timeline["events"][1]["type"], "incident.resolved");
     assert_eq!(timeline["observations"].as_array().unwrap().len(), 4);
+    // fail, fail(down), error, pass(still down), pass(up): errors are excluded and
+    // observations count as downtime only while the check is in a confirmed outage.
+    let (observed, down): (i64, i64) = sqlx::query_as("SELECT sum(observed_seconds)::bigint,sum(down_seconds)::bigint FROM monitor_daily_uptime WHERE monitor_id=$1")
+        .bind(monitor_id)
+        .fetch_one(&fixture.pool)
+        .await
+        .unwrap();
+    let interval = monitor["config"]["intervalSeconds"].as_i64().unwrap();
+    assert_eq!((observed, down), (4 * interval, 2 * interval));
+    let (_, dashboard, _) = request(app.clone(), "GET", "/v1/dashboard", Value::Null, true).await;
+    let listed = dashboard["monitors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["id"] == monitor["id"])
+        .unwrap();
+    assert_eq!(listed["uptime30d"], 50.0);
+    let (status, history, _) = request(
+        app.clone(),
+        "GET",
+        &format!("/v1/checks/{monitor_id}/uptime"),
+        Value::Null,
+        true,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(history["percentage"], 50.0);
+    assert_eq!(history["windowDays"], 90);
+    assert_eq!(
+        request(
+            app.clone(),
+            "GET",
+            &format!("/v1/checks/{monitor_id}/uptime"),
+            Value::Null,
+            false
+        )
+        .await
+        .0,
+        StatusCode::UNAUTHORIZED
+    );
     let (_, deliveries, _) = request(
         app.clone(),
         "GET",
@@ -2046,6 +2096,14 @@ async fn check_jobs_fence_changes_recover_leases_and_bound_database_retries() {
             .await
             .unwrap(),
         1
+    );
+    // Policy errors are not target observations, so they add no uptime or downtime.
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM monitor_daily_uptime")
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap(),
+        0
     );
     // Inject a database write failure to exercise retry behavior independently of an
     // HTTP failure (HTTP failures are observations, not queue failures).
@@ -3115,6 +3173,13 @@ async fn native_status_management_guards_revisions_and_filters_public_components
             .0,
         StatusCode::CONFLICT
     );
+    // Rollups outside the window, or for unpublished checks, are not exposed.
+    sqlx::query("INSERT INTO monitor_daily_uptime(monitor_id,day,observed_seconds,down_seconds) SELECT m,d,o,x FROM (VALUES($1::uuid,0,86400,60),($1,400,86400,86400),($2,0,60,60)) v(m,ago,o,x),LATERAL (SELECT (now() AT TIME ZONE 'UTC')::date-ago AS d) t")
+        .bind(Uuid::parse_str(public_id).unwrap())
+        .bind(Uuid::parse_str(private_id).unwrap())
+        .execute(&fixture.pool)
+        .await
+        .unwrap();
     let (status, public, _) = request(
         app.clone(),
         "GET",
@@ -3130,6 +3195,14 @@ async fn native_status_management_guards_revisions_and_filters_public_components
     assert_eq!(public["groups"].as_array().unwrap().len(), 1);
     assert_eq!(public["maintenance"][0]["monitorIds"], json!([public_id]));
     assert_eq!(public["communications"][0]["stage"], "resolved");
+    assert_eq!(public["components"][0]["uptime"]["percentage"], 99.93);
+    assert_eq!(
+        public["components"][0]["uptime"]["days"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
     let serialized = public.to_string();
     for secret in [
         private_id,

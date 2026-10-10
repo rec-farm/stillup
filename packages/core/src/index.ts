@@ -123,6 +123,12 @@ export function visibleHealth(
     return 'unknown';
   return status;
 }
+/** Interval-weighted daily uptime (UTC days, oldest first); only days with observations. */
+export type Uptime = {
+  windowDays: number;
+  percentage: number | null;
+  days: { date: string; percentage: number | null }[];
+};
 export type Monitor = {
   codeOwnership?: { project: string; id: string } | null;
   id: string;
@@ -136,6 +142,8 @@ export type Monitor = {
   lastDurationMs: number | null;
   lastOutcome: CheckResult['outcome'] | null;
   createdAt: string;
+  /** Dashboard only: interval-weighted uptime over the last 30 UTC days, or null without data. */
+  uptime30d?: number | null;
 };
 export type Run = CheckResult & { id: string; monitorId: string; configRevision: number };
 export type CheckRevision = {
@@ -173,6 +181,7 @@ export type PublicStatus = {
     health: Health | 'maintenance';
     lastObservedAt: string | null;
     groupId?: string;
+    uptime?: Uptime;
   }[];
   incidents: Incident[];
 };
@@ -193,3 +202,7 @@ export type IncidentTimeline = {
 
 export { workspaceSettingsSchema, defaultWorkspaceSettings } from './workspace';
 export type { WorkspaceSettings, WorkspaceAppearance } from './workspace';
+
+/** Truncates rather than rounds, so 99.999% never reads as 100%. */
+export const formatUptime = (percentage: number) =>
+  percentage === 100 ? '100%' : `${(Math.floor(percentage * 100) / 100).toFixed(2)}%`;

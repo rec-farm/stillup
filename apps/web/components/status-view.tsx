@@ -1,11 +1,56 @@
 'use client';
 import { useEffect, useState, type CSSProperties } from 'react';
 import { CircleHelp, ShieldCheck, TriangleAlert, Wrench } from 'lucide-react';
-import { customizedColor, statusDesignDefaults, type PublicStatus } from '@stillup/core';
+import {
+  customizedColor,
+  formatUptime,
+  statusDesignDefaults,
+  type PublicStatus,
+  type Uptime,
+} from '@stillup/core';
 import { Brand } from './brand';
 const date = (value: string) => (
   <time dateTime={value}>{new Date(value).toLocaleString('en-GB', { timeZone: 'UTC' })} UTC</time>
 );
+const uptimeLevel = (percentage: number | null | undefined) =>
+  percentage == null ? 'none' : percentage >= 99.9 ? 'up' : percentage >= 95 ? 'degraded' : 'down';
+export function UptimeBars({ uptime, now }: { uptime: Uptime; now: string }) {
+  const byDate = new Map(uptime.days.map((d) => [d.date, d.percentage]));
+  const today = Date.parse(now.slice(0, 10));
+  const days = Array.from({ length: uptime.windowDays }, (_, index) => {
+    const date = new Date(today - (uptime.windowDays - 1 - index) * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    return { date, percentage: byDate.get(date) };
+  });
+  const summary =
+    uptime.percentage == null ? 'No data yet' : `${formatUptime(uptime.percentage)} uptime`;
+  return (
+    <div className="public-uptime">
+      <div
+        className="public-uptime-bars"
+        role="img"
+        aria-label={`${summary} over the last ${uptime.windowDays} days`}
+      >
+        {days.map((d) => (
+          <span
+            key={d.date}
+            className={uptimeLevel(d.percentage)}
+            title={`${d.date}: ${d.percentage == null ? 'No data' : formatUptime(d.percentage)}`}
+          />
+        ))}
+      </div>
+      <div className="public-uptime-caption" aria-hidden="true">
+        <span className="wide">{uptime.windowDays} days ago</span>
+        <span className="narrow">30 days ago</span>
+        <span>
+          {summary} · {uptime.windowDays} days
+        </span>
+        <span>Today</span>
+      </div>
+    </div>
+  );
+}
 const muted = (color: string | undefined) =>
   color && `color-mix(in oklab, ${color} 74%, transparent)`;
 export function StatusView({
@@ -207,6 +252,7 @@ export function StatusView({
                     <span />
                     {stale ? 'Status unavailable' : labels[c.health]}
                   </span>
+                  {c.uptime && <UptimeBars uptime={c.uptime} now={data.updatedAt} />}
                 </div>
               ))}
             </section>

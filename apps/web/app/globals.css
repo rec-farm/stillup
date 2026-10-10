@@ -1690,6 +1690,18 @@ small {
   padding: 24px;
   overflow-y: auto;
 }
+.detail-section {
+  margin: 20px 0;
+}
+.detail-section > h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.detail-uptime .public-uptime-bars {
+  gap: 1px;
+  height: 24px;
+}
 .detail-panel > header {
   display: flex;
   align-items: center;

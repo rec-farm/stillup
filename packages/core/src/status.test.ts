@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { statusSettingsSchema } from './status';
+import { formatUptime } from './index';
 import { contrastRatio, statusContrastIssues, statusPalettes, statusPresets } from './status-theme';
 
 describe('public page configuration', () => {
@@ -70,5 +71,14 @@ describe('public page theming', () => {
       const config = statusSettingsSchema.parse({ title: 'Status', ...preset.settings });
       expect(statusContrastIssues({ ...config, theme: 'auto' }), preset.name).toEqual([]);
     }
+  });
+});
+
+describe('formatUptime', () => {
+  it('truncates instead of rounding up to a perfect record', () => {
+    expect(formatUptime(100)).toBe('100%');
+    expect(formatUptime(99.999)).toBe('99.99%');
+    expect(formatUptime(99.81)).toBe('99.81%');
+    expect(formatUptime(0)).toBe('0.00%');
   });
 });

@@ -2,7 +2,13 @@
 
 ## Direction
 
-API-first, self-hosted synthetic monitoring with public status pages. TypeScript is the implementation language. Browser monitoring is outside the current scope. Runners will eventually use a versioned HTTPS protocol so a future Rust network agent does not require rewriting the application.
+API-first, self-hosted synthetic monitoring with public status pages. The API, worker and probe are native Rust (Axum, SQLx, PostgreSQL); the dashboard, documentation and status page are a React app built with Vite and served by the API. TypeScript remains the language for the SDK, CLI and monitoring-as-code configuration. Browser monitoring is outside the current scope.
+
+## Runtime — Vite and Rust (complete)
+
+[PR #2](https://github.com/RodrigoEspinosa/stillup/pull/2) replaced the Next frontend and Node API, worker and probe with Vite and native Rust while preserving data, migrations, API contracts and the probe protocol. The previous implementation remains under `tests/legacy-*` only as parity fixtures. See [the migration record](architecture/vite-rust-migration.md).
+
+**Follow-up verification:** live sign-in with a real OIDC provider, the broader malformed-input API contract audit ([api-compatibility.md](architecture/api-compatibility.md)), full desktop/mobile browser QA, dashboard median/p95 and fresh-start latency where Rust measured slower, and whole-stack and concurrent measurements ([performance.md](architecture/performance.md)).
 
 ## Milestone 1 — Working foundation
 
@@ -26,7 +32,9 @@ HTTP check creation; status/latency/JSON assertions; PostgreSQL persistence; dur
 
 **Implemented:** public component groups, branding, maintenance windows, written incident updates, and standalone manual public incidents.
 
-**Remaining:** components independent of checks, interval-aware uptime rollups, custom domains, subscriptions, and independently hosted status snapshots with freshness indicators.
+**Implemented:** custom public domains (`STATUS_PAGE_DOMAINS`) restricted to read-only status, and interval-aware daily uptime rollups kept independently of run retention, shown as 90-day bars per published component, a 30-day figure per check in the dashboard, and 90-day history in check details (`GET /v1/checks/:id/uptime`).
+
+**Remaining:** components independent of checks, subscriptions, and independently hosted status snapshots with freshness indicators.
 
 ## Milestone 4 — Monitoring as code
 
@@ -40,7 +48,9 @@ The CLI loads trusted TypeScript locally and submits validated JSON. Request tes
 
 **Implemented:** automatic local probe, scoped remote enrollment and revocation, protocol v1 over HTTPS, job leases and idempotent reports, per-check locations and failure quorum, heartbeat/coverage visibility, private-network opt-in, persistent probe identity, Docker Compose installation, and a Fly.io deployment template.
 
-**Remaining:** published probe images and upgrade automation, replicas within logical locations, geographic verification, horizontal load testing, backup/restore drills, metrics and tracing, and benchmark-driven evaluation of a Rust HTTP/TCP/DNS agent.
+The probe is now the same native Rust binary as the API and worker (`probe` image target), compatible with existing identities.
+
+**Remaining:** published probe images and upgrade automation, TCP and DNS checks, replicas within logical locations, geographic verification, horizontal load testing, backup/restore drills, and metrics and tracing.
 
 ## Current operational boundaries
 
@@ -50,7 +60,7 @@ The CLI loads trusted TypeScript locally and submits validated JSON. Request tes
 - A committed run is idempotent by job ID; a worker crash after a network request but before commit can repeat that request. Monitoring requests must tolerate repetition.
 - The scheduler advances overdue checks to their next interval, rather than replaying missed intervals after downtime.
 - Public incident history includes the latest 50 incidents belonging to published checks.
-- Detailed observations expire; incidents, transition snapshots, and delivery history persist. No retention-independent uptime aggregate yet.
+- Detailed observations expire; incidents, transition snapshots, delivery history and daily uptime totals persist. Uptime history before the upgrade is backfilled only from runs still retained, using the configuration revision's interval.
 - Browser session revocation is installation-token rotation or expiry; sign-out removes the current browser cookie.
 - Rate limits are process-local. All browser API proxy traffic shares a rate-limit bucket in this initial single-admin deployment.
 - No managed geographic locations, external SaaS dependencies, or billing.

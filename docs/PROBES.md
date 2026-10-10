@@ -6,7 +6,7 @@ A probe runs wherever you install it. Adding a location does not provision a ser
 
 ## Add a remote server with Docker Compose
 
-1. Make your central StillUp web endpoint accessible over HTTPS. The web service forwards `/v1/probe/*` to the API automatically; no additional reverse-proxy route is needed. Set `APP_ORIGIN` to the public web origin.
+1. Make your central StillUp web endpoint accessible over HTTPS. The API serves `/v1/probe/*` alongside the web app; no additional reverse-proxy route is needed. Set `APP_ORIGIN` to the public web origin.
 2. In **Manage locations**, create a name and region. Enrollment expires in 15 minutes. Enter the public HTTPS origin and copy the installation command.
 3. On the regional server, install Docker Engine with Compose and open a checkout of the same StillUp version. Run the generated command. It builds the `probe` Docker target and starts `deploy/probe/compose.yaml` with an identity volume. This development release does not yet publish a prebuilt registry image.
 4. Wait for **online**, then select the location in a check's editor. Existing checks stay local until edited. The check detail panel shows each selected location's latest observation and connectivity.

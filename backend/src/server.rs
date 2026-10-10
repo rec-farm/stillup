@@ -130,6 +130,7 @@ pub fn router(state: AppState) -> Router {
                 .put(checks::edit),
         )
         .route("/v1/checks/{id}/runs", get(checks::runs))
+        .route("/v1/checks/{id}/uptime", get(checks::uptime))
         .route(
             "/v1/checks/{id}/locations",
             get(crate::probes::observations),
@@ -448,7 +449,9 @@ pub fn monitor(row: &PgRow) -> Result<Value, sqlx::Error> {
 }
 async fn dashboard(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
     let (monitors, incidents, heartbeat, enabled) = tokio::try_join!(
-        sqlx::query("SELECT * FROM monitors ORDER BY created_at DESC").fetch_all(&state.pool),
+        // The 30-day uptime sum shares this query so a dashboard read holds one fewer
+        // pooled connection.
+        sqlx::query("SELECT m.*,u.observed_seconds AS uptime_observed,u.down_seconds AS uptime_down FROM monitors m LEFT JOIN (SELECT monitor_id,sum(observed_seconds)::bigint AS observed_seconds,sum(down_seconds)::bigint AS down_seconds FROM monitor_daily_uptime WHERE day>(now() AT TIME ZONE 'UTC')::date-30 GROUP BY monitor_id) u ON u.monitor_id=m.id ORDER BY m.created_at DESC").fetch_all(&state.pool),
         sqlx::query("SELECT * FROM incidents ORDER BY opened_at DESC LIMIT 50")
             .fetch_all(&state.pool),
         sqlx::query_scalar::<_, Option<DateTime<Utc>>>("SELECT max(seen_at) FROM worker_health")
@@ -461,7 +464,15 @@ async fn dashboard(State(state): State<AppState>) -> Result<Json<Value>, ApiErro
     )?;
     let monitors = monitors
         .iter()
-        .map(monitor)
+        .map(|row| {
+            let mut value = monitor(row)?;
+            let observed: Option<i64> = row.try_get("uptime_observed")?;
+            let down: Option<i64> = row.try_get("uptime_down")?;
+            value["uptime30d"] = json!(observed.and_then(|observed| {
+                crate::status::uptime_percentage(observed, down.unwrap_or_default())
+            }));
+            Ok::<_, sqlx::Error>(value)
+        })
         .collect::<Result<Vec<_>, _>>()?;
     let incidents = incidents.iter().map(|row| -> Result<Value, sqlx::Error> {
         Ok(json!({"id":row.try_get::<uuid::Uuid,_>("id")?,"monitorId":row.try_get::<uuid::Uuid,_>("monitor_id")?,"name":row.try_get::<String,_>("name")?,"openedAt":timestamp(row,"opened_at")?,"resolvedAt":timestamp(row,"resolved_at")?}))

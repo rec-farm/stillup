@@ -47,6 +47,19 @@ pub async fn runs(
     })) }).collect::<Result<Vec<_>,_>>()?;
     Ok(Json(json!(rows)))
 }
+pub async fn uptime(
+    State(state): State<AppState>,
+    ApiPath(value): ApiPath<String>,
+) -> Result<Json<Value>, ApiError> {
+    let id = id(&value)?;
+    require(&state, id).await?;
+    let days = sqlx::query_as::<_, (String, i64, i64)>("SELECT day::text,observed_seconds,down_seconds FROM monitor_daily_uptime WHERE monitor_id=$1 AND day>(now() AT TIME ZONE 'UTC')::date-$2::integer ORDER BY day")
+        .bind(id)
+        .bind(crate::status::UPTIME_DAYS)
+        .fetch_all(&state.pool)
+        .await?;
+    Ok(Json(crate::status::uptime_summary(&days)))
+}
 fn revision(row: &PgRow) -> Result<Value, sqlx::Error> {
     Ok(
         json!({"monitorId":row.try_get::<Uuid,_>("monitor_id")?,"revision":row.try_get::<i32,_>("revision")?,"config":row.try_get::<Value,_>("config")?,"createdAt":timestamp(row,"created_at")?}),
