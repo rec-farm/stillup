@@ -200,10 +200,13 @@ pub fn open(value: &str, secret: &str, now: u64) -> Option<Flow> {
     }
     Some(flow)
 }
+/// Where to land after signing in: a same-origin app path, or "/" for anything else.
 pub fn safe_next(value: &str) -> String {
     if !value.starts_with('/')
         || value.starts_with("//")
-        || value.chars().any(|v| v == '\\' || v <= '\u{001f}')
+        // Browsers drop tabs and newlines while parsing, so "/\t/evil" becomes "//evil".
+        || value.chars().any(|v| v == '\\' || v.is_control())
+        || has_dot_segment(value)
     {
         return "/".into();
     }
@@ -211,18 +214,32 @@ pub fn safe_next(value: &str) -> String {
     let Ok(url) = base.join(value) else {
         return "/".into();
     };
+    let path = url.path();
     if url.origin() != base.origin()
-        || url.path().starts_with("//")
-        || url.path().starts_with("/login")
+        || path.starts_with("//")
+        || ["/login", "/api", "/v1"].iter().any(|prefix| {
+            path.strip_prefix(prefix)
+                .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
+        })
     {
         return "/".into();
     }
     format!(
-        "{}{}{}",
-        url.path(),
+        "{path}{}{}",
         url.query().map(|v| format!("?{v}")).unwrap_or_default(),
         url.fragment().map(|v| format!("#{v}")).unwrap_or_default()
     )
+}
+// Browsers collapse "." and ".." segments (also as "%2e"), so "/./api/x" lands on "/api/x" and
+// "/.//evil.example" on "//evil.example". Rejecting them keeps the path the browser sees.
+fn has_dot_segment(value: &str) -> bool {
+    let path = value.split(['?', '#']).next().unwrap_or_default();
+    path.split('/').any(|segment| {
+        matches!(
+            segment.to_ascii_lowercase().replace("%2e", ".").as_str(),
+            "." | ".."
+        )
+    })
 }
 fn now() -> u64 {
     chrono::Utc::now().timestamp_millis().max(0) as u64
@@ -526,7 +543,6 @@ mod tests {
             safe_next("/docs/hosting?tab=a#auth"),
             "/docs/hosting?tab=a#auth"
         );
-        assert_eq!(safe_next("/status/../docs"), "/docs");
         for value in [
             "",
             "docs",
@@ -542,5 +558,63 @@ mod tests {
         ] {
             assert_eq!(safe_next(value), "/");
         }
+    }
+    // Mirrors the classes paramtune hardened in its sign-in return paths.
+    #[test]
+    fn safe_redirect_rejects_control_characters() {
+        for value in [
+            "/\t/evil.example",
+            "/\n/evil.example",
+            "/\r/evil.example",
+            "/docs\r\nLocation: https://evil.example",
+            "/\u{0}/evil.example",
+            "/\u{7f}/evil.example",
+            "/docs\u{85}",
+        ] {
+            assert_eq!(safe_next(value), "/", "{value:?}");
+        }
+    }
+    #[test]
+    fn safe_redirect_rejects_paths_that_normalize_to_a_network_path() {
+        for value in [
+            "/.//evil.example",
+            "/..//evil.example",
+            "/a/..//evil.example",
+            "/%2e//evil.example",
+            "/%2E%2e//evil.example",
+            "/a/%2e%2e//evil.example",
+        ] {
+            assert_eq!(safe_next(value), "/", "{value:?}");
+        }
+    }
+    #[test]
+    fn safe_redirect_rejects_dot_segments() {
+        for value in [
+            "/status/../docs",
+            "/./docs",
+            "/%2e/docs",
+            "/docs/%2E%2E/status",
+            "/./login",
+            "/%2e/api/v1/session",
+        ] {
+            assert_eq!(safe_next(value), "/", "{value:?}");
+        }
+        // Dot segments after the path are data, not navigation.
+        assert_eq!(safe_next("/docs?x=../y#../z"), "/docs?x=../y#../z");
+        assert_eq!(safe_next("/docs/..hidden"), "/docs/..hidden");
+    }
+    #[test]
+    fn safe_redirect_rejects_api_and_sign_in_paths() {
+        for value in [
+            "/api/v1/auth/oidc/start",
+            "/api/v1/session",
+            "/v1/checks",
+            "/login",
+            "/login/",
+        ] {
+            assert_eq!(safe_next(value), "/", "{value:?}");
+        }
+        assert_eq!(safe_next("/api-docs"), "/api-docs");
+        assert_eq!(safe_next("/loginhelp"), "/loginhelp");
     }
 }
