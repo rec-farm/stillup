@@ -24,12 +24,12 @@ Added a dedicated PostgreSQL upgrade test after `cd683fe`. It independently exec
 
 ## Linux container evidence
 
-[CI run 37273309752](https://github.com/RodrigoEspinosa/stillup/actions/runs/37273309752) passed at `d13e4f5`, including pinned Rust 1.92 checks, native/legacy tests, release build, both Linux Docker image builds and the native container runtime smoke step. This establishes Linux image/executable and API startup behavior for that revision; final-head CI is still required after subsequent changes.
+[CI run 37273309752](https://github.com/rec-farm/stillup/actions/runs/37273309752) passed at `d13e4f5`, including pinned Rust 1.92 checks, native/legacy tests, release build, both Linux Docker image builds and the native container runtime smoke step. This establishes Linux image/executable and API startup behavior for that revision; final-head CI is still required after subsequent changes.
 
 After `81fd7b9`, the real HTTP executor test additionally verifies all six supported methods. POST/PUT/PATCH/DELETE preserve the query and Content-Type, send a body containing the resolved test secret, and validate response headers/JSON. HEAD validates headers without requiring a response body. The expanded test and Clippy pass. OPTIONS is intentionally outside the existing check configuration method enum.
 
 ## Latest source and CI audit
 
-[CI run 37328589046](https://github.com/RodrigoEspinosa/stillup/actions/runs/37328589046) passed on exact commit `f8913478141b23a4ab5e46fd06bc1fe744cd882a`: frozen install, format/type checks, TypeScript and legacy PostgreSQL suites, fixture regeneration without differences, Rust 1.92 formatting/Clippy/native tests, release build, both Linux image builds and native container runtime smoke checks.
+[CI run 37328589046](https://github.com/rec-farm/stillup/actions/runs/37328589046) passed on exact commit `f8913478141b23a4ab5e46fd06bc1fe744cd882a`: frozen install, format/type checks, TypeScript and legacy PostgreSQL suites, fixture regeneration without differences, Rust 1.92 formatting/Clippy/native tests, release build, both Linux image builds and native container runtime smoke checks.
 
 The subsequent source audit corrected effective dashboard notification availability after removing an environment webhook and JavaScript UTF-16 token length bounds. All 33 native PostgreSQL tests and Clippy passed locally after these corrections. Final-head CI remains required after this commit.

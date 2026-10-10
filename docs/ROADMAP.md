@@ -6,7 +6,7 @@ API-first, self-hosted synthetic monitoring with public status pages. The API, w
 
 ## Runtime — Vite and Rust (complete)
 
-[PR #2](https://github.com/RodrigoEspinosa/stillup/pull/2) replaced the Next frontend and Node API, worker and probe with Vite and native Rust while preserving data, migrations, API contracts and the probe protocol. The previous implementation remains under `tests/legacy-*` only as parity fixtures. See [the migration record](architecture/vite-rust-migration.md).
+[PR #2](https://github.com/rec-farm/stillup/pull/2) replaced the Next frontend and Node API, worker and probe with Vite and native Rust while preserving data, migrations, API contracts and the probe protocol. The previous implementation remains under `tests/legacy-*` only as parity fixtures. See [the migration record](architecture/vite-rust-migration.md).
 
 **Follow-up verification:** live sign-in with a real OIDC provider, the broader malformed-input API contract audit ([api-compatibility.md](architecture/api-compatibility.md)), full desktop/mobile browser QA, dashboard median/p95 and fresh-start latency where Rust measured slower, and whole-stack and concurrent measurements ([performance.md](architecture/performance.md)).
 
