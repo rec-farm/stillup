@@ -241,7 +241,7 @@ async fn migrations_preserve_data_and_workspace_revisions_are_atomic() {
         .fetch_one(&fixture.pool)
         .await
         .unwrap();
-    assert_eq!(count, 10);
+    assert_eq!(count, 11);
     let response = app
         .oneshot(
             Request::builder()
@@ -385,7 +385,7 @@ async fn upgrade_current_legacy_schema_preserves_every_existing_table_and_ledger
             path.extension().is_some_and(|extension| extension == "sql")
                 && !matches!(
                     path.file_name().unwrap().to_str().unwrap(),
-                    "008_rust_check_jobs.sql" | "009_uptime_rollups.sql"
+                    "008_rust_check_jobs.sql" | "009_uptime_rollups.sql" | "010_users.sql"
                 )
         })
         .collect();
@@ -450,7 +450,7 @@ async fn upgrade_current_legacy_schema_preserves_every_existing_table_and_ledger
         database::migrate(&fixture.pool).await.unwrap();
         for (table, query, before) in &snapshots {
             let query = if table == "stillup_migrations" {
-                "SELECT jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text) FROM stillup_migrations t WHERE name NOT IN ('008_rust_check_jobs.sql','009_uptime_rollups.sql')"
+                "SELECT jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text) FROM stillup_migrations t WHERE name NOT IN ('008_rust_check_jobs.sql','009_uptime_rollups.sql','010_users.sql')"
             } else {
                 query.as_str()
             };
@@ -464,7 +464,7 @@ async fn upgrade_current_legacy_schema_preserves_every_existing_table_and_ledger
             .fetch_one(&fixture.pool)
             .await
             .unwrap();
-        assert_eq!(count, 10);
+        assert_eq!(count, 11);
         let uptime: (String, i64, i64) = sqlx::query_as(
             "SELECT day::text,observed_seconds,down_seconds FROM monitor_daily_uptime",
         )
@@ -750,6 +750,30 @@ async fn oidc_pkce_signed_tokens_callback_and_logout() {
             "issuer" => claims["iss"] = json!("https://other.example.com"),
             "expired" => claims["exp"] = json!(now - 3600),
             "access-hash" => claims["at_hash"] = json!("invalid"),
+            "ada" => {
+                claims["sub"] = json!("ada-sub");
+                claims["email"] = json!("Ada@Example.com");
+                claims["email_verified"] = json!(true);
+                claims["name"] = json!("Ada Lovelace");
+            }
+            "ada-moved" => {
+                claims["sub"] = json!("ada-sub");
+                claims["email"] = json!("ada@new.example.com");
+            }
+            "unverified" => {
+                claims["sub"] = json!("mallory");
+                claims["email"] = json!("ada@example.com");
+                claims["email_verified"] = json!(false);
+            }
+            "viewer" => {
+                claims["sub"] = json!("viewer-sub");
+                claims["email"] = json!("viewer@example.com");
+                claims["email_verified"] = json!(true);
+            }
+            "unstated" => {
+                claims["sub"] = json!("trent");
+                claims["email"] = json!("viewer@example.com");
+            }
             _ => (),
         }
         let payload = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).unwrap());
@@ -998,6 +1022,324 @@ async fn oidc_pkce_signed_tokens_callback_and_logout() {
             );
         }
     }
+
+    // Once users exist, single sign-on admits only invited people, with their own role.
+    async fn sso(app: &Router, provider: &Provider, mode: &str) -> (String, Option<String>) {
+        *provider.mode.lock().unwrap() = mode.into();
+        let (_, _, headers) = request(
+            app.clone(),
+            "GET",
+            "/api/v1/auth/oidc/start",
+            Value::Null,
+            false,
+        )
+        .await;
+        let authorization = url::Url::parse(headers[header::LOCATION].to_str().unwrap()).unwrap();
+        let params: HashMap<_, _> = authorization.query_pairs().into_owned().collect();
+        *provider.flow.lock().unwrap() = (
+            params["nonce"].clone(),
+            params["code_challenge"].clone(),
+            false,
+        );
+        let flow = headers[header::SET_COOKIE].to_str().unwrap();
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/api/v1/auth/oidc/callback?code=fixture-code&state={}",
+                        params["state"]
+                    ))
+                    .header(header::COOKIE, flow.split(';').next().unwrap())
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let session = response
+            .headers()
+            .get_all(header::SET_COOKIE)
+            .iter()
+            .map(|v| v.to_str().unwrap().split(';').next().unwrap())
+            .find(|v| v.starts_with("stillup_session=") && *v != "stillup_session=")
+            .map(str::to_owned);
+        let location = response.headers()[header::LOCATION].to_str().unwrap();
+        (location.to_owned(), session)
+    }
+    async fn as_user(
+        app: &Router,
+        cookie: &str,
+        method: &str,
+        path: &str,
+        input: Value,
+    ) -> (StatusCode, Value) {
+        let mut builder = Request::builder()
+            .method(method)
+            .uri(path)
+            .header(header::COOKIE, cookie);
+        let body = if input.is_null() {
+            Body::empty()
+        } else {
+            builder = builder.header(header::CONTENT_TYPE, "application/json");
+            Body::from(input.to_string())
+        };
+        let response = app
+            .clone()
+            .oneshot(builder.body(body).unwrap())
+            .await
+            .unwrap();
+        let status = response.status();
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        (
+            status,
+            serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+        )
+    }
+    // A fresh process state, so these sign-ins start with empty rate-limit buckets.
+    let app = fixture.app_with_oidc(stillup_api::oidc::OidcConfig {
+        issuer: issuer.clone(),
+        client_id: "fixture-client".into(),
+        ..Default::default()
+    });
+    let (_, _, headers) = request(
+        app.clone(),
+        "POST",
+        "/v1/session",
+        json!({"token":"01234567890123456789012345678901"}),
+        false,
+    )
+    .await;
+    let earlier = headers[header::SET_COOKIE]
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_owned();
+    assert_eq!(
+        as_user(&app, &earlier, "GET", "/v1/me", Value::Null)
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let (_, before_users) = sso(&app, &provider, "").await;
+    let before_users = before_users.unwrap();
+    assert_eq!(
+        as_user(&app, &before_users, "GET", "/v1/me", Value::Null)
+            .await
+            .1,
+        json!({"kind":"installation","role":"admin"})
+    );
+    let (status, check, _) = request(
+        app.clone(),
+        "POST",
+        "/v1/checks",
+        json!({"name":"Private API","url":"https://api.example.com/health?key=inline","method":"POST","headers":{"authorization":"Bearer inline"},"body":"{\"key\":\"inline\"}"}),
+        true,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let (status, data, _) = request(
+        app.clone(),
+        "POST",
+        "/v1/users",
+        json!({"email":"viewer@example.com","role":"viewer"}),
+        true,
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::CONFLICT,
+        "the first user must be an administrator"
+    );
+    assert!(data["error"].as_str().unwrap().contains("administrator"));
+    for (input, expected) in [
+        (
+            json!({"email":"not-an-email","role":"admin"}),
+            StatusCode::BAD_REQUEST,
+        ),
+        (
+            json!({"email":"ada@example.com","role":"owner"}),
+            StatusCode::BAD_REQUEST,
+        ),
+        (
+            json!({"email":" ADA@example.com ","role":"admin"}),
+            StatusCode::CREATED,
+        ),
+        (
+            json!({"email":"ada@example.com","role":"viewer"}),
+            StatusCode::CONFLICT,
+        ),
+        (
+            json!({"email":"viewer@example.com","role":"viewer"}),
+            StatusCode::CREATED,
+        ),
+    ] {
+        assert_eq!(
+            request(app.clone(), "POST", "/v1/users", input.clone(), true)
+                .await
+                .0,
+            expected,
+            "{input}"
+        );
+    }
+    // Sessions from before the first user may belong to people who are not invited.
+    for session in [&earlier, &before_users] {
+        assert_eq!(
+            as_user(&app, session, "GET", "/v1/me", Value::Null).await.0,
+            StatusCode::UNAUTHORIZED
+        );
+    }
+    for mode in ["", "unverified", "unstated"] {
+        let (location, session) = sso(&app, &provider, mode).await;
+        assert!(
+            location.ends_with("/login?error=oidc_not_invited"),
+            "{mode}"
+        );
+        assert_eq!(session, None, "{mode}");
+    }
+    let (_, ada) = sso(&app, &provider, "ada").await;
+    let ada = ada.unwrap();
+    assert!(ada.starts_with("stillup_session=u."));
+    let (status, me) = as_user(&app, &ada, "GET", "/api/v1/me", Value::Null).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        (
+            me["kind"].as_str(),
+            me["email"].as_str(),
+            me["role"].as_str(),
+            me["name"].as_str()
+        ),
+        (
+            Some("user"),
+            Some("ada@example.com"),
+            Some("admin"),
+            Some("Ada Lovelace")
+        )
+    );
+    // The subject stays bound when the provider later reports another address.
+    let (_, moved) = sso(&app, &provider, "ada-moved").await;
+    assert_eq!(
+        as_user(&app, &moved.unwrap(), "GET", "/v1/me", Value::Null)
+            .await
+            .1["id"],
+        me["id"]
+    );
+    let (_, viewer) = sso(&app, &provider, "viewer").await;
+    let viewer = viewer.unwrap();
+    let (status, users) = as_user(&app, &ada, "GET", "/v1/users", Value::Null).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(users["oidc"], true);
+    let viewer_id = users["users"][1]["id"].as_str().unwrap().to_owned();
+    assert_eq!(users["users"][1]["linked"], true);
+    for (method, path, expected) in [
+        ("GET", "/v1/dashboard", StatusCode::OK),
+        ("GET", "/v1/me", StatusCode::OK),
+        ("GET", "/v1/workspace", StatusCode::OK),
+        ("GET", "/v1/users", StatusCode::FORBIDDEN),
+        ("GET", "/v1/secrets", StatusCode::FORBIDDEN),
+        ("GET", "/v1/notification-channels", StatusCode::FORBIDDEN),
+        ("POST", "/v1/checks", StatusCode::FORBIDDEN),
+        ("POST", "/v1/code/apply", StatusCode::FORBIDDEN),
+    ] {
+        let input = if method == "POST" {
+            json!({})
+        } else {
+            Value::Null
+        };
+        assert_eq!(
+            as_user(&app, &viewer, method, path, input).await.0,
+            expected,
+            "{method} {path}"
+        );
+    }
+    let check_path = format!("/v1/checks/{}", check["id"].as_str().unwrap());
+    for path in [
+        "/v1/dashboard".to_owned(),
+        check_path.clone(),
+        format!("{check_path}/revisions"),
+        format!("{check_path}/revisions/1"),
+    ] {
+        let (status, body) = as_user(&app, &viewer, "GET", &path, Value::Null).await;
+        assert_eq!(status, StatusCode::OK, "{path}");
+        let text = body.to_string();
+        assert!(
+            !text.contains("inline") && text.contains("[hidden]"),
+            "{path}: {text}"
+        );
+    }
+    let (_, body) = as_user(&app, &ada, "GET", &check_path, Value::Null).await;
+    assert_eq!(body["config"]["headers"]["authorization"], "Bearer inline");
+    let path = format!("/v1/users/{}", me["id"].as_str().unwrap());
+    assert_eq!(
+        as_user(&app, &ada, "PATCH", &path, json!({"role":"viewer"}))
+            .await
+            .0,
+        StatusCode::CONFLICT,
+        "the last administrator cannot be demoted"
+    );
+    assert_eq!(
+        as_user(&app, &ada, "DELETE", &path, Value::Null).await.0,
+        StatusCode::CONFLICT
+    );
+    let viewer_path = format!("/v1/users/{viewer_id}");
+    assert_eq!(
+        as_user(&app, &ada, "PATCH", &viewer_path, json!({"role":"admin"}))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        as_user(&app, &viewer, "GET", "/v1/users", Value::Null)
+            .await
+            .0,
+        StatusCode::OK,
+        "roles apply to existing sessions immediately"
+    );
+    assert_eq!(
+        as_user(&app, &viewer, "DELETE", &path, Value::Null).await.0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        as_user(&app, &ada, "GET", "/v1/dashboard", Value::Null)
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED,
+        "removing a user ends their sessions"
+    );
+    assert!(
+        sso(&app, &provider, "ada")
+            .await
+            .0
+            .ends_with("oidc_not_invited")
+    );
+    assert_eq!(
+        as_user(&app, &viewer, "DELETE", "/v1/session", Value::Null)
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        as_user(&app, &viewer, "GET", "/v1/dashboard", Value::Null)
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED,
+        "signing out revokes the session"
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM user_sessions")
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap(),
+        0
+    );
+    // The installation token keeps working as a break-glass administrator.
+    assert_eq!(
+        request(app.clone(), "GET", "/v1/me", Value::Null, true)
+            .await
+            .1,
+        json!({"kind":"installation","role":"admin"})
+    );
     stop.send(()).unwrap();
     server.await.unwrap();
     fixture.close().await;

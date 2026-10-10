@@ -19,6 +19,7 @@ pub mod secrets;
 pub mod server;
 pub mod status;
 pub mod status_domain;
+pub mod users;
 pub mod web;
 pub mod webhook;
 pub mod worker;

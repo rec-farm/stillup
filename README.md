@@ -23,8 +23,9 @@ StillUp is intended for a trusted administrator managing one installation:
 - Publish selected checks, their incidents and 90-day uptime history at `/status`, optionally on dedicated status domains.
 - Store encrypted named secrets, run checks from remote probe locations, and manage checks as code.
 - Protect management with an installation administrator token, or OpenID Connect sign-in, and a 24-hour HTTP-only session.
+- Invite people by email as administrators or read-only viewers.
 
-Multi-user accounts, permanent deletion, email notifications, and TypeScript workflow execution are not implemented yet. See [the roadmap](docs/ROADMAP.md).
+Permanent deletion, email notifications, and TypeScript workflow execution are not implemented yet. See [the roadmap](docs/ROADMAP.md).
 
 ## Documentation and monitoring as code
 
@@ -116,7 +117,18 @@ Then set the API's environment:
 | `OIDC_SCOPES`        | `openid profile email groups` | Requested scopes (default shown)                                   |
 | `OIDC_DISPLAY_NAME`  | `Handstamp`                   | Button label: “Sign in with Handstamp” (default shown)             |
 
-The login page shows the button only when `OIDC_ISSUER` and `OIDC_CLIENT_ID` are set; the token form keeps working either way. StillUp has one administrator, so **everyone the provider lets through gets the same session the token gives**: restrict who may sign in at the provider (in Handstamp, “Who may sign in”, e.g. the `stillup-admins` group). StillUp does not check groups itself. Signing out of a single sign-on session also ends it at the provider and returns to `/login`.
+The login page shows the button only when `OIDC_ISSUER` and `OIDC_CLIENT_ID` are set; the token form keeps working either way. Signing out of a single sign-on session also ends it at the provider and returns to `/login`.
+
+### Users and roles
+
+Until you add a user, **everyone the provider lets through gets the same administrator session the token gives**, so restrict who may sign in at the provider (in Handstamp, “Who may sign in”, e.g. the `stillup-admins` group). StillUp does not check groups itself.
+
+To give people their own access, open **Manage users** on the dashboard, add yourself as an administrator, then add others by email. From then on:
+
+- Only listed people can sign in with single sign-on. Sessions from before the first user end.
+- The first sign-in needs an email address the provider marks as verified (`email_verified`), and links the account to that identity.
+- **Administrators** manage everything. **Viewers** see the dashboard, checks, results and incidents, but not notifications, secrets, locations, status page settings or users. Request headers, bodies and URL query values are hidden from viewers.
+- Role changes apply immediately, removing a user ends their sessions, and StillUp keeps at least one administrator. `ADMIN_TOKEN` keeps working as a break-glass administrator.
 
 The default deployment hosts monitoring and public status together. If that host fails, the public page will also be unavailable. Independent status hosting is on the roadmap.
 
@@ -202,7 +214,7 @@ Click an incident name for its timeline: opening/recovery snapshots, retained ob
 
 ## API
 
-Management endpoints accept `Authorization: Bearer <ADMIN_TOKEN>` or the dashboard session cookie.
+Management endpoints accept `Authorization: Bearer <ADMIN_TOKEN>` or the dashboard session cookie. Viewer sessions get 403 for anything beyond reading the dashboard, checks and incidents.
 
 | Method        | Endpoint              | Purpose                                    |
 | ------------- | --------------------- | ------------------------------------------ |

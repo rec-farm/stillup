@@ -6,6 +6,8 @@ const messages: Record<string, (name: string) => string> = {
   oidc_failed: (name) => `Signing in with ${name} did not complete. Try again.`,
   oidc_unavailable: (name) => `${name} cannot be reached right now. Try again shortly.`,
   oidc_disabled: () => 'Single sign-on is not set up on this installation.',
+  oidc_not_invited: () =>
+    'Your account is not on this installation’s user list. Ask an administrator to add your email address.',
 };
 export default function LoginPage() {
   const [config, setConfig] = useState<{ oidc: boolean; displayName: string } | null>(null);

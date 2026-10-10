@@ -58,6 +58,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "009_uptime_rollups.sql",
         include_str!("../../packages/db/migrations/009_uptime_rollups.sql"),
     ),
+    (
+        "010_users.sql",
+        include_str!("../../packages/db/migrations/010_users.sql"),
+    ),
 ];
 
 // Reuse the deployed migration ledger and lock. Two 007 migrations exist; their full
