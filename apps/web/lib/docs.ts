@@ -839,7 +839,7 @@ export const docs: Doc[] = [
           'Use Rust 1.92 or later, Node.js 24 LTS, pnpm 12.6.0, and Docker Compose. From your checkout, install dependencies and create a private environment file. Generate a strong ADMIN_TOKEN and put it in .env before starting.',
         ],
         language: 'shell',
-        code: 'pnpm install\ncp .env.example .env\nopenssl rand -hex 32\n# Set ADMIN_TOKEN in .env, then:\ndocker compose up -d db\n# Run each in its own terminal (use herdr-run inside Herdr):\npnpm dev:api\npnpm dev:worker\npnpm dev',
+        code: 'pnpm install\ncp .env.example .env\nopenssl rand -hex 32\n# Set ADMIN_TOKEN in .env, then:\ndocker compose up -d db\n# Run each in its own terminal:\npnpm dev:api\npnpm dev:worker\npnpm dev',
         steps: [
           'Open http://stillup.localhost:1355 and sign in with your administrator token. For plain port 3000, use PORTLESS=0 pnpm dev and set APP_ORIGIN=http://localhost:3000.',
           'The three commands start Vite, the Rust API, and the Rust worker. Database migrations run automatically under a lock.',
