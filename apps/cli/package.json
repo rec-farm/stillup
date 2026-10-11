@@ -1,21 +1,49 @@
 {
-  "name": "@stillup/cli",
+  "name": "@rec/stillup",
   "version": "0.1.0",
-  "private": true,
+  "description": "StillUp monitoring as code: validate, test, preview, and deploy HTTP checks.",
   "license": "MIT",
-  "author": "Rodrigo Espinosa Curbelo",
-  "homepage": "https://rec.farm/stillup/",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "bin": {
+    "stillup": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/packages/sdk/src/index.d.ts",
+      "import": "./dist/packages/sdk/src/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/rec-farm/stillup.git",
     "directory": "apps/cli"
   },
-  "bugs": "https://github.com/rec-farm/stillup/issues",
-  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "typecheck": "tsc"
+    "typecheck": "tsc",
+    "build": "node scripts/build.mjs",
+    "prepack": "npm run build",
+    "prepublishOnly": "pnpm --dir ../.. check && npm run test:package",
+    "test:package": "node scripts/test-package.mjs"
   },
   "dependencies": {
+    "tsx": "4.23.13",
+    "zod": "4.6.2"
+  },
+  "devDependencies": {
     "@stillup/sdk": "workspace:*"
-  }
+  },
+  "author": "Rodrigo Espinosa Curbelo",
+  "homepage": "https://rec.farm/stillup/",
+  "bugs": "https://github.com/rec-farm/stillup/issues"
 }
