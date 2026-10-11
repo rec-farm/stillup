@@ -15,9 +15,16 @@ RUN pnpm --filter @stillup/web build
 FROM rust:1.92-bookworm AS rust-build
 WORKDIR /app
 COPY backend/Cargo.toml backend/Cargo.lock backend/
+# Build dependencies first so source edits don't refetch and recompile them.
+RUN mkdir -p backend/src/bin \
+    && echo "fn main() {}" > backend/src/main.rs \
+    && echo "fn main() {}" > backend/src/bin/stillup-probe.rs \
+    && touch backend/src/lib.rs \
+    && cargo build --manifest-path backend/Cargo.toml --release --locked --bins && rm -rf backend/src
 COPY backend/src backend/src
 COPY packages/db/migrations packages/db/migrations
-RUN cargo build --manifest-path backend/Cargo.toml --release --locked --bins
+RUN touch backend/src/main.rs backend/src/lib.rs backend/src/bin/stillup-probe.rs \
+    && cargo build --manifest-path backend/Cargo.toml --release --locked --bins
 
 FROM debian:bookworm-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates util-linux && rm -rf /var/lib/apt/lists/* \
