@@ -6,6 +6,8 @@ Know before your users do.
 
 Self-hosted HTTP checks, configurable assertions, incident detection, webhook alerts, and a public status page. Built with React, Vite, Rust, Axum, and PostgreSQL. No browsers are required to execute checks.
 
+Product page: [rec.farm/stillup](https://rec.farm/stillup/).
+
 ## What it does
 
 StillUp is intended for a trusted administrator managing one installation:
@@ -56,7 +58,7 @@ pnpm dev:worker
 pnpm dev
 ```
 
-Open **http://stillup.localhost:1355** and sign in with your administrator token. The three commands start the native API, native worker, and Vite frontend. In Herdr, run each persistent command through `herdr-run`. The web app runs behind [portless](https://github.com/vercel-labs/portless) (`npm install -g portless`); run `PORTLESS=0 pnpm dev` and set `APP_ORIGIN=http://localhost:3000` to use the plain port instead. Migrations apply automatically under a database lock. The default database port is 5437 to avoid the common local PostgreSQL port.
+Open **http://stillup.localhost:1355** and sign in with your administrator token. The three commands start the native API, native worker, and Vite frontend. The web app runs behind [portless](https://github.com/vercel-labs/portless) (`npm install -g portless`); run `PORTLESS=0 pnpm dev` and set `APP_ORIGIN=http://localhost:3000` to use the plain port instead. Migrations apply automatically under a database lock. The default database port is 5437 to avoid the common local PostgreSQL port.
 
 Public status: **http://stillup.localhost:1355/status**. No checks are published until you explicitly select that option when creating one.
 
@@ -114,7 +116,7 @@ Then set the API's environment:
 
 | Variable             | Example                       | Meaning                                                            |
 | -------------------- | ----------------------------- | ------------------------------------------------------------------ |
-| `OIDC_ISSUER`        | `https://id.rec.farm`         | Issuer; discovery is read from `/.well-known/openid-configuration` |
+| `OIDC_ISSUER`        | `https://id.example.com`      | Issuer; discovery is read from `/.well-known/openid-configuration` |
 | `OIDC_CLIENT_ID`     | `stillup`                     | Client ID                                                          |
 | `OIDC_CLIENT_SECRET` | `hs_sec_…`                    | Client secret                                                      |
 | `OIDC_SCOPES`        | `openid profile email groups` | Requested scopes (default shown)                                   |
@@ -286,9 +288,7 @@ For the configuration-history upgrade, stop all old API and worker processes bef
 
 Restore into a new database first and verify it before changing `DATABASE_URL`. Apply upgrades with the matching source and lockfile; services apply versioned SQL migrations automatically. Rolling back source does not undo migrations. Do not use `docker compose down -v` unless you intend to delete the database volume.
 
-## License
-
-Apache-2.0. See [LICENSE](LICENSE).
+## Notification and investigation API
 
 Notification and investigation endpoints (all require administrator authentication):
 
@@ -364,3 +364,15 @@ See [the probe setup guide](docs/PROBES.md) for Docker Compose installation, the
 ### Company branding
 
 Use **Appearance** in the dashboard to set a shared company name, logo, accent color, welcome message, and dashboard spacing with a live preview. Changes persist in PostgreSQL and also brand the sign-in screen. Public status-page branding stays separate. See [workspace appearance](docs/APPEARANCE.md).
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Security
+
+Report vulnerabilities privately through [GitHub private vulnerability reporting](https://github.com/rec-farm/stillup/security/advisories/new), not in public issues.
+
+## License
+
+MIT · © 2026 Rodrigo Espinosa Curbelo. See [LICENSE](LICENSE). Names and logos: see [NOTICE](NOTICE).

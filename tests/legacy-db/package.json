@@ -2,6 +2,15 @@
   "name": "@stillup/legacy-db",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
+  "author": "Rodrigo Espinosa Curbelo",
+  "homepage": "https://rec.farm/stillup/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rec-farm/stillup.git",
+    "directory": "tests/legacy-db"
+  },
+  "bugs": "https://github.com/rec-farm/stillup/issues",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"

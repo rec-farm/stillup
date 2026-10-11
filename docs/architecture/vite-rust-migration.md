@@ -76,7 +76,7 @@ Candidates for a reusable REC system:
 3. Browser UI primitives: REC theme persistence before paint, accessible identity/logo fallback, documentation shell/search/code blocks and settings dialogs.
 4. Shared contract fixtures: compare TypeScript SDK and Rust schemas/canonicalization without adding Node to the production server.
 
-Keep REC brand tokens and guidance authoritative in `reciam-brand`; keep product data/auth/scheduling outside a generic component library. Extract a package only after checking a concrete second consumer in Paramtune or Handstamp, and document its API and ownership. No changes to those repositories have been made by this migration.
+Keep REC brand tokens and guidance authoritative in `rec-brand`; keep product data/auth/scheduling outside a generic component library. Extract a package only after checking a concrete second consumer in Paramtune or Handstamp, and document its API and ownership. No changes to those repositories have been made by this migration.
 
 ## Native verification commands
 

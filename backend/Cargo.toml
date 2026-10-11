@@ -3,6 +3,10 @@ name = "stillup-api"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.92"
+description = "StillUp API server, scheduler, workers and remote probe: self-hosted API monitoring."
+license = "MIT"
+repository = "https://github.com/rec-farm/stillup"
+homepage = "https://rec.farm/stillup/"
 publish = false
 default-run = "stillup-api"
 
