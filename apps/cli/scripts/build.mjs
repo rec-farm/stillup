@@ -9,8 +9,19 @@ const outDir = resolve(packageDir, 'dist');
 const config = ts.readConfigFile(resolve(root, 'tsconfig.base.json'), ts.sys.readFile);
 if (config.error) throw new Error(ts.flattenDiagnosticMessageText(config.error.messageText, '\n'));
 const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, root);
+// TypeScript resolves workspace package imports through node_modules and treats
+// them as external libraries, which are checked but not emitted. Explicit roots
+// ensure the published package contains their implementations and declarations.
+const workspaceModules = {
+  '@stillup/sdk': 'packages/sdk/src/index',
+  '@stillup/core': 'packages/core/src/index',
+  '@stillup/core/code-config': 'packages/core/src/code-config',
+};
 const program = ts.createProgram(
-  [resolve(packageDir, 'src/main.ts'), resolve(root, 'packages/sdk/src/index.ts')],
+  [
+    resolve(packageDir, 'src/main.ts'),
+    ...Object.values(workspaceModules).map((path) => resolve(root, `${path}.ts`)),
+  ],
   {
     ...parsed.options,
     noEmit: false,
@@ -33,11 +44,6 @@ if (diagnostics.length) {
 
 // Ship the SDK and its schema modules inside this package. Consumers need no
 // unpublished workspace packages; rewrite imports in both JS and declarations.
-const workspaceModules = {
-  '@stillup/sdk': 'packages/sdk/src/index',
-  '@stillup/core': 'packages/core/src/index',
-  '@stillup/core/code-config': 'packages/core/src/code-config',
-};
 await rm(outDir, { recursive: true, force: true });
 const writes = [];
 const result = program.emit(undefined, (filename, contents) => {

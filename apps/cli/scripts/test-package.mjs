@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { resolve } from 'node:path';
+import { dirname, posix, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 
@@ -33,6 +33,23 @@ try {
   assert(pack.files.some((file) => file.path === 'dist/cli.js'));
   assert(pack.files.some((file) => file.path.endsWith('index.d.ts')));
   assert(!pack.files.some((file) => /(^|\/)\.env|node_modules|scripts\//.test(file.path)));
+  // Check the tarball's complete local import graph before installing anything.
+  // This catches workspace modules that TypeScript checked but did not emit.
+  const packedPaths = new Set(pack.files.map((file) => file.path));
+  for (const file of pack.files.filter((file) => /\.(js|d\.ts)$/.test(file.path))) {
+    const contents = await readFile(resolve(packageDir, file.path), 'utf8');
+    for (const match of contents.matchAll(/(?:from\s*|import\s*|import\(\s*)['"]([^'"]+)['"]/g)) {
+      const specifier = match[1];
+      assert(
+        !specifier.startsWith('@stillup/'),
+        `Unpublished import in ${file.path}: ${specifier}`,
+      );
+      if (!specifier.startsWith('.')) continue;
+      let target = posix.normalize(posix.join(dirname(file.path), specifier));
+      if (file.path.endsWith('.d.ts')) target = target.replace(/\.js$/, '.d.ts');
+      assert(packedPaths.has(target), `Missing packaged import in ${file.path}: ${target}`);
+    }
+  }
   await writeFile(resolve(temp, 'package.json'), JSON.stringify({ private: true, type: 'module' }));
   await exec(
     'npm',
