@@ -3,9 +3,10 @@ import { resolve, extname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { setTimeout } from 'node:timers/promises';
+import { tsImport } from 'tsx/esm/api';
 import { codeConfigSchema, createClient, ConfigurationError, type CodePlan } from '@stillup/sdk';
 
-const help = `StillUp monitoring as code (run from the StillUp checkout)
+const help = `StillUp monitoring as code
 
 pnpm stillup <validate|test|diff|apply> --config <file.ts|file.json>
 
@@ -59,7 +60,9 @@ async function main() {
     input =
       extname(filename) === '.json'
         ? JSON.parse(await readFile(filename, 'utf8'))
-        : (await import(pathToFileURL(filename).href)).default;
+        : ['.ts', '.mts'].includes(extname(filename))
+          ? (await tsImport(pathToFileURL(filename).href, import.meta.url)).default
+          : (await import(pathToFileURL(filename).href)).default;
   } catch (error) {
     if (error instanceof ConfigurationError) throw error;
     throw new Error(
