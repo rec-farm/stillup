@@ -1,0 +1,84 @@
+# The production images: built on master, release tags, and pull requests that touch what goes
+# into them. Layers are cached in the GitHub Actions cache, so only changed stages rebuild.
+name: Image
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - backend/**
+      - apps/web/**
+      - packages/**
+      - deploy/**
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - tsconfig.base.json
+      - .github/workflows/image.yml
+permissions:
+  contents: read
+concurrency:
+  group: image-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: stillup
+          POSTGRES_PASSWORD: stillup
+          POSTGRES_DB: stillup
+        ports:
+          - 5437:5432
+        options: >-
+          --health-cmd "pg_isready -U stillup"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: api
+          tags: stillup-api:ci
+          load: true
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: probe
+          tags: stillup-probe:ci
+          load: true
+          cache-from: type=gha,scope=probe
+          cache-to: type=gha,mode=max,scope=probe
+      - name: Verify native container runtime
+        timeout-minutes: 2
+        run: |
+          set -eu
+          docker run --rm --entrypoint sh stillup-api:ci -ec 'test "$(id -u)" = 1000; test -x /usr/local/bin/stillup-api; test -f /app/client/index.html; ! command -v node; ! command -v npm; ! command -v pnpm'
+          docker run --rm --entrypoint sh stillup-probe:ci -ec 'test -x /usr/local/bin/stillup-probe; test -x /usr/local/bin/stillup-probe-entrypoint; test "$(stat -c %a /data)" = 700; ! command -v node; ! command -v npm; ! command -v pnpm'
+          trap 'docker logs stillup-native-ci; docker rm -f stillup-native-ci' EXIT
+          docker run -d --name stillup-native-ci --network host \
+            -e DATABASE_URL=postgres://stillup:stillup@127.0.0.1:5437/stillup \
+            -e ADMIN_TOKEN=ci-only-token-012345678901234567890123456789 \
+            -e APP_ORIGIN=http://127.0.0.1:3001 stillup-api:ci
+          ready=false
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:3001/readyz >/dev/null; then ready=true; break; fi
+            sleep 1
+          done
+          test "$ready" = true
+          curl --fail --silent http://127.0.0.1:3001/healthz | grep -q '"ok":true'
+          curl --fail --silent http://127.0.0.1:3001/health | grep -q '"status":"ok"'
+          docker exec stillup-native-ci /usr/local/bin/stillup-api healthcheck
+          curl --fail --silent http://127.0.0.1:3001/login | grep -q 'data-product="stillup"'
+          curl --fail --silent http://127.0.0.1:3001/docs | grep -q 'data-prerendered="docs"'
+          curl --fail --silent -H 'Authorization: Bearer ci-only-token-012345678901234567890123456789' http://127.0.0.1:3001/v1/dashboard | python3 -c 'import json,sys; assert isinstance(json.load(sys.stdin)["monitors"], list)'
