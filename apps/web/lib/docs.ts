@@ -334,10 +334,10 @@ export const docs: Doc[] = [
         title: 'Validate and connect',
         paragraphs: [
           'Save the example as stillup.config.ts in the checkout root and replace the endpoint with your own. validate checks the schema locally without credentials. diff and apply also validate referenced notification channels and locations against the installation.',
-          'Set STILLUP_URL to the browser-facing origin plus /api. When connecting directly to the private API, use its origin without /api. Use HTTPS for remote installations. Supply STILLUP_ADMIN_TOKEN through your shell or CI secret manager, never in the config file.',
+          'Set STILLUP_URL to the browser-facing origin plus /api. When connecting directly to the private API, use its origin without /api. Use HTTPS for remote installations. Supply a Deploy API key from API access as STILLUP_TOKEN through your shell or CI secret manager, never in the config file. In GitHub Actions, use a trusted workflow instead and store no key at all.',
         ],
         language: 'shell',
-        code: 'pnpm stillup validate\nexport STILLUP_URL="https://status.example.com/api"\n# Set STILLUP_ADMIN_TOKEN using your secret manager.\npnpm stillup diff\npnpm stillup test --id api-health --yes\npnpm stillup apply --yes',
+        code: 'pnpm stillup validate\nexport STILLUP_URL="https://status.example.com/api"\n# Set STILLUP_TOKEN using your secret manager.\npnpm stillup diff\npnpm stillup test --id api-health --yes\npnpm stillup apply --yes',
       },
       {
         id: 'commands',
@@ -470,9 +470,9 @@ export const docs: Doc[] = [
         id: 'ci',
         title: 'Run it in CI',
         paragraphs: [
-          'Validate on pull requests without credentials. Deploy only trusted revisions from a protected branch with an environment approval policy. TypeScript configuration is executable, so do not expose the administrator token to untrusted pull-request code.',
-          'Use the sample in examples/monitoring/github-actions.yml. It installs the locked workspace, validates on pull requests, and applies on pushes to main using a protected monitoring-production environment. Configure STILLUP_URL as an environment variable and STILLUP_ADMIN_TOKEN as its secret.',
-          'The CLI currently uses the installation administrator token; scoped project credentials are not available. If a request times out after sending an apply, run diff to inspect the saved state before retrying. Repeat apply is safe for unchanged configuration.',
+          'Validate on pull requests without credentials. Deploy only trusted revisions from a protected branch with an environment approval policy. TypeScript configuration is executable, so do not expose deploy credentials to untrusted pull-request code.',
+          'GitHub Actions needs no stored secret. Open API access on the dashboard and choose Connect a repository. Name the repository, its workflow file, the branch, a GitHub environment and the projects it deploys. StillUp writes the workflow and opens GitHub with it prefilled. The job requests `id-token: write`; each run proves to StillUp which repository, workflow, branch and environment it is, and receives deploy access to those projects for 15 minutes. Runs that do not match, including pull requests, are refused with the reason in their log.',
+          'For other CI services, create a Deploy API key limited to the project and supply it as STILLUP_TOKEN. A deploy credential can use any managed secret in the checks it deploys, so trust the deploying branch as you would an administrator. If a request times out after sending an apply, run diff to inspect the saved state before retrying. Repeat apply is safe for unchanged configuration.',
         ],
       },
     ],
@@ -488,15 +488,15 @@ export const docs: Doc[] = [
         id: 'authentication',
         title: 'Connect to the management API',
         paragraphs: [
-          'Authenticate with `Authorization: Bearer <ADMIN_TOKEN>`, which always acts as an administrator. Browser sessions also work for dashboard requests and carry the signed-in user’s role. Never embed tokens in URLs.',
+          'Authenticate with `Authorization: Bearer <API key>`. Create keys under API access on the dashboard: Read only keys see what viewers see, Deploy keys only test, preview and apply monitoring as code, and Administrator keys do everything except manage users and API access. Each key is shown once and can be revoked. Browser sessions also work for dashboard requests and carry the signed-in user’s role. ADMIN_TOKEN still works as a break-glass administrator. Never embed keys in URLs.',
           'Through the web application, use the `/api/v1` prefix. The private API exposes `/v1` directly. In these examples, set `STILLUP_URL` to your web origin followed by `/api`, such as `https://monitoring.example.com/api`. Endpoint cards below use the `/v1` paths.',
         ],
         language: 'shell',
         codeTitle: 'Authenticate a request',
-        code: 'export STILLUP_URL="https://monitoring.example.com/api"\n\n# Supply STILLUP_ADMIN_TOKEN from your secret manager.\ncurl "$STILLUP_URL/v1/dashboard" \\\n  -H "Authorization: Bearer $STILLUP_ADMIN_TOKEN"',
+        code: 'export STILLUP_URL="https://monitoring.example.com/api"\n\n# Supply STILLUP_TOKEN, a Read only API key, from your secret manager.\ncurl "$STILLUP_URL/v1/dashboard" \\\n  -H "Authorization: Bearer $STILLUP_TOKEN"',
         callout: {
           title: 'Keep credentials on your server',
-          body: 'The administrator token grants installation-wide access. Use it in trusted servers or CI; never ship it in browser code.',
+          body: 'Give each app its own key with the least access it needs, and set an expiry. Keys belong in trusted servers or CI; never ship them in browser code.',
         },
       },
       {
@@ -622,7 +622,7 @@ export const docs: Doc[] = [
           {
             title: '2. Apply the reviewed configuration',
             language: 'javascript',
-            code: 'const headers = {\n  Authorization: `Bearer ${process.env.STILLUP_ADMIN_TOKEN}`,\n  "Content-Type": "application/json",\n};\nconst base = process.env.STILLUP_URL;\n// config is the same project object used for the preview.\nconst response = await fetch(`${base}/v1/code/plan`, {\n  method: "POST", headers, body: JSON.stringify(config),\n});\nif (!response.ok) throw new Error(`Preview failed: ${response.status}`);\nconst plan = await response.json();\n\n// Review plan.changes before executing the apply request.\nconst applied = await fetch(`${base}/v1/code/apply`, {\n  method: "POST", headers,\n  body: JSON.stringify({ config, token: plan.token }),\n});\nif (!applied.ok) throw new Error(`Apply failed: ${applied.status}`);',
+            code: 'const headers = {\n  Authorization: `Bearer ${process.env.STILLUP_TOKEN}`,\n  "Content-Type": "application/json",\n};\nconst base = process.env.STILLUP_URL;\n// config is the same project object used for the preview.\nconst response = await fetch(`${base}/v1/code/plan`, {\n  method: "POST", headers, body: JSON.stringify(config),\n});\nif (!response.ok) throw new Error(`Preview failed: ${response.status}`);\nconst plan = await response.json();\n\n// Review plan.changes before executing the apply request.\nconst applied = await fetch(`${base}/v1/code/apply`, {\n  method: "POST", headers,\n  body: JSON.stringify({ config, token: plan.token }),\n});\nif (!applied.ok) throw new Error(`Apply failed: ${applied.status}`);',
           },
         ],
       },
@@ -804,7 +804,8 @@ export const docs: Doc[] = [
           {
             name: '401',
             default: 'Unauthorized',
-            description: 'Supply a valid administrator token or browser session.',
+            description:
+              'Supply a valid API key or browser session. Keys that expired or were revoked stop working.',
           },
           {
             name: '403',

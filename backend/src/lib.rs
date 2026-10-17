@@ -1,3 +1,4 @@
+pub mod api_keys;
 pub mod assertions;
 pub mod auth;
 pub mod check_config;
@@ -19,6 +20,7 @@ pub mod secrets;
 pub mod server;
 pub mod status;
 pub mod status_domain;
+pub mod trusted_publishing;
 pub mod users;
 pub mod web;
 pub mod webhook;

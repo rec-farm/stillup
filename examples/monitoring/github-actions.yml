@@ -1,5 +1,7 @@
 # Copy into .github/workflows/monitoring.yml in a repository containing the StillUp workspace.
-# Replace the example endpoint and use a protected monitoring-production environment.
+# Replace the example endpoint and use a protected monitoring-production environment. In StillUp,
+# open API access and trust this repository's monitoring.yml on branch main in the
+# monitoring-production environment for project example-api. No secret is stored here.
 name: Monitoring
 on:
   pull_request:
@@ -29,6 +31,9 @@ jobs:
     needs: validate
     environment: monitoring-production
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -42,4 +47,3 @@ jobs:
       - run: pnpm stillup apply --config examples/monitoring/stillup.config.ts --yes
         env:
           STILLUP_URL: ${{ vars.STILLUP_URL }}
-          STILLUP_ADMIN_TOKEN: ${{ secrets.STILLUP_ADMIN_TOKEN }}

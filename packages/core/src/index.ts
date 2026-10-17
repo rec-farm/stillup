@@ -213,8 +213,39 @@ export type User = {
   lastSignInAt: string | null;
 };
 /** The installation token (or single sign-on before any users exist) acts as an administrator. */
-export type Me = ({ kind: 'user' } & User) | { kind: 'installation'; role: 'admin' };
+export type CredentialRole = 'viewer' | 'deployer' | 'admin';
+export type Me =
+  | ({ kind: 'user' } & User)
+  | { kind: 'installation'; role: 'admin' }
+  | { kind: 'credential'; role: CredentialRole; projects: string[] | null };
 export type UserList = { users: User[]; oidc: boolean };
+export type ApiKey = {
+  id: string;
+  name: string;
+  role: CredentialRole;
+  /** Projects a deploy key may change; null means every project. */
+  projects: string[] | null;
+  /** The key's first characters, to tell keys apart. */
+  hint: string;
+  createdBy: string;
+  createdAt: string;
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+};
+/** A GitHub Actions workflow trusted to deploy monitoring as code without a stored secret. */
+export type TrustedPublisher = {
+  id: string;
+  repository: string;
+  workflow: string;
+  branch: string | null;
+  environment: string | null;
+  projects: string[];
+  /** Whether a run has bound the rule to GitHub's repository and owner IDs. */
+  linked: boolean;
+  createdBy: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+};
 
 export { workspaceSettingsSchema, defaultWorkspaceSettings } from './workspace';
 export type { WorkspaceSettings, WorkspaceAppearance } from './workspace';

@@ -47,6 +47,7 @@ import { LocationsDialog, RegionalResults } from './locations';
 import { StatusManagementDialog } from './status-management';
 import { UptimeBars } from './status-view';
 import { UsersDialog } from './users';
+import { ApiAccessDialog } from './api-access';
 const labels: Record<Health, string> = {
   up: 'Healthy',
   down: 'Failing',
@@ -89,6 +90,7 @@ export function DashboardView({ initial, me }: { initial: Dashboard; me: Me }) {
   // Viewers see monitoring data only; the API enforces the same boundary.
   const canManage = me.role === 'admin';
   const [usersOpen, setUsersOpen] = useState(false);
+  const [apiAccessOpen, setApiAccessOpen] = useState(false);
   const [data, setData] = useState(initial);
   const [create, setCreate] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -761,6 +763,9 @@ export function DashboardView({ initial, me }: { initial: Dashboard; me: Me }) {
                     <button className="button secondary" onClick={() => setUsersOpen(true)}>
                       Manage users
                     </button>
+                    <button className="button secondary" onClick={() => setApiAccessOpen(true)}>
+                      API access
+                    </button>
                   </div>
                 </>
               )}
@@ -774,6 +779,7 @@ export function DashboardView({ initial, me }: { initial: Dashboard; me: Me }) {
       </div>
       {locationsOpen && <LocationsDialog onClose={() => setLocationsOpen(false)} />}
       {usersOpen && <UsersDialog me={me} onClose={() => setUsersOpen(false)} />}
+      {apiAccessOpen && <ApiAccessDialog onClose={() => setApiAccessOpen(false)} />}
       {secretsOpen && <SecretsDialog onClose={() => setSecretsOpen(false)} />}
       {statusEditorOpen && (
         <StatusManagementDialog

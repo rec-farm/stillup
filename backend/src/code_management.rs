@@ -3,8 +3,9 @@ use crate::{
     error::ApiError,
     json::ApiJson,
     server::{AppState, timestamp},
+    users::Principal,
 };
-use axum::{Json, extract::State};
+use axum::{Extension, Json, extract::State, http::StatusCode};
 use icu_collator::{Collator, CollatorBorrowed};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -70,7 +71,7 @@ fn strict(value: &Value, keys: &[&str]) -> Result<(), ApiError> {
     }
     Ok(())
 }
-fn identity(value: &Value) -> Result<String, ApiError> {
+pub(crate) fn identity(value: &Value) -> Result<String, ApiError> {
     let v = value
         .as_str()
         .ok_or_else(|| ApiError::bad("Invalid code identity"))?;
@@ -246,14 +247,30 @@ async fn reconcile(
     tx.commit().await?;
     Ok(plan)
 }
+/// Validates a configuration for a principal that must be allowed to deploy its project.
+fn authorized(principal: &Principal, input: &Value) -> Result<Value, ApiError> {
+    let config = validate(input)?;
+    let project = config["project"].as_str().unwrap();
+    if !principal.may_deploy(project) {
+        return Err(ApiError(
+            StatusCode::FORBIDDEN,
+            format!("This credential cannot deploy project {project}"),
+        ));
+    }
+    Ok(config)
+}
 pub async fn plan(
     State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
     ApiJson(input): ApiJson,
 ) -> Result<Json<Value>, ApiError> {
-    Ok(Json(reconcile(&state, validate(&input)?, None).await?))
+    Ok(Json(
+        reconcile(&state, authorized(&principal, &input)?, None).await?,
+    ))
 }
 pub async fn apply(
     State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
     ApiJson(input): ApiJson,
 ) -> Result<Json<Value>, ApiError> {
     strict(&input, &["config", "token"])?;
@@ -266,7 +283,7 @@ pub async fn apply(
         })
         .ok_or_else(|| ApiError::bad("Invalid plan token"))?;
     Ok(Json(
-        reconcile(&state, validate(&input["config"])?, Some(token)).await?,
+        reconcile(&state, authorized(&principal, &input["config"])?, Some(token)).await?,
     ))
 }
 

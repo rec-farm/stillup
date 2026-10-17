@@ -26,6 +26,7 @@ StillUp is intended for a trusted administrator managing one installation:
 - Store encrypted named secrets, run checks from remote probe locations, and manage checks as code.
 - Protect management with an installation administrator token, or OpenID Connect sign-in, and a 24-hour HTTP-only session.
 - Invite people by email as administrators or read-only viewers.
+- Give other apps their own revocable API keys, and let GitHub Actions deploy monitoring as code with no stored secret.
 
 Permanent deletion, email notifications, and TypeScript workflow execution are not implemented yet. See [the roadmap](docs/ROADMAP.md).
 
@@ -137,6 +138,15 @@ To give people their own access, open **Manage users** on the dashboard, add you
 - **Administrators** manage everything. **Viewers** see the dashboard, checks, results and incidents, but not notifications, secrets, locations, status page settings or users. Request headers, bodies and URL query values are hidden from viewers.
 - Role changes apply immediately, removing a user ends their sessions, and StillUp keeps at least one administrator. `ADMIN_TOKEN` keeps working as a break-glass administrator.
 
+### API keys and GitHub Actions
+
+Other apps should not use `ADMIN_TOKEN`. Open **API access** on the dashboard instead:
+
+- **API keys** are for apps, scripts and CI services. Each has a name, an access level and an optional expiry, and is shown once. **Read only** keys see what viewers see. **Deploy** keys can only test, preview and apply monitoring as code, optionally for named projects. **Administrator** keys can do everything except manage users and API access, so a leaked key cannot create more. StillUp stores only a SHA-256 of each key and records when it was last used. Send it as `Authorization: Bearer suk_…`.
+- **GitHub Actions** workflows deploy without any stored secret (trusted publishing). Connect a repository and name its workflow file, branch, GitHub environment and projects; StillUp writes the workflow for you. Each run asks GitHub for a signed OpenID Connect token for this installation (its audience is `APP_ORIGIN`) and exchanges it at `/v1/auth/github` for deploy access to those projects for 15 minutes. The first run binds the rule to GitHub's repository and owner IDs, so a repository recreated under the same name cannot deploy. The API must reach `token.actions.githubusercontent.com`; for GitHub Enterprise Server, set `GITHUB_ACTIONS_ISSUER=https://HOST/_services/token`.
+
+A deploy credential can reference any managed secret in the checks it deploys, and therefore send it to any URL it configures. Give deploy access only to repositories whose main branch you trust as much as an administrator's.
+
 The default deployment hosts monitoring and public status together. If that host fails, the public page will also be unavailable. Independent status hosting is on the roadmap.
 
 ## Configure a check
@@ -221,7 +231,7 @@ Click an incident name for its timeline: opening/recovery snapshots, retained ob
 
 ## API
 
-Management endpoints accept `Authorization: Bearer <ADMIN_TOKEN>` or the dashboard session cookie. Viewer sessions get 403 for anything beyond reading the dashboard, checks and incidents.
+Management endpoints accept `Authorization: Bearer <API key>`, the dashboard session cookie, or `ADMIN_TOKEN`. Viewer sessions and read-only keys get 403 for anything beyond reading the dashboard, checks and incidents; deploy credentials get 403 outside `/v1/code/*` and `/v1/checks/test`.
 
 | Method        | Endpoint              | Purpose                                    |
 | ------------- | --------------------- | ------------------------------------------ |
@@ -229,7 +239,8 @@ Management endpoints accept `Authorization: Bearer <ADMIN_TOKEN>` or the dashboa
 | GET           | `/readyz`             | Readiness; 503 while the database is down  |
 | GET           | `/health`             | Readiness (kept for existing monitors)     |
 | POST / DELETE | `/v1/session`         | Sign in / sign out                         |
-| GET           | `/v1/auth/config`     | Whether single sign-on is configured       |
+| GET           | `/v1/auth/config`     | Single sign-on and the GitHub audience     |
+| POST          | `/v1/auth/github`     | Exchange a GitHub Actions token            |
 | GET           | `/v1/dashboard`       | Checks, recent incidents, worker heartbeat |
 | POST          | `/v1/checks`          | Create a validated check                   |
 | PATCH         | `/v1/checks/:id`      | Set `{ "enabled": false }` or `true`       |
@@ -239,13 +250,17 @@ Management endpoints accept `Authorization: Bearer <ADMIN_TOKEN>` or the dashboa
 
 Additional management endpoints (including `GET /v1/checks/:id` to load the latest saved configuration):
 
-| Method | Endpoint                             | Purpose                                                  |
-| ------ | ------------------------------------ | -------------------------------------------------------- |
-| PUT    | `/v1/checks/:id`                     | Save `{ "config": { ... }, "expectedRevision": 1 }`      |
-| POST   | `/v1/checks/:id/archive`             | Archive with `{ "expectedRevision": 1 }`                 |
-| POST   | `/v1/checks/:id/restore`             | Restore paused with `{ "expectedRevision": 1 }`          |
-| GET    | `/v1/checks/:id/revisions?before=21` | Page through configuration history; `before` is optional |
-| GET    | `/v1/checks/:id/revisions/:revision` | Read one configuration snapshot                          |
+| Method   | Endpoint                             | Purpose                                                  |
+| -------- | ------------------------------------ | -------------------------------------------------------- |
+| PUT      | `/v1/checks/:id`                     | Save `{ "config": { ... }, "expectedRevision": 1 }`      |
+| POST     | `/v1/checks/:id/archive`             | Archive with `{ "expectedRevision": 1 }`                 |
+| POST     | `/v1/checks/:id/restore`             | Restore paused with `{ "expectedRevision": 1 }`          |
+| GET      | `/v1/checks/:id/revisions?before=21` | Page through configuration history; `before` is optional |
+| GET      | `/v1/checks/:id/revisions/:revision` | Read one configuration snapshot                          |
+| GET/POST | `/v1/api-keys`                       | List API keys, or create one (its key is returned once)  |
+| DELETE   | `/v1/api-keys/:id`                   | Revoke an API key                                        |
+| GET/POST | `/v1/trusted-publishers`             | List or add trusted GitHub workflows                     |
+| DELETE   | `/v1/trusted-publishers/:id`         | Remove a trusted workflow and end the access it issued   |
 
 A stale `expectedRevision` returns HTTP 409. Pause/resume also accepts `expectedRevision`. Management history endpoints require authentication; public status never returns configuration snapshots. Revision pages contain `revisions` and `nextBefore` (null on the final page).
 

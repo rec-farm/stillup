@@ -92,7 +92,7 @@ impl Default for Runtime {
 fn is_loopback(url: &url::Url) -> bool {
     matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "[::1]"))
 }
-fn allowed_endpoint(url: &url::Url, local_http: bool) -> bool {
+pub(crate) fn allowed_endpoint(url: &url::Url, local_http: bool) -> bool {
     url.username().is_empty()
         && url.password().is_none()
         && url.fragment().is_none()
@@ -289,7 +289,10 @@ macro_rules! client {
     };
 }
 pub async fn config(State(state): State<AppState>) -> Json<Value> {
-    Json(json!({"oidc":state.config.oidc.enabled(),"displayName":state.config.oidc.display_name}))
+    // The audience is what GitHub Actions workflows request their tokens for.
+    Json(
+        json!({"oidc":state.config.oidc.enabled(),"displayName":state.config.oidc.display_name,"audience":state.config.origin}),
+    )
 }
 pub async fn start(State(state): State<AppState>, request: Request) -> Response {
     if !state.config.oidc.enabled() {

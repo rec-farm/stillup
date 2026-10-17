@@ -80,6 +80,7 @@ impl Fixture {
             run_retention_days: 30,
             status_page_title: "Service status".into(),
             oidc: Default::default(),
+            github_actions_issuer: stillup_api::trusted_publishing::GITHUB_ISSUER.into(),
             secrets: Default::default(),
             allow_private_networks: false,
             database_url: String::new(),
@@ -241,7 +242,7 @@ async fn migrations_preserve_data_and_workspace_revisions_are_atomic() {
         .fetch_one(&fixture.pool)
         .await
         .unwrap();
-    assert_eq!(count, 12);
+    assert_eq!(count, 13);
     let response = app
         .oneshot(
             Request::builder()
@@ -389,6 +390,7 @@ async fn upgrade_current_legacy_schema_preserves_every_existing_table_and_ledger
                         | "009_uptime_rollups.sql"
                         | "010_users.sql"
                         | "011_backchannel_logout.sql"
+                        | "012_api_access.sql"
                 )
         })
         .collect();
@@ -453,7 +455,7 @@ async fn upgrade_current_legacy_schema_preserves_every_existing_table_and_ledger
         database::migrate(&fixture.pool).await.unwrap();
         for (table, query, before) in &snapshots {
             let query = if table == "stillup_migrations" {
-                "SELECT jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text) FROM stillup_migrations t WHERE name NOT IN ('008_rust_check_jobs.sql','009_uptime_rollups.sql','010_users.sql','011_backchannel_logout.sql')"
+                "SELECT jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text) FROM stillup_migrations t WHERE name NOT IN ('008_rust_check_jobs.sql','009_uptime_rollups.sql','010_users.sql','011_backchannel_logout.sql','012_api_access.sql')"
             } else {
                 query.as_str()
             };
@@ -467,7 +469,7 @@ async fn upgrade_current_legacy_schema_preserves_every_existing_table_and_ledger
             .fetch_one(&fixture.pool)
             .await
             .unwrap();
-        assert_eq!(count, 12);
+        assert_eq!(count, 13);
         let uptime: (String, i64, i64) = sqlx::query_as(
             "SELECT day::text,observed_seconds,down_seconds FROM monitor_daily_uptime",
         )
@@ -4340,5 +4342,293 @@ async fn login_utf16_limits_and_dashboard_effective_channels_match_legacy() {
     sqlx::query("INSERT INTO notification_channels(name,url) VALUES('Managed','https://example.com/managed')").execute(&fixture.pool).await.unwrap();
     let (_, dashboard, _) = request(fixture.app(), "GET", "/v1/dashboard", Value::Null, true).await;
     assert_eq!(dashboard["notificationsEnabled"], true);
+    fixture.close().await;
+}
+
+async fn with_bearer(
+    app: &Router,
+    method: &str,
+    path: &str,
+    input: Value,
+    bearer: &str,
+) -> (StatusCode, Value) {
+    let mut builder = Request::builder()
+        .method(method)
+        .uri(path)
+        .header(header::HOST, "dashboard.example.com")
+        .header(header::AUTHORIZATION, format!("Bearer {bearer}"));
+    let body = if input.is_null() {
+        Body::empty()
+    } else {
+        builder = builder.header(header::CONTENT_TYPE, "application/json");
+        Body::from(input.to_string())
+    };
+    let response = app
+        .clone()
+        .oneshot(builder.body(body).unwrap())
+        .await
+        .unwrap();
+    let status = response.status();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    (status, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL"]
+async fn api_keys_and_trusted_github_workflows_are_scoped_and_revocable() {
+    use axum::{Json, routing::get};
+    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+    use rsa::{
+        pkcs1v15::SigningKey,
+        pkcs8::DecodePrivateKey,
+        signature::{SignatureEncoding, Signer},
+    };
+    use sha2::Sha256;
+    fn sign(claims: &Value, tamper: bool) -> String {
+        let header = URL_SAFE_NO_PAD.encode(
+            serde_json::to_vec(&json!({"alg":"RS256","kid":"fixture","typ":"JWT"})).unwrap(),
+        );
+        let payload = URL_SAFE_NO_PAD.encode(serde_json::to_vec(claims).unwrap());
+        let message = format!("{header}.{payload}");
+        // This checked-in key is only a disposable local test fixture.
+        let key =
+            rsa::RsaPrivateKey::from_pkcs8_pem(include_str!("fixtures/oidc-test-key.pem")).unwrap();
+        let mut signature = SigningKey::<Sha256>::new(key)
+            .sign(message.as_bytes())
+            .to_vec();
+        if tamper {
+            signature[0] ^= 1;
+        }
+        format!("{message}.{}", URL_SAFE_NO_PAD.encode(signature))
+    }
+    let fixture = Fixture::new().await;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let issuer = format!("http://{}", listener.local_addr().unwrap());
+    let discovery = json!({"issuer":issuer,"jwks_uri":format!("{issuer}/jwks")});
+    let github = Router::new()
+        .route(
+            "/.well-known/openid-configuration",
+            get(move || async move { Json(discovery) }),
+        )
+        .route(
+            "/jwks",
+            get(|| async {
+                Json(
+                    serde_json::from_str::<Value>(include_str!("fixtures/oidc-test-jwks.json"))
+                        .unwrap(),
+                )
+            }),
+        );
+    let server = tokio::spawn(async move { axum::serve(listener, github).await.unwrap() });
+    let app = fixture.app_configure(|config| config.github_actions_issuer = issuer.clone());
+    let admin = "01234567890123456789012345678901";
+    let plan = |project: &str| json!({"version":1,"project":project,"checks":[]});
+
+    // API keys: shown once, scoped by role and project, and unable to manage access.
+    let (status, created) = with_bearer(
+        &app,
+        "POST",
+        "/v1/api-keys",
+        json!({"name":"CI deploys","role":"deployer","projects":["api"],"expiresInDays":30}),
+        admin,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    let deploy_key = created["token"].as_str().unwrap().to_owned();
+    assert!(deploy_key.starts_with("suk_"));
+    assert_eq!(created["key"]["createdBy"], "Installation administrator");
+    assert!(created["key"]["expiresAt"].is_string());
+    let (_, listed) = with_bearer(&app, "GET", "/v1/api-keys", Value::Null, admin).await;
+    assert_eq!(listed["keys"].as_array().unwrap().len(), 1);
+    assert!(!listed.to_string().contains(&deploy_key));
+    assert_eq!(
+        listed["keys"][0]["hint"].as_str().unwrap(),
+        &deploy_key[..12]
+    );
+    for invalid in [
+        json!({"name":"","role":"viewer"}),
+        json!({"name":"x","role":"owner"}),
+        json!({"name":"x","role":"viewer","projects":["api"]}),
+        json!({"name":"x","role":"deployer","projects":["API"]}),
+        json!({"name":"x","role":"viewer","expiresInDays":0}),
+    ] {
+        let (status, _) = with_bearer(&app, "POST", "/v1/api-keys", invalid.clone(), admin).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{invalid}");
+    }
+    let (status, _) = with_bearer(&app, "POST", "/v1/code/plan", plan("api"), &deploy_key).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, data) =
+        with_bearer(&app, "POST", "/v1/code/plan", plan("web"), &deploy_key).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(data["error"], "This credential cannot deploy project web");
+    for (method, path) in [("GET", "/v1/dashboard"), ("GET", "/v1/api-keys")] {
+        let (status, _) = with_bearer(&app, method, path, Value::Null, &deploy_key).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{path}");
+    }
+    let (_, me) = with_bearer(&app, "GET", "/v1/me", Value::Null, &deploy_key).await;
+    assert_eq!(
+        me,
+        json!({"kind":"credential","role":"deployer","projects":["api"]})
+    );
+    let used: bool =
+        sqlx::query_scalar("SELECT last_used_at IS NOT NULL FROM api_keys WHERE role='deployer'")
+            .fetch_one(&fixture.pool)
+            .await
+            .unwrap();
+    assert!(used);
+    let (_, created) = with_bearer(
+        &app,
+        "POST",
+        "/v1/api-keys",
+        json!({"name":"Integrations","role":"admin"}),
+        admin,
+    )
+    .await;
+    let admin_key = created["token"].as_str().unwrap().to_owned();
+    let (status, _) = with_bearer(&app, "GET", "/v1/secrets", Value::Null, &admin_key).await;
+    assert_eq!(status, StatusCode::OK);
+    for path in ["/v1/api-keys", "/v1/users", "/v1/trusted-publishers"] {
+        let (status, _) = with_bearer(&app, "GET", path, Value::Null, &admin_key).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{path}");
+    }
+    let (status, _) = with_bearer(&app, "POST", "/v1/code/plan", plan("web"), &admin_key).await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, created) = with_bearer(
+        &app,
+        "POST",
+        "/v1/api-keys",
+        json!({"name":"Status board","role":"viewer"}),
+        admin,
+    )
+    .await;
+    let viewer_key = created["token"].as_str().unwrap().to_owned();
+    let (status, _) = with_bearer(&app, "GET", "/v1/dashboard", Value::Null, &viewer_key).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = with_bearer(&app, "POST", "/v1/code/plan", plan("api"), &viewer_key).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let id = listed["keys"][0]["id"].as_str().unwrap();
+    let (status, _) = with_bearer(
+        &app,
+        "DELETE",
+        &format!("/v1/api-keys/{id}"),
+        Value::Null,
+        admin,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, data) =
+        with_bearer(&app, "POST", "/v1/code/plan", plan("api"), &deploy_key).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(data["error"], "This API key is invalid, expired or revoked");
+    sqlx::query("UPDATE api_keys SET expires_at=now()-interval '1 second' WHERE role='viewer'")
+        .execute(&fixture.pool)
+        .await
+        .unwrap();
+    let (status, _) = with_bearer(&app, "GET", "/v1/dashboard", Value::Null, &viewer_key).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    // Trusted GitHub workflows: no stored secret, a short-lived token for named projects.
+    let (_, config, _) = request(app.clone(), "GET", "/v1/auth/config", Value::Null, false).await;
+    assert_eq!(config["audience"], "https://dashboard.example.com");
+    let rule = json!({"repository":"acme/api","workflow":"monitoring.yml","branch":"refs/heads/main","environment":"production","projects":["api"]});
+    let (status, created) =
+        with_bearer(&app, "POST", "/v1/trusted-publishers", rule.clone(), admin).await;
+    assert_eq!(status, StatusCode::CREATED, "{created}");
+    assert_eq!(created["branch"], "main");
+    assert_eq!(created["linked"], false);
+    let (status, _) = with_bearer(&app, "POST", "/v1/trusted-publishers", rule, admin).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    let (status, _) = with_bearer(
+        &app,
+        "POST",
+        "/v1/trusted-publishers",
+        json!({"repository":"acme/api","workflow":"other.yml","projects":[]}),
+        admin,
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let now = chrono::Utc::now().timestamp();
+    let claims = json!({
+        "iss": issuer, "aud": "https://dashboard.example.com", "sub": "repo:Acme/API:environment:production",
+        "iat": now, "exp": now + 300,
+        "repository": "Acme/API", "repository_id": "42", "repository_owner_id": "7",
+        "workflow_ref": "Acme/API/.github/workflows/monitoring.yml@refs/heads/main",
+        "ref": "refs/heads/main", "environment": "production",
+    });
+    let exchange = |claims: Value, tamper: bool| {
+        let app = app.clone();
+        async move {
+            request(
+                app,
+                "POST",
+                "/api/v1/auth/github",
+                json!({"token":sign(&claims,tamper)}),
+                false,
+            )
+            .await
+        }
+    };
+    let with = |name: &str, value: Value| {
+        let mut claims = claims.clone();
+        claims[name] = value;
+        claims
+    };
+    let (status, data, _) = exchange(claims.clone(), true).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "{data}");
+    for invalid in [
+        with("aud", json!("https://other.example.com")),
+        with("iss", json!("https://token.actions.githubusercontent.com")),
+        with("exp", json!(now - 3600)),
+    ] {
+        let (status, _, _) = exchange(invalid.clone(), false).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{invalid}");
+    }
+    let (status, data, _) = exchange(
+        with(
+            "workflow_ref",
+            json!("Acme/API/.github/workflows/other.yml@refs/heads/main"),
+        ),
+        false,
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert!(data["error"].as_str().unwrap().contains("other.yml"));
+    for refused in [
+        with("ref", json!("refs/pull/1/merge")),
+        with("environment", json!("staging")),
+    ] {
+        let (status, _, _) = exchange(refused.clone(), false).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{refused}");
+    }
+    let (status, data, _) = exchange(claims.clone(), false).await;
+    assert_eq!(status, StatusCode::OK, "{data}");
+    assert_eq!(data["projects"], json!(["api"]));
+    let deploy = data["token"].as_str().unwrap().to_owned();
+    assert!(deploy.starts_with("sut_"));
+    let (status, _) = with_bearer(&app, "POST", "/v1/code/plan", plan("api"), &deploy).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = with_bearer(&app, "POST", "/v1/code/plan", plan("web"), &deploy).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = with_bearer(&app, "GET", "/v1/secrets", Value::Null, &deploy).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    // The first use binds GitHub's IDs; a recreated repository with the same name is refused.
+    let (status, data, _) = exchange(with("repository_id", json!("99")), false).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{data}");
+    let (_, listed) = with_bearer(&app, "GET", "/v1/trusted-publishers", Value::Null, admin).await;
+    assert_eq!(listed["publishers"][0]["linked"], true);
+    assert!(listed["publishers"][0]["lastUsedAt"].is_string());
+    let id = listed["publishers"][0]["id"].as_str().unwrap();
+    let (status, _) = with_bearer(
+        &app,
+        "DELETE",
+        &format!("/v1/trusted-publishers/{id}"),
+        Value::Null,
+        admin,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, _) = with_bearer(&app, "POST", "/v1/code/plan", plan("api"), &deploy).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    server.abort();
     fixture.close().await;
 }
