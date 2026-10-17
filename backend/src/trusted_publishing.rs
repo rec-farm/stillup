@@ -42,9 +42,7 @@ pub fn issuer_from_env() -> Result<String, String> {
         .to_owned();
     let url = url::Url::parse(&issuer).map_err(|_| "GITHUB_ACTIONS_ISSUER must be a valid URL")?;
     if !crate::oidc::allowed_endpoint(&url, url.scheme() == "http") {
-        return Err(
-            "GITHUB_ACTIONS_ISSUER must use HTTPS, except for loopback development".into(),
-        );
+        return Err("GITHUB_ACTIONS_ISSUER must use HTTPS, except for loopback development".into());
     }
     Ok(issuer)
 }
@@ -345,7 +343,9 @@ pub async fn list(State(state): State<AppState>) -> Result<Json<Value>, ApiError
 pub fn repository(value: &str) -> Option<String> {
     let (owner, name) = value.trim().split_once('/')?;
     let owner_ok = (1..=39).contains(&owner.len())
-        && owner.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-');
+        && owner
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || c == b'-');
     let name_ok = (1..=100).contains(&name.len())
         && !matches!(name, "." | "..")
         && name
@@ -561,7 +561,14 @@ mod tests {
     #[test]
     fn repositories_and_workflows_are_validated() {
         assert_eq!(repository(" acme/api.v2 "), Some("acme/api.v2".into()));
-        for invalid in ["acme", "acme/", "/api", "acme/api/x", "acme/..", "ac me/api"] {
+        for invalid in [
+            "acme",
+            "acme/",
+            "/api",
+            "acme/api/x",
+            "acme/..",
+            "ac me/api",
+        ] {
             assert_eq!(repository(invalid), None, "{invalid}");
         }
         assert_eq!(workflow("monitoring.yml"), Some("monitoring.yml".into()));

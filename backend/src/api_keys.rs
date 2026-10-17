@@ -62,11 +62,9 @@ pub async fn principal(pool: &PgPool, value: &str) -> Result<Option<Principal>, 
                 .execute(pool)
                 .await?;
         }
-        return Ok(CredentialRole::parse(&role).map(|role| Principal::Credential {
-            id,
-            role,
-            projects,
-        }));
+        return Ok(
+            CredentialRole::parse(&role).map(|role| Principal::Credential { id, role, projects }),
+        );
     }
     if well_formed(value, PUBLISHER_TOKEN_PREFIX) {
         let row = sqlx::query_as::<_, (Uuid, Vec<String>)>(

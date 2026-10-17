@@ -1,4 +1,6 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { CLI_VERSION } from '@stillup/core';
 import { githubWorkflow, newWorkflowUrl, repositoryName, workflowName } from './github-workflow';
 
 describe('repositoryName', () => {
@@ -55,5 +57,14 @@ describe('links', () => {
     expect(url.searchParams.get('filename')).toBe('.github/workflows/monitoring.yml');
     expect(url.searchParams.get('value')).toBe('name: x\n');
     expect(workflowName('.github/workflows/deploy.yml')).toBe('deploy.yml');
+  });
+});
+
+describe('CLI_VERSION', () => {
+  it('matches the published CLI package, so generated workflows run this release', () => {
+    const cli = JSON.parse(
+      readFileSync(new URL('../../cli/package.json', import.meta.url), 'utf8'),
+    ) as { version: string };
+    expect(CLI_VERSION).toBe(cli.version);
   });
 });

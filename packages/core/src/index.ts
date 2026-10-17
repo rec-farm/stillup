@@ -213,6 +213,9 @@ export type User = {
   lastSignInAt: string | null;
 };
 /** The installation token (or single sign-on before any users exist) acts as an administrator. */
+/** The @rec/stillup version that generated workflows run; kept equal to apps/cli/package.json. */
+export const CLI_VERSION = '0.1.0';
+
 export type CredentialRole = 'viewer' | 'deployer' | 'admin';
 export type Me =
   | ({ kind: 'user' } & User)

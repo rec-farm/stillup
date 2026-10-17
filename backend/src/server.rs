@@ -60,10 +60,7 @@ pub fn router(state: AppState) -> Router {
             "/v1/auth/oidc/backchannel-logout",
             post(crate::oidc::backchannel_logout),
         )
-        .route(
-            "/v1/auth/github",
-            post(crate::trusted_publishing::exchange),
-        )
+        .route("/v1/auth/github", post(crate::trusted_publishing::exchange))
         .route("/v1/dashboard", get(dashboard))
         .route("/v1/me", get(crate::users::me))
         .route(

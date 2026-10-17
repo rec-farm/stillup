@@ -4370,7 +4370,10 @@ async fn with_bearer(
         .unwrap();
     let status = response.status();
     let bytes = response.into_body().collect().await.unwrap().to_bytes();
-    (status, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
 }
 
 #[tokio::test]
@@ -4457,8 +4460,7 @@ async fn api_keys_and_trusted_github_workflows_are_scoped_and_revocable() {
     }
     let (status, _) = with_bearer(&app, "POST", "/v1/code/plan", plan("api"), &deploy_key).await;
     assert_eq!(status, StatusCode::OK);
-    let (status, data) =
-        with_bearer(&app, "POST", "/v1/code/plan", plan("web"), &deploy_key).await;
+    let (status, data) = with_bearer(&app, "POST", "/v1/code/plan", plan("web"), &deploy_key).await;
     assert_eq!(status, StatusCode::FORBIDDEN);
     assert_eq!(data["error"], "This credential cannot deploy project web");
     for (method, path) in [("GET", "/v1/dashboard"), ("GET", "/v1/api-keys")] {
@@ -4516,8 +4518,7 @@ async fn api_keys_and_trusted_github_workflows_are_scoped_and_revocable() {
     )
     .await;
     assert_eq!(status, StatusCode::NO_CONTENT);
-    let (status, data) =
-        with_bearer(&app, "POST", "/v1/code/plan", plan("api"), &deploy_key).await;
+    let (status, data) = with_bearer(&app, "POST", "/v1/code/plan", plan("api"), &deploy_key).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     assert_eq!(data["error"], "This API key is invalid, expired or revoked");
     sqlx::query("UPDATE api_keys SET expires_at=now()-interval '1 second' WHERE role='viewer'")

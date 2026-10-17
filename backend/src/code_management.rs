@@ -283,7 +283,12 @@ pub async fn apply(
         })
         .ok_or_else(|| ApiError::bad("Invalid plan token"))?;
     Ok(Json(
-        reconcile(&state, authorized(&principal, &input["config"])?, Some(token)).await?,
+        reconcile(
+            &state,
+            authorized(&principal, &input["config"])?,
+            Some(token),
+        )
+        .await?,
     ))
 }
 

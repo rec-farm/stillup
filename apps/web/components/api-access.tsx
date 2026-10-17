@@ -1,8 +1,12 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
-import type { ApiKey, CredentialRole, TrustedPublisher } from '@stillup/core';
-import { version as cliVersion } from '../../cli/package.json';
+import {
+  CLI_VERSION,
+  type ApiKey,
+  type CredentialRole,
+  type TrustedPublisher,
+} from '@stillup/core';
 import {
   githubWorkflow,
   newWorkflowUrl,
@@ -157,7 +161,7 @@ export function ApiAccessDialog({ onClose }: { onClose: () => void }) {
           branch: connected.publisher.branch,
           environment: connected.publisher.environment,
           config: connected.config,
-          cliVersion,
+          cliVersion: CLI_VERSION,
         })
       : '';
 
