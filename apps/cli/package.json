@@ -1,6 +1,6 @@
 {
   "name": "@rec/stillup",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "StillUp monitoring as code: validate, test, preview, and deploy HTTP checks.",
   "license": "MIT",
   "type": "module",
