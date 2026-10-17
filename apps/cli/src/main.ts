@@ -4,7 +4,13 @@ import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { setTimeout } from 'node:timers/promises';
 import { tsImport } from 'tsx/esm/api';
-import { codeConfigSchema, createClient, ConfigurationError, type CodePlan } from '@stillup/sdk';
+import {
+  codeConfigSchema,
+  createClient,
+  githubActionsToken,
+  ConfigurationError,
+  type CodePlan,
+} from '@stillup/sdk';
 
 const help = `StillUp monitoring as code
 
@@ -23,7 +29,10 @@ apply     Preview and atomically apply to this project (--yes required)
 --help    Show this help
 
 STILLUP_URL          Browser origin + /api (e.g. https://status.example.com/api)
-STILLUP_ADMIN_TOKEN  Installation administrator token (never put it in a config)
+STILLUP_TOKEN        An API key from StillUp (never put it in a config)
+In GitHub Actions, a job with \`permissions: id-token: write\` signs in as a trusted
+workflow instead, with no stored secret. Add the trust rule under API access in StillUp.
+STILLUP_ADMIN_TOKEN, the installation administrator token, still works but is not advised.
 Exit codes: 0 success, 1 error/test failure, 2 diff --check detects changes.
 No automatic deletion, adoption, or ownership transfer. Omitted checks are retained.`;
 
@@ -81,12 +90,23 @@ async function main() {
     );
     return;
   }
-  if (!process.env.STILLUP_URL || !process.env.STILLUP_ADMIN_TOKEN)
-    throw new Error('Set STILLUP_URL and STILLUP_ADMIN_TOKEN. See --help.');
-  const client = createClient({
-    baseUrl: process.env.STILLUP_URL,
-    token: process.env.STILLUP_ADMIN_TOKEN,
-  });
+  const { STILLUP_URL, STILLUP_TOKEN, STILLUP_ADMIN_TOKEN, GITHUB_ACTIONS } = process.env;
+  if (!STILLUP_URL) throw new Error('Set STILLUP_URL. See --help.');
+  const token =
+    STILLUP_TOKEN ||
+    STILLUP_ADMIN_TOKEN ||
+    (GITHUB_ACTIONS === 'true'
+      ? await githubActionsToken({
+          baseUrl: STILLUP_URL,
+          requestUrl: process.env.ACTIONS_ID_TOKEN_REQUEST_URL,
+          requestToken: process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN,
+        })
+      : undefined);
+  if (!token)
+    throw new Error(
+      'Set STILLUP_TOKEN to an API key, or run in GitHub Actions as a trusted workflow. See --help.',
+    );
+  const client = createClient({ baseUrl: STILLUP_URL, token });
   if (command === 'test') {
     const checks = config.checks.filter((c) => !values.id || c.id === values.id);
     if (!checks.length) throw new Error('No matching checks to test.');

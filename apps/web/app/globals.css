@@ -2164,6 +2164,17 @@ small {
   font-size: 12px;
   color: var(--fg-muted);
 }
+/* API access: code and keys shown inside a card, and numbered setup steps. */
+.api-access-dialog .channel-form .probe-command {
+  margin: 0;
+  background: var(--surface-3);
+}
+.api-access-dialog .channel-form h4:not(:first-of-type) {
+  margin-top: 12px;
+}
+.api-access-dialog .channel-form .notification-actions {
+  margin-top: 8px;
+}
 .probe-command {
   white-space: pre-wrap;
   overflow-wrap: anywhere;

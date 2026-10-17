@@ -20,8 +20,7 @@ export function defineConfig(config: CodeConfigInput): CodeConfig {
 
 export class ConfigurationError extends Error {}
 
-/** baseUrl: browser origin + /api, or a private API origin without /api. */
-export function createClient({ baseUrl, token }: { baseUrl: string; token: string }) {
+function apiBase(baseUrl: string) {
   const base = new URL(baseUrl);
   if (
     !['http:', 'https:'].includes(base.protocol) ||
@@ -31,7 +30,74 @@ export function createClient({ baseUrl, token }: { baseUrl: string; token: strin
     base.hash
   )
     throw new Error('Use an HTTP(S) StillUp base URL without credentials, query, or fragment.');
-  if (!token) throw new Error('A StillUp administrator token is required.');
+  return base.href.replace(/\/$/, '');
+}
+async function json<T>(request: Promise<Response>, failure: string): Promise<T> {
+  let response: Response;
+  try {
+    response = await request;
+  } catch {
+    throw new Error(failure);
+  }
+  const body = (await response.json().catch(() => null)) as (T & { error?: string }) | null;
+  if (!response.ok || !body)
+    throw new Error(`${failure} HTTP ${response.status}: ${body?.error ?? 'Request failed'}`);
+  return body;
+}
+
+/**
+ * Signs in as a trusted GitHub Actions workflow and returns a deploy token that lasts fifteen
+ * minutes. Pass the job's ACTIONS_ID_TOKEN_REQUEST_URL and ACTIONS_ID_TOKEN_REQUEST_TOKEN, which
+ * GitHub sets when the job has `permissions: id-token: write`. No secret is stored in GitHub;
+ * an administrator adds a trust rule for the repository and workflow under API access.
+ */
+export async function githubActionsToken({
+  baseUrl,
+  requestUrl,
+  requestToken,
+}: {
+  baseUrl: string;
+  requestUrl?: string;
+  requestToken?: string;
+}): Promise<string> {
+  const base = apiBase(baseUrl);
+  if (!requestUrl || !requestToken)
+    throw new Error(
+      'GitHub did not offer an OpenID Connect token. Add `permissions: id-token: write` to the workflow job.',
+    );
+  const signal = () => AbortSignal.timeout(30000);
+  const { audience } = await json<{ audience?: string }>(
+    fetch(`${base}/v1/auth/config`, { redirect: 'error', signal: signal() }),
+    'Cannot read StillUp sign-in settings. Check STILLUP_URL.',
+  );
+  if (!audience) throw new Error('This StillUp version does not support trusted GitHub workflows.');
+  const url = new URL(requestUrl);
+  url.searchParams.set('audience', audience);
+  const { value } = await json<{ value?: string }>(
+    fetch(url, { headers: { authorization: `Bearer ${requestToken}` }, signal: signal() }),
+    'GitHub did not issue an OpenID Connect token.',
+  );
+  if (!value) throw new Error('GitHub did not issue an OpenID Connect token.');
+  const { token } = await json<{ token: string }>(
+    fetch(`${base}/v1/auth/github`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token: value }),
+      redirect: 'error',
+      signal: signal(),
+    }),
+    'StillUp did not accept this workflow.',
+  );
+  return token;
+}
+
+/**
+ * baseUrl: browser origin + /api, or a private API origin without /api. token: an API key, a
+ * token from githubActionsToken, or the installation administrator token.
+ */
+export function createClient({ baseUrl, token }: { baseUrl: string; token: string }) {
+  const base = apiBase(baseUrl);
+  if (!token) throw new Error('A StillUp API key or token is required.');
   async function post<T>(path: string, body: unknown): Promise<T> {
     const encoded = JSON.stringify(body);
     if (new TextEncoder().encode(encoded).length > 100000)
@@ -40,7 +106,7 @@ export function createClient({ baseUrl, token }: { baseUrl: string; token: strin
       );
     let response: Response;
     try {
-      response = await fetch(`${base.href.replace(/\/$/, '')}/v1/${path}`, {
+      response = await fetch(`${base}/v1/${path}`, {
         method: 'POST',
         headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
         body: encoded,

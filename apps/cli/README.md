@@ -10,7 +10,12 @@ pnpm stillup test --config monitoring/stillup.config.json --yes
 pnpm stillup apply --config monitoring/stillup.config.json --yes
 ```
 
-Set `STILLUP_URL` to your installation's browser origin plus `/api`, and supply `STILLUP_ADMIN_TOKEN` through your shell or CI secret manager. Local validation needs neither. Never expose administrator credentials to untrusted pull requests.
+Set `STILLUP_URL` to your installation's browser origin plus `/api`. Local validation needs nothing else. For remote commands:
+
+- **GitHub Actions** needs no secret. In StillUp, open **API access** → **Connect a repository**; it writes the workflow for you. The job needs `permissions: id-token: write`, and the CLI signs in as that trusted workflow.
+- **Anywhere else**, create a **Deploy** API key under **API access**, ideally limited to your project, and supply it as `STILLUP_TOKEN` through your shell or CI secret manager.
+
+`STILLUP_ADMIN_TOKEN` still works but grants installation-wide access. Never expose credentials to untrusted pull requests.
 
 ## Configuration
 
@@ -44,7 +49,7 @@ Configuration files execute locally; only load trusted files. Secret values belo
 
 Keep project and check IDs stable. Code-owned configurations are read-only in the dashboard, where pause and archive remain available. Omitted checks are retained, not deleted. Applying configuration does not prove endpoint health. Tests run from the API server, not selected regional probes, and may mutate targets.
 
-The package also exports `defineConfig`, `codeConfigSchema`, `createClient`, `ConfigurationError`, and their configuration/plan types for programmatic use.
+The package also exports `defineConfig`, `codeConfigSchema`, `createClient`, `githubActionsToken`, `ConfigurationError`, and their configuration/plan types for programmatic use.
 
 ## Maintainer release
 

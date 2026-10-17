@@ -1,8 +1,8 @@
-use crate::{auth, config::Config, error::ApiError, health, web, workspace};
+use crate::{api_keys, auth, config::Config, error::ApiError, health, web, workspace};
 use crate::{
     checks,
     json::ApiJson,
-    users::{self, Principal},
+    users::{self, CredentialRole, Principal},
 };
 use axum::{
     Json, Router,
@@ -28,6 +28,7 @@ pub struct AppState {
     pub pool: PgPool,
     pub config: Config,
     pub oidc: crate::oidc::Runtime,
+    pub github_keys: crate::trusted_publishing::Keys,
     limits: Arc<Mutex<Buckets>>,
     probe_limits: Arc<Mutex<HashMap<String, (Instant, u32)>>>,
     pub previews: Arc<tokio::sync::Semaphore>,
@@ -38,6 +39,7 @@ impl AppState {
             pool,
             config,
             oidc: Default::default(),
+            github_keys: Default::default(),
             limits: Arc::new(Mutex::new(HashMap::new())),
             probe_limits: Arc::new(Mutex::new(HashMap::new())),
             previews: Arc::new(tokio::sync::Semaphore::new(2)),
@@ -58,6 +60,7 @@ pub fn router(state: AppState) -> Router {
             "/v1/auth/oidc/backchannel-logout",
             post(crate::oidc::backchannel_logout),
         )
+        .route("/v1/auth/github", post(crate::trusted_publishing::exchange))
         .route("/v1/dashboard", get(dashboard))
         .route("/v1/me", get(crate::users::me))
         .route(
@@ -67,6 +70,22 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/v1/users/{id}",
             axum::routing::patch(crate::users::edit).delete(crate::users::remove),
+        )
+        .route(
+            "/v1/api-keys",
+            get(crate::api_keys::list).post(crate::api_keys::create),
+        )
+        .route(
+            "/v1/api-keys/{id}",
+            axum::routing::delete(crate::api_keys::revoke),
+        )
+        .route(
+            "/v1/trusted-publishers",
+            get(crate::trusted_publishing::list).post(crate::trusted_publishing::create),
+        )
+        .route(
+            "/v1/trusted-publishers/{id}",
+            axum::routing::delete(crate::trusted_publishing::remove),
         )
         .route("/v1/code/plan", post(crate::code_management::plan))
         .route("/v1/code/apply", post(crate::code_management::apply))
@@ -329,7 +348,8 @@ async fn protect(State(state): State<AppState>, request: Request, next: Next) ->
         path,
         "/v1/auth/config" | "/v1/auth/oidc/start" | "/v1/auth/oidc/callback"
     ) && matches!(method, "GET" | "HEAD"))
-        || (path == "/v1/auth/oidc/backchannel-logout" && method == "POST")
+        || (matches!(path, "/v1/auth/oidc/backchannel-logout" | "/v1/auth/github")
+            && method == "POST")
         || (matches!(path, "/health" | "/healthz" | "/readyz") && matches!(method, "GET" | "HEAD"))
         || (path == "/v1/session" && matches!(method, "POST" | "DELETE"))
         || (matches!(path, "/v1/public/workspace" | "/v1/public/status")
@@ -344,6 +364,11 @@ async fn protect(State(state): State<AppState>, request: Request, next: Next) ->
         let principal =
             if bearer.is_some_and(|value| auth::token_matches(value, &state.config.admin_token)) {
                 Some(Principal::Installation)
+            } else if let Some(value) = bearer.filter(|value| api_keys::is_credential(value)) {
+                match api_keys::principal(&state.pool, value).await {
+                    Ok(principal) => principal,
+                    Err(error) => return error.into_response(),
+                }
             } else if let Some(value) = session.filter(|value| users::is_user_session(value)) {
                 match users::session_principal(&state.pool, value).await {
                     Ok(principal) => principal,
@@ -365,14 +390,30 @@ async fn protect(State(state): State<AppState>, request: Request, next: Next) ->
         let Some(principal) = principal else {
             return ApiError(
                 StatusCode::UNAUTHORIZED,
-                "Sign in to manage your checks".into(),
+                if bearer.is_some_and(api_keys::is_credential) {
+                    "This API key is invalid, expired or revoked"
+                } else {
+                    "Sign in to manage your checks"
+                }
+                .into(),
             )
             .into_response();
         };
-        if !principal.admin() && !users::viewer_may(method, path) {
+        if !principal.may(method, path) {
             return ApiError(
                 StatusCode::FORBIDDEN,
-                "Your viewer role can see checks and incidents but not change them".into(),
+                match &principal {
+                    Principal::Credential {
+                        role: CredentialRole::Deployer,
+                        ..
+                    } => "This credential can only test, preview and apply monitoring as code",
+                    Principal::Credential {
+                        role: CredentialRole::Admin,
+                        ..
+                    } => "API keys cannot manage users or API access",
+                    _ => "Your viewer role can see checks and incidents but not change them",
+                }
+                .into(),
             )
             .into_response();
         }

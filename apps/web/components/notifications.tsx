@@ -19,6 +19,7 @@ export async function notificationApi<T>(path: string, body?: object, method = '
     window.location.assign('/login');
     throw new Error('Session expired');
   }
+  if (response.status === 204) return undefined as T;
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Request failed');
   return data;

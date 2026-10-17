@@ -9,6 +9,8 @@ pub struct Config {
     pub bind: String,
     pub web: WebConfig,
     pub oidc: crate::oidc::OidcConfig,
+    /// The issuer of the GitHub Actions tokens that trusted workflows present.
+    pub github_actions_issuer: String,
     pub secrets: crate::secrets::SecretConfig,
     pub allow_private_networks: bool,
     pub alert_webhook_url: String,
@@ -61,6 +63,7 @@ impl Config {
                 env::var("HOST").unwrap_or_else(|_| "127.0.0.1".into())
             ),
             oidc: crate::oidc::OidcConfig::from_env()?,
+            github_actions_issuer: crate::trusted_publishing::issuer_from_env()?,
             secrets: crate::secrets::SecretConfig::from_env()?,
             allow_private_networks: match env::var("ALLOW_PRIVATE_NETWORKS")
                 .unwrap_or_else(|_| "false".into())

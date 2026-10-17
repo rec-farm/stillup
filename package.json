@@ -19,7 +19,7 @@
     "dev": "pnpm --filter @stillup/web dev",
     "build": "pnpm --filter @stillup/web build && cargo build --manifest-path backend/Cargo.toml --release --locked --bins",
     "typecheck": "pnpm -r typecheck",
-    "test": "vitest run packages/core tests/legacy-api/src/oidc-state.test.ts",
+    "test": "vitest run packages/core packages/sdk apps/web/lib tests/legacy-api/src/oidc-state.test.ts",
     "db:migrate": "cargo run --manifest-path backend/Cargo.toml --bin stillup-api -- migrate",
     "check": "pnpm typecheck && pnpm test && pnpm test:rust && pnpm build",
     "test:integration": "node --env-file=.env ./node_modules/vitest/vitest.mjs run tests/legacy-api/src/integration.test.ts",

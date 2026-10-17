@@ -1,6 +1,6 @@
 # Monitoring as code
 
-StillUp provides a workspace TypeScript SDK and CLI for declarative HTTP checks. Read the full user guide at `/docs/monitoring-as-code` on your installation. The SDK and CLI are not published to npm yet; run the commands from a StillUp checkout with Node.js 24 and pnpm 12.6.0.
+StillUp provides a workspace TypeScript SDK and CLI for declarative HTTP checks. Read the full user guide at `/docs/monitoring-as-code` on your installation. The CLI and SDK are published as [`@rec/stillup`](../apps/cli/README.md); the commands below run them from a StillUp checkout with Node.js 24 and pnpm 12.6.0.
 
 ## Quickstart
 
@@ -12,7 +12,7 @@ StillUp provides a workspace TypeScript SDK and CLI for declarative HTTP checks.
 ```sh
 pnpm stillup validate --config examples/monitoring/stillup.config.ts
 export STILLUP_URL="https://status.example.com/api"
-# Supply STILLUP_ADMIN_TOKEN through your shell or CI secret manager.
+# Supply STILLUP_TOKEN, a Deploy API key, through your shell or CI secret manager.
 pnpm stillup diff --config examples/monitoring/stillup.config.ts
 pnpm stillup test --config examples/monitoring/stillup.config.ts --id api-health --yes
 pnpm stillup apply --config examples/monitoring/stillup.config.ts --yes
@@ -50,9 +50,13 @@ The preview token binds the desired configuration to the project's current confi
 
 ## CI and API
 
-Copy [the GitHub Actions example](../examples/monitoring/github-actions.yml) into `.github/workflows/monitoring.yml`. It expects the StillUp workspace in that repository. Set up a protected `monitoring-production` environment with a `STILLUP_URL` variable and a `STILLUP_ADMIN_TOKEN` secret, and replace the example endpoint. PR validation receives no token; only trusted main-branch deployments receive the installation administrator credential. Scoped project credentials are not implemented.
+GitHub Actions needs no stored secret. In StillUp, open **API access** → **Connect a repository**, and name the repository, the workflow file, the branch, a GitHub environment and the projects it deploys. StillUp writes the workflow and links to GitHub with it prefilled. The job needs `permissions: id-token: write`; the CLI then asks GitHub for a token for this installation and exchanges it for deploy access to those projects that lasts 15 minutes. Runs from other branches, other workflows, other environments and pull requests are refused, with the reason in the run's log.
 
-Authenticated endpoints:
+[The example in this repository](../examples/monitoring/github-actions.yml) works the same way: it validates pull requests without any credential and deploys from `main` in the protected `monitoring-production` environment, with a `STILLUP_URL` variable.
+
+Other CI services use a **Deploy** API key, ideally limited to the project, as `STILLUP_TOKEN`. `STILLUP_ADMIN_TOKEN` still works but gives installation-wide access; avoid it in CI.
+
+Authenticated endpoints (an administrator, or a deploy credential for the project):
 
 - `POST /v1/code/plan`: project configuration; returns `{ project, token, changes }`.
 - `POST /v1/code/apply`: `{ config: <project configuration>, token: <preview token> }`; returns the performed plan. A stale token returns HTTP 409 with no changes.

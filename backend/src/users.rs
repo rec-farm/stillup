@@ -17,12 +17,91 @@ const USERS_LOCK: i64 = 782_315;
 #[derive(Clone, Debug, PartialEq)]
 pub enum Principal {
     Installation,
-    User { id: Uuid, admin: bool },
+    User {
+        id: Uuid,
+        admin: bool,
+    },
+    /// An API key, or a short-lived token from a trusted GitHub Actions workflow.
+    Credential {
+        id: Uuid,
+        role: CredentialRole,
+        /// Monitoring-as-code projects a deployer may change; None means every project.
+        projects: Option<Vec<String>>,
+    },
+}
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum CredentialRole {
+    Viewer,
+    Deployer,
+    Admin,
+}
+impl CredentialRole {
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "viewer" => Some(Self::Viewer),
+            "deployer" => Some(Self::Deployer),
+            "admin" => Some(Self::Admin),
+            _ => None,
+        }
+    }
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Viewer => "viewer",
+            Self::Deployer => "deployer",
+            Self::Admin => "admin",
+        }
+    }
 }
 impl Principal {
     pub fn admin(&self) -> bool {
-        matches!(self, Self::Installation | Self::User { admin: true, .. })
+        matches!(
+            self,
+            Self::Installation
+                | Self::User { admin: true, .. }
+                | Self::Credential {
+                    role: CredentialRole::Admin,
+                    ..
+                }
+        )
     }
+    /// Whether this principal may make a request at all. Credentials never manage people or
+    /// other credentials, so a leaked key cannot mint more access.
+    pub fn may(&self, method: &str, path: &str) -> bool {
+        match self {
+            Self::Installation | Self::User { admin: true, .. } => true,
+            Self::User { .. } => viewer_may(method, path),
+            Self::Credential { role, .. } => match role {
+                CredentialRole::Admin => !manages_access(path),
+                CredentialRole::Viewer => viewer_may(method, path),
+                CredentialRole::Deployer => {
+                    (method == "POST"
+                        && matches!(path, "/v1/code/plan" | "/v1/code/apply" | "/v1/checks/test"))
+                        || (matches!(method, "GET" | "HEAD") && path == "/v1/me")
+                }
+            },
+        }
+    }
+    /// Whether this principal may change the checks of a monitoring-as-code project.
+    pub fn may_deploy(&self, project: &str) -> bool {
+        match self {
+            Self::Credential {
+                role: CredentialRole::Deployer,
+                projects,
+                ..
+            } => projects
+                .as_ref()
+                .is_none_or(|projects| projects.iter().any(|p| p == project)),
+            _ => self.admin(),
+        }
+    }
+}
+fn manages_access(path: &str) -> bool {
+    ["/v1/users", "/v1/api-keys", "/v1/trusted-publishers"]
+        .iter()
+        .any(|prefix| {
+            path.strip_prefix(prefix)
+                .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
+        })
 }
 
 /// Viewers can read monitoring data but not settings that hold destinations or credentials.
@@ -295,8 +374,14 @@ pub async fn me(
     State(state): State<AppState>,
     Extension(principal): Extension<Principal>,
 ) -> Result<Json<Value>, ApiError> {
-    let Principal::User { id, .. } = principal else {
-        return Ok(Json(json!({"kind":"installation","role":"admin"})));
+    let id = match principal {
+        Principal::User { id, .. } => id,
+        Principal::Installation => return Ok(Json(json!({"kind":"installation","role":"admin"}))),
+        Principal::Credential { role, projects, .. } => {
+            return Ok(Json(
+                json!({"kind":"credential","role":role.as_str(),"projects":projects}),
+            ));
+        }
     };
     let row = sqlx::query("SELECT * FROM users WHERE id=$1")
         .bind(id)
@@ -497,5 +582,55 @@ mod tests {
         assert_eq!(hide_query("https://x.io/a"), "https://x.io/a");
         assert!(!viewer_may("POST", "/v1/checks/x/run"));
         assert!(!viewer_may("PATCH", "/v1/checks/x"));
+    }
+    #[test]
+    fn credentials_never_manage_access_and_deployers_stay_in_their_projects() {
+        let credential = |role, projects: Option<&[&str]>| Principal::Credential {
+            id: Uuid::nil(),
+            role,
+            projects: projects.map(|p| p.iter().map(|p| p.to_string()).collect()),
+        };
+        let admin = credential(CredentialRole::Admin, None);
+        assert!(admin.may("POST", "/v1/checks"));
+        assert!(admin.may("GET", "/v1/secrets"));
+        for path in [
+            "/v1/users",
+            "/v1/users/x",
+            "/v1/api-keys",
+            "/v1/api-keys/x",
+            "/v1/trusted-publishers",
+            "/v1/trusted-publishers/x",
+        ] {
+            assert!(!admin.may("GET", path), "{path}");
+            assert!(!admin.may("POST", path), "{path}");
+            assert!(Principal::Installation.may("POST", path), "{path}");
+        }
+        assert!(admin.may("GET", "/v1/users-report"));
+        let viewer = credential(CredentialRole::Viewer, None);
+        assert!(viewer.may("GET", "/v1/dashboard"));
+        assert!(!viewer.may("POST", "/v1/code/plan"));
+        assert!(!viewer.may_deploy("api"));
+        let deployer = credential(CredentialRole::Deployer, Some(&["api"]));
+        for path in ["/v1/code/plan", "/v1/code/apply", "/v1/checks/test"] {
+            assert!(deployer.may("POST", path), "{path}");
+        }
+        assert!(deployer.may("GET", "/v1/me"));
+        for (method, path) in [
+            ("GET", "/v1/dashboard"),
+            ("POST", "/v1/checks"),
+            ("GET", "/v1/secrets"),
+            ("GET", "/v1/code/plan"),
+        ] {
+            assert!(!deployer.may(method, path), "{method} {path}");
+        }
+        assert!(deployer.may_deploy("api"));
+        assert!(!deployer.may_deploy("web"));
+        assert!(credential(CredentialRole::Deployer, None).may_deploy("web"));
+        assert!(admin.may_deploy("web"));
+        let person = Principal::User {
+            id: Uuid::nil(),
+            admin: false,
+        };
+        assert!(!person.may_deploy("web"));
     }
 }

@@ -12,6 +12,8 @@ const temp = await mkdtemp(resolve(tmpdir(), 'stillup-package-'));
 const env = { ...process.env };
 delete env.STILLUP_URL;
 delete env.STILLUP_ADMIN_TOKEN;
+delete env.STILLUP_TOKEN;
+delete env.GITHUB_ACTIONS;
 const fixture = {
   version: 1,
   project: 'package-test',
