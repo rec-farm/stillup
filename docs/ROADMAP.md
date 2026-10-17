@@ -28,7 +28,9 @@ HTTP check creation; status/latency/JSON assertions; PostgreSQL persistence; dur
 
 **Users implemented:** single sign-on users invited by email, administrator and viewer roles enforced by the API, revocable database-backed sessions, and a break-glass installation token. Installations without users keep the previous behavior.
 
-**Remaining:** project defaults, personal API tokens, an audit log of changes, and email notifications.
+**API access implemented:** revocable API keys for other apps and CI, with read-only, deploy (optionally limited to projects) and administrator access levels, optional expiry, last-used tracking, and hashed storage. Administrator keys cannot manage users or API access.
+
+**Remaining:** project defaults, an audit log of changes, and email notifications.
 
 ## Milestone 3 — Complete status communication
 
@@ -42,9 +44,13 @@ HTTP check creation; status/latency/JSON assertions; PostgreSQL persistence; dur
 
 **Implemented:** workspace TypeScript SDK and CLI with validate/test/diff/apply for declarative HTTP checks; stable project/check IDs; strict validation; field-only previews; transactional apply with stale-preview protection; immutable configuration revisions; explicit code-versus-UI ownership; preserved pause/archive state; retained omitted checks; JSON support; configuration and CI examples. User-facing documentation is available at `/docs`.
 
-The CLI loads trusted TypeScript locally and submits validated JSON. Request tests run through the existing API request tester. The SDK and CLI are not yet published to npm.
+The CLI loads trusted TypeScript locally and submits validated JSON. Request tests run through the existing API request tester. The SDK and CLI are published to npm as [`@rec/stillup`](../apps/cli/README.md).
 
-**Remaining:** published packages, scoped project credentials, explicit adoption/ownership transfer, resource deployment beyond checks, and multi-step API workflows with cleanup. Execute future user workflows in a separate sandbox; never evaluate submitted TypeScript in the API process.
+**Credentials implemented:** deploy API keys scoped to projects, and trusted GitHub Actions workflows that exchange a GitHub OIDC token for a short-lived deploy token with no stored secret. A rule names the repository, workflow, branch, optional environment and projects; the first run binds GitHub's repository and owner IDs. The dashboard generates the workflow, pinned to the current CLI version.
+
+**Follow-up verification:** a trusted-workflow deployment from a real GitHub Actions run.
+
+**Remaining:** explicit adoption/ownership transfer, resource deployment beyond checks, and multi-step API workflows with cleanup. Execute future user workflows in a separate sandbox; never evaluate submitted TypeScript in the API process.
 
 ## Milestone 5 — Distributed operation
 
@@ -57,6 +63,7 @@ The probe is now the same native Rust binary as the API and worker (`probe` imag
 ## Current operational boundaries
 
 - Administrators are fully trusted; viewers are read-only. No arbitrary uploaded code.
+- Deploy credentials (deploy keys and trusted workflows) can reference any managed secret in the checks they deploy, and so send it to a URL they configure. Trust a deploying branch as you would an administrator.
 - The local worker accesses PostgreSQL directly. Remote probes use scoped HTTPS credentials and receive only assigned jobs.
 - Local-only check rows are locked during bounded HTTP execution to serialize runs and configuration changes. Distributed checks use short transactions and reject obsolete reports. This is simple but must be benchmarked before targeting large installations.
 - A committed run is idempotent by job ID; a worker crash after a network request but before commit can repeat that request. Monitoring requests must tolerate repetition.
