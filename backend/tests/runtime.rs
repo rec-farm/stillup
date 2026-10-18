@@ -81,6 +81,7 @@ impl Fixture {
             status_page_title: "Service status".into(),
             oidc: Default::default(),
             github_actions_issuer: stillup_api::trusted_publishing::GITHUB_ISSUER.into(),
+            gateway_issuer: None,
             secrets: Default::default(),
             allow_private_networks: false,
             database_url: String::new(),
@@ -242,7 +243,7 @@ async fn migrations_preserve_data_and_workspace_revisions_are_atomic() {
         .fetch_one(&fixture.pool)
         .await
         .unwrap();
-    assert_eq!(count, 13);
+    assert_eq!(count, 14);
     let response = app
         .oneshot(
             Request::builder()
@@ -391,6 +392,7 @@ async fn upgrade_current_legacy_schema_preserves_every_existing_table_and_ledger
                         | "010_users.sql"
                         | "011_backchannel_logout.sql"
                         | "012_api_access.sql"
+                        | "013_audit_log.sql"
                 )
         })
         .collect();
@@ -455,7 +457,7 @@ async fn upgrade_current_legacy_schema_preserves_every_existing_table_and_ledger
         database::migrate(&fixture.pool).await.unwrap();
         for (table, query, before) in &snapshots {
             let query = if table == "stillup_migrations" {
-                "SELECT jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text) FROM stillup_migrations t WHERE name NOT IN ('008_rust_check_jobs.sql','009_uptime_rollups.sql','010_users.sql','011_backchannel_logout.sql','012_api_access.sql')"
+                "SELECT jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text) FROM stillup_migrations t WHERE name NOT IN ('008_rust_check_jobs.sql','009_uptime_rollups.sql','010_users.sql','011_backchannel_logout.sql','012_api_access.sql','013_audit_log.sql')"
             } else {
                 query.as_str()
             };
@@ -469,7 +471,7 @@ async fn upgrade_current_legacy_schema_preserves_every_existing_table_and_ledger
             .fetch_one(&fixture.pool)
             .await
             .unwrap();
-        assert_eq!(count, 13);
+        assert_eq!(count, 14);
         let uptime: (String, i64, i64) = sqlx::query_as(
             "SELECT day::text,observed_seconds,down_seconds FROM monitor_daily_uptime",
         )
@@ -4629,6 +4631,167 @@ async fn api_keys_and_trusted_github_workflows_are_scoped_and_revocable() {
     .await;
     assert_eq!(status, StatusCode::NO_CONTENT);
     let (status, _) = with_bearer(&app, "POST", "/v1/code/plan", plan("api"), &deploy).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    server.abort();
+    fixture.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL"]
+async fn agents_act_for_existing_people_within_their_role_and_scopes() {
+    use axum::{Json, routing::get};
+    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+    use ed25519_dalek::{SigningKey, pkcs8::EncodePrivateKey};
+    use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
+    let key = SigningKey::from_bytes(&[7; 32]);
+    let jwks = json!({"keys":[{"kty":"OKP","crv":"Ed25519","alg":"EdDSA","kid":"k1",
+        "x":URL_SAFE_NO_PAD.encode(key.verifying_key().as_bytes())}]});
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let issuer = format!("http://{}", listener.local_addr().unwrap());
+    let farmhand = Router::new().route(
+        "/.well-known/jwks.json",
+        get(move || async move { Json(jwks) }),
+    );
+    let server = tokio::spawn(async move { axum::serve(listener, farmhand).await.unwrap() });
+    let sign = |claims: &Value, typ: &str| {
+        let mut header = Header::new(Algorithm::EdDSA);
+        header.kid = Some("k1".into());
+        header.typ = Some(typ.into());
+        let der = key.to_pkcs8_der().unwrap();
+        encode(&header, claims, &EncodingKey::from_ed_der(der.as_bytes())).unwrap()
+    };
+    let claims = |sub: &str, scope: &str| {
+        let now = chrono::Utc::now().timestamp();
+        json!({"iss":issuer,"aud":"https://dashboard.example.com","iat":now,"exp":now+60,
+            "jti":sub,"user":{"iss":"https://id.example","sub":sub,"groups":[]},"scope":scope,
+            "act":{"sub":"https://claude.ai/client","name":"Claude Code"},"actor_type":"person"})
+    };
+    let assertion = |sub: &str, scope: &str| sign(&claims(sub, scope), "farmhand-assertion+jwt");
+
+    let fixture = Fixture::new().await;
+    let app = fixture.app_configure(|config| {
+        config.oidc.issuer = "https://id.example".into();
+        config.gateway_issuer = Some(issuer.clone());
+    });
+    sqlx::query(
+        "INSERT INTO users(email,role,oidc_subject) VALUES('ada@example.com','admin','https://id.example ada'),('vic@example.com','viewer','https://id.example vic')",
+    )
+    .execute(&fixture.pool)
+    .await
+    .unwrap();
+    let admin = "01234567890123456789012345678901";
+    let (status, check) = with_bearer(
+        &app,
+        "POST",
+        "/v1/checks",
+        json!({"name":"API","url":"https://example.com/health?token=hunter2","headers":{"authorization":"Bearer hunter2"}}),
+        admin,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{check}");
+    let path = format!("/v1/checks/{}", check["id"].as_str().unwrap());
+
+    // Reads are redacted whatever the person's role.
+    let read = assertion("ada", "stillup:read");
+    let (status, data) = with_bearer(&app, "GET", &path, Value::Null, &read).await;
+    assert_eq!(status, StatusCode::OK, "{data}");
+    assert!(!data.to_string().contains("hunter2"));
+    let (status, me) = with_bearer(&app, "GET", "/v1/me", Value::Null, &read).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        (me["email"].as_str(), me["agent"].as_str()),
+        (Some("ada@example.com"), Some("Claude Code"))
+    );
+
+    // The scope caps an administrator...
+    let pause = json!({"enabled":false});
+    let (status, _) = with_bearer(&app, "PATCH", &path, pause.clone(), &read).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let deploy = assertion("ada", "stillup:read stillup:deploy");
+    let (status, _) = with_bearer(&app, "PATCH", &path, pause.clone(), &deploy).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let plan = json!({"version":1,"project":"api","checks":[]});
+    let (status, data) = with_bearer(&app, "POST", "/v1/code/plan", plan.clone(), &deploy).await;
+    assert_eq!(status, StatusCode::OK, "{data}");
+    let all = assertion("ada", "stillup:read stillup:deploy stillup:admin");
+    let (status, data) = with_bearer(&app, "PATCH", &path, pause.clone(), &all).await;
+    assert_eq!(status, StatusCode::OK, "{data}");
+    // ...and never reaches people or credentials.
+    for (method, target) in [
+        ("GET", "/v1/users"),
+        ("POST", "/v1/api-keys"),
+        ("GET", "/v1/trusted-publishers"),
+    ] {
+        let (status, _) = with_bearer(&app, method, target, json!({}), &all).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{method} {target}");
+    }
+
+    // A viewer stays a viewer, whatever the scope.
+    let viewer = assertion("vic", "stillup:read stillup:deploy stillup:admin");
+    let (status, _) = with_bearer(&app, "GET", &path, Value::Null, &viewer).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = with_bearer(&app, "PATCH", &path, pause.clone(), &viewer).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = with_bearer(&app, "POST", "/v1/code/plan", plan, &viewer).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // Assertions that don't check out.
+    let mut wrong_audience = claims("ada", "stillup:read");
+    wrong_audience["aud"] = json!("https://other.example");
+    let mut other_provider = claims("ada", "stillup:read");
+    other_provider["user"]["iss"] = json!("https://other-id.example");
+    for (token, expected) in [
+        (
+            sign(&wrong_audience, "farmhand-assertion+jwt"),
+            StatusCode::UNAUTHORIZED,
+        ),
+        (
+            sign(&claims("ada", "stillup:read"), "JWT"),
+            StatusCode::UNAUTHORIZED,
+        ),
+        (
+            sign(&other_provider, "farmhand-assertion+jwt"),
+            StatusCode::FORBIDDEN,
+        ),
+        (assertion("nobody", "stillup:read"), StatusCode::FORBIDDEN),
+        (assertion("ada", "valtr:read"), StatusCode::FORBIDDEN),
+    ] {
+        let (status, data) = with_bearer(&app, "GET", "/v1/dashboard", Value::Null, &token).await;
+        assert_eq!(status, expected, "{data}");
+    }
+
+    // Every change is recorded, the agent's by name; reads are not.
+    let (status, log) = with_bearer(&app, "GET", "/v1/audit-log", Value::Null, admin).await;
+    assert_eq!(status, StatusCode::OK, "{log}");
+    let entries = log["entries"].as_array().unwrap();
+    let agent: Vec<_> = entries.iter().filter(|e| e["actor"] == "agent").collect();
+    assert!(
+        agent
+            .iter()
+            .all(|e| e["agent"] == "Claude Code" && e["userEmail"] == "ada@example.com")
+    );
+    assert!(
+        agent
+            .iter()
+            .any(|e| e["method"] == "PATCH" && e["status"] == 200)
+    );
+    assert!(
+        agent
+            .iter()
+            .any(|e| e["path"] == "/v1/code/plan" && e["status"] == 200)
+    );
+    assert!(
+        entries.iter().any(|e| e["actor"] == "installation"
+            && e["path"] == "/v1/checks"
+            && e["status"] == 201)
+    );
+    assert!(entries.iter().all(|e| e["method"] != "GET"));
+    let (status, _) = with_bearer(&app, "GET", "/v1/audit-log", Value::Null, &read).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // Off without a gateway issuer.
+    let off = fixture.app_configure(|config| config.oidc.issuer = "https://id.example".into());
+    let (status, _) = with_bearer(&off, "GET", "/v1/dashboard", Value::Null, &read).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     server.abort();
     fixture.close().await;

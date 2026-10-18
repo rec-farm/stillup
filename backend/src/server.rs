@@ -29,6 +29,7 @@ pub struct AppState {
     pub config: Config,
     pub oidc: crate::oidc::Runtime,
     pub github_keys: crate::trusted_publishing::Keys,
+    pub gateway_keys: crate::gateway::Keys,
     limits: Arc<Mutex<Buckets>>,
     probe_limits: Arc<Mutex<HashMap<String, (Instant, u32)>>>,
     pub previews: Arc<tokio::sync::Semaphore>,
@@ -40,6 +41,7 @@ impl AppState {
             config,
             oidc: Default::default(),
             github_keys: Default::default(),
+            gateway_keys: Default::default(),
             limits: Arc::new(Mutex::new(HashMap::new())),
             probe_limits: Arc::new(Mutex::new(HashMap::new())),
             previews: Arc::new(tokio::sync::Semaphore::new(2)),
@@ -63,6 +65,7 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/auth/github", post(crate::trusted_publishing::exchange))
         .route("/v1/dashboard", get(dashboard))
         .route("/v1/me", get(crate::users::me))
+        .route("/v1/audit-log", get(crate::audit_log::list))
         .route(
             "/v1/users",
             get(crate::users::list).post(crate::users::create),
@@ -361,32 +364,39 @@ async fn protect(State(state): State<AppState>, request: Request, next: Next) ->
             .and_then(|value| value.to_str().ok())
             .and_then(|value| value.strip_prefix("Bearer "));
         let session = cookie(request.headers(), "stillup_session");
-        let principal =
-            if bearer.is_some_and(|value| auth::token_matches(value, &state.config.admin_token)) {
-                Some(Principal::Installation)
-            } else if let Some(value) = bearer.filter(|value| api_keys::is_credential(value)) {
-                match api_keys::principal(&state.pool, value).await {
-                    Ok(principal) => principal,
-                    Err(error) => return error.into_response(),
-                }
-            } else if let Some(value) = session.filter(|value| users::is_user_session(value)) {
-                match users::session_principal(&state.pool, value).await {
-                    Ok(principal) => principal,
-                    Err(error) => return error.into_response(),
-                }
-            } else if let Some(value) = session
-                .filter(|value| auth::valid_session(value, &state.config.admin_token, now_ms()))
-            {
-                // Signed sessions carry no identity; any from before the first user was added
-                // may come from single sign-on that no longer admits that person.
-                match users::legacy_session_current(&state.pool, value).await {
-                    Ok(true) => Some(Principal::Installation),
-                    Ok(false) => None,
-                    Err(error) => return error.into_response(),
-                }
-            } else {
-                None
-            };
+        let principal = if bearer
+            .is_some_and(|value| auth::token_matches(value, &state.config.admin_token))
+        {
+            Some(Principal::Installation)
+        } else if let Some(value) = bearer.filter(|value| api_keys::is_credential(value)) {
+            match api_keys::principal(&state.pool, value).await {
+                Ok(principal) => principal,
+                Err(error) => return error.into_response(),
+            }
+        } else if let Some(value) = bearer.filter(|value| crate::gateway::recognises(&state, value))
+        {
+            match crate::gateway::principal(&state, value).await {
+                Ok(principal) => Some(principal),
+                Err(error) => return error.into_response(),
+            }
+        } else if let Some(value) = session.filter(|value| users::is_user_session(value)) {
+            match users::session_principal(&state.pool, value).await {
+                Ok(principal) => principal,
+                Err(error) => return error.into_response(),
+            }
+        } else if let Some(value) =
+            session.filter(|value| auth::valid_session(value, &state.config.admin_token, now_ms()))
+        {
+            // Signed sessions carry no identity; any from before the first user was added
+            // may come from single sign-on that no longer admits that person.
+            match users::legacy_session_current(&state.pool, value).await {
+                Ok(true) => Some(Principal::Installation),
+                Ok(false) => None,
+                Err(error) => return error.into_response(),
+            }
+        } else {
+            None
+        };
         let Some(principal) = principal else {
             return ApiError(
                 StatusCode::UNAUTHORIZED,
@@ -411,6 +421,9 @@ async fn protect(State(state): State<AppState>, request: Request, next: Next) ->
                         role: CredentialRole::Admin,
                         ..
                     } => "API keys cannot manage users or API access",
+                    Principal::Delegated { .. } => {
+                        "Neither this agent's access nor your role allows this"
+                    }
                     _ => "Your viewer role can see checks and incidents but not change them",
                 }
                 .into(),
@@ -418,9 +431,13 @@ async fn protect(State(state): State<AppState>, request: Request, next: Next) ->
             .into_response();
         }
         let viewer = !principal.admin();
+        let audit = crate::audit_log::Entry::of(&principal, method, path);
         let mut request = request;
         request.extensions_mut().insert(principal);
         let response = next.run(request).await;
+        if let Some(entry) = audit {
+            entry.record(&state.pool, response.status()).await;
+        }
         if !viewer || !response.status().is_success() {
             return response;
         }

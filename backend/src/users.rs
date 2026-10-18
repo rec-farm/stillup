@@ -28,6 +28,14 @@ pub enum Principal {
         /// Monitoring-as-code projects a deployer may change; None means every project.
         projects: Option<Vec<String>>,
     },
+    /// An agent acting for a person through farmhand (`gateway`): what the person may do,
+    /// capped by the scope they allowed, never access management.
+    Delegated {
+        user_id: Uuid,
+        admin: bool,
+        cap: CredentialRole,
+        agent: String,
+    },
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum CredentialRole {
@@ -64,8 +72,8 @@ impl Principal {
                 }
         )
     }
-    /// Whether this principal may make a request at all. Credentials never manage people or
-    /// other credentials, so a leaked key cannot mint more access.
+    /// Whether this principal may make a request at all. Credentials and agents never manage
+    /// people or other credentials, so a leaked key cannot mint more access.
     pub fn may(&self, method: &str, path: &str) -> bool {
         match self {
             Self::Installation | Self::User { admin: true, .. } => true,
@@ -79,6 +87,22 @@ impl Principal {
                         || (matches!(method, "GET" | "HEAD") && path == "/v1/me")
                 }
             },
+            Self::Delegated { admin, cap, .. } => {
+                let person = *admin || viewer_may(method, path);
+                let scope = match cap {
+                    CredentialRole::Admin => true,
+                    CredentialRole::Viewer => viewer_may(method, path),
+                    CredentialRole::Deployer => {
+                        viewer_may(method, path)
+                            || (method == "POST"
+                                && matches!(
+                                    path,
+                                    "/v1/code/plan" | "/v1/code/apply" | "/v1/checks/test"
+                                ))
+                    }
+                };
+                person && scope && !manages_access(path)
+            }
         }
     }
     /// Whether this principal may change the checks of a monitoring-as-code project.
@@ -91,6 +115,7 @@ impl Principal {
             } => projects
                 .as_ref()
                 .is_none_or(|projects| projects.iter().any(|p| p == project)),
+            Self::Delegated { admin, cap, .. } => *admin && *cap != CredentialRole::Viewer,
             _ => self.admin(),
         }
     }
@@ -233,7 +258,7 @@ pub async fn end_session(pool: &PgPool, value: &str) -> Result<(), sqlx::Error> 
 }
 
 /// How a provider's subject is stored: the issuer and subject, as users bind it.
-fn subject_key(issuer: &str, subject: &str) -> String {
+pub(crate) fn subject_key(issuer: &str, subject: &str) -> String {
     format!("{issuer} {subject}")
 }
 
@@ -374,8 +399,9 @@ pub async fn me(
     State(state): State<AppState>,
     Extension(principal): Extension<Principal>,
 ) -> Result<Json<Value>, ApiError> {
-    let id = match principal {
-        Principal::User { id, .. } => id,
+    let (id, agent) = match principal {
+        Principal::User { id, .. } => (id, None),
+        Principal::Delegated { user_id, agent, .. } => (user_id, Some(agent)),
         Principal::Installation => return Ok(Json(json!({"kind":"installation","role":"admin"}))),
         Principal::Credential { role, projects, .. } => {
             return Ok(Json(
@@ -389,6 +415,9 @@ pub async fn me(
         .await?;
     let mut value = user(&row)?;
     value["kind"] = json!("user");
+    if let Some(agent) = agent {
+        value["agent"] = json!(agent);
+    }
     Ok(Json(value))
 }
 
@@ -582,6 +611,32 @@ mod tests {
         assert_eq!(hide_query("https://x.io/a"), "https://x.io/a");
         assert!(!viewer_may("POST", "/v1/checks/x/run"));
         assert!(!viewer_may("PATCH", "/v1/checks/x"));
+    }
+    #[test]
+    fn agents_get_their_persons_role_capped_by_scope_and_always_redacted() {
+        let agent = |admin, cap| Principal::Delegated {
+            user_id: Uuid::nil(),
+            admin,
+            cap,
+            agent: "Claude Code".into(),
+        };
+        let all = agent(true, CredentialRole::Admin);
+        assert!(all.may("PATCH", "/v1/checks/x"));
+        assert!(all.may("POST", "/v1/code/apply"));
+        assert!(all.may_deploy("api"));
+        assert!(!all.may("GET", "/v1/users"));
+        assert!(!all.may("POST", "/v1/api-keys"));
+        assert!(!all.admin(), "configs are redacted for agents");
+        let deployer = agent(true, CredentialRole::Deployer);
+        assert!(deployer.may("POST", "/v1/code/plan") && deployer.may("GET", "/v1/dashboard"));
+        assert!(!deployer.may("PATCH", "/v1/checks/x"));
+        let reader = agent(true, CredentialRole::Viewer);
+        assert!(reader.may("GET", "/v1/checks/x") && !reader.may("POST", "/v1/code/plan"));
+        assert!(!reader.may_deploy("api"));
+        let viewer = agent(false, CredentialRole::Admin);
+        assert!(viewer.may("GET", "/v1/dashboard"));
+        assert!(!viewer.may("POST", "/v1/code/plan") && !viewer.may_deploy("api"));
+        assert!(!viewer.may("GET", "/v1/secrets"));
     }
     #[test]
     fn credentials_never_manage_access_and_deployers_stay_in_their_projects() {

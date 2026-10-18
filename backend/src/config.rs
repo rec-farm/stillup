@@ -11,6 +11,8 @@ pub struct Config {
     pub oidc: crate::oidc::OidcConfig,
     /// The issuer of the GitHub Actions tokens that trusted workflows present.
     pub github_actions_issuer: String,
+    /// farmhand's public origin (`GATEWAY_ISSUER`): agents it signs for act as their person.
+    pub gateway_issuer: Option<String>,
     pub secrets: crate::secrets::SecretConfig,
     pub allow_private_networks: bool,
     pub alert_webhook_url: String,
@@ -50,6 +52,14 @@ impl Config {
             .ok()
             .filter(|days| (1..=365).contains(days))
             .ok_or("RUN_RETENTION_DAYS must be an integer between 1 and 365")?;
+        let oidc = crate::oidc::OidcConfig::from_env()?;
+        let gateway_issuer = crate::gateway::issuer_from_env()?;
+        if gateway_issuer.is_some() && oidc.issuer.is_empty() {
+            return Err(
+                "GATEWAY_ISSUER needs OIDC_ISSUER: agents act for people who sign in with it"
+                    .into(),
+            );
+        }
         Ok(Self {
             status_page_title: env::var("STATUS_PAGE_TITLE")
                 .unwrap_or_else(|_| "Service status".into()),
@@ -62,8 +72,9 @@ impl Config {
                 "{}:{port}",
                 env::var("HOST").unwrap_or_else(|_| "127.0.0.1".into())
             ),
-            oidc: crate::oidc::OidcConfig::from_env()?,
+            oidc,
             github_actions_issuer: crate::trusted_publishing::issuer_from_env()?,
+            gateway_issuer,
             secrets: crate::secrets::SecretConfig::from_env()?,
             allow_private_networks: match env::var("ALLOW_PRIVATE_NETWORKS")
                 .unwrap_or_else(|_| "false".into())

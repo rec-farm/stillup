@@ -1,5 +1,6 @@
 pub mod api_keys;
 pub mod assertions;
+pub mod audit_log;
 pub mod auth;
 pub mod check_config;
 pub mod checks;
@@ -8,6 +9,7 @@ pub mod config;
 pub mod database;
 pub mod error;
 pub mod executor;
+pub mod gateway;
 pub mod health;
 pub mod json;
 pub mod monitoring;

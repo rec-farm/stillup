@@ -85,7 +85,7 @@ pub async fn principal(pool: &PgPool, value: &str) -> Result<Option<Principal>, 
 /// Who created a credential, as shown next to it.
 pub async fn actor(pool: &PgPool, principal: &Principal) -> Result<String, ApiError> {
     Ok(match principal {
-        Principal::User { id, .. } => {
+        Principal::User { id, .. } | Principal::Delegated { user_id: id, .. } => {
             sqlx::query_scalar::<_, String>("SELECT email FROM users WHERE id=$1")
                 .bind(id)
                 .fetch_one(pool)
