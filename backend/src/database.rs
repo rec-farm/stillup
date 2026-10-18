@@ -70,6 +70,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "012_api_access.sql",
         include_str!("../../packages/db/migrations/012_api_access.sql"),
     ),
+    (
+        "013_audit_log.sql",
+        include_str!("../../packages/db/migrations/013_audit_log.sql"),
+    ),
 ];
 
 // Reuse the deployed migration ledger and lock. Two 007 migrations exist; their full

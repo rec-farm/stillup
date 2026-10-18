@@ -42,3 +42,4 @@ tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 tempfile = "3"
 rsa = { version = "0.9", features = ["sha2"] }
+ed25519-dalek = { version = "2", features = ["pkcs8"] }

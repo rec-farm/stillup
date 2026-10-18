@@ -30,7 +30,9 @@ HTTP check creation; status/latency/JSON assertions; PostgreSQL persistence; dur
 
 **API access implemented:** revocable API keys for other apps and CI, with read-only, deploy (optionally limited to projects) and administrator access levels, optional expiry, last-used tracking, and hashed storage. Administrator keys cannot manage users or API access.
 
-**Remaining:** project defaults, an audit log of changes, and email notifications.
+**Audit log implemented:** every change through the API, with who made it, including agents acting for a person through farmhand (`GET /v1/audit-log`).
+
+**Remaining:** project defaults, an audit log view in the dashboard, and email notifications.
 
 ## Milestone 3 — Complete status communication
 
