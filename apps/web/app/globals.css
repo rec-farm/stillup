@@ -494,8 +494,8 @@ small {
 .nav-item.active .nav-count {
   background: color-mix(in oklab, var(--accent-fg) 14%, transparent);
 }
-.status-design-nav {
-  margin-top: 16px;
+.sidebar-settings {
+  margin-top: 24px;
 }
 .sidebar-bottom {
   margin-top: auto;
@@ -2726,13 +2726,14 @@ small {
   .sidebar nav .nav-item:nth-child(2) {
     display: none;
   }
-  .status-design-nav {
-    position: absolute;
-    right: 16px;
-    top: 14px;
-    margin: 0;
-    width: auto;
-    min-height: var(--control-md);
+  .sidebar-settings {
+    margin-top: 8px;
+  }
+  .sidebar-settings nav {
+    margin-top: 0;
+  }
+  .sidebar .sidebar-settings .nav-item:nth-child(2) {
+    display: flex;
   }
   .main-area {
     margin: 0;

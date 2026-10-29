@@ -2,6 +2,10 @@
 import { useCallback, useEffect, useState, useRef } from 'react';
 import {
   Activity,
+  Bell,
+  KeyRound,
+  MapPin,
+  Users,
   Archive,
   Pencil,
   Palette,
@@ -262,9 +266,31 @@ export function DashboardView({ initial, me }: { initial: Dashboard; me: Me }) {
           </a>
         </nav>
         {canManage && (
-          <button className="nav-item status-design-nav" onClick={() => setStatusEditorOpen(true)}>
-            <Palette size={20} /> Status page design
-          </button>
+          <div className="sidebar-settings">
+            <span className="nav-label eyebrow" id="settings-label">
+              Settings
+            </span>
+            <nav aria-labelledby="settings-label">
+              <button className="nav-item" onClick={() => setNotificationsOpen(true)}>
+                <Bell size={20} /> Notifications
+              </button>
+              <button className="nav-item" onClick={() => setSecretsOpen(true)}>
+                <KeyRound size={20} /> Secrets
+              </button>
+              <button className="nav-item" onClick={() => setLocationsOpen(true)}>
+                <MapPin size={20} /> Locations
+              </button>
+              <button className="nav-item" onClick={() => setStatusEditorOpen(true)}>
+                <Palette size={20} /> Status page
+              </button>
+              <button className="nav-item" onClick={() => setUsersOpen(true)}>
+                <Users size={20} /> Users
+              </button>
+              <button className="nav-item" onClick={() => setApiAccessOpen(true)}>
+                <Terminal size={20} /> API access
+              </button>
+            </nav>
+          </div>
         )}
         <div className="sidebar-bottom">
           <div className="ownership-note">
@@ -746,28 +772,9 @@ export function DashboardView({ initial, me }: { initial: Dashboard; me: Me }) {
                   : 'You have view access. Administrators manage checks, alerts and settings.'}
               </p>
               {canManage && (
-                <>
-                  <button className="button secondary" onClick={() => setNotificationsOpen(true)}>
-                    Manage notifications
-                  </button>
-                  <div className="notification-actions">
-                    <button className="button secondary" onClick={() => setSecretsOpen(true)}>
-                      Manage secrets
-                    </button>
-                    <button className="button secondary" onClick={() => setLocationsOpen(true)}>
-                      Manage locations
-                    </button>
-                    <button className="button secondary" onClick={() => setStatusEditorOpen(true)}>
-                      Customize status page
-                    </button>
-                    <button className="button secondary" onClick={() => setUsersOpen(true)}>
-                      Manage users
-                    </button>
-                    <button className="button secondary" onClick={() => setApiAccessOpen(true)}>
-                      API access
-                    </button>
-                  </div>
-                </>
+                <button className="button secondary" onClick={() => setNotificationsOpen(true)}>
+                  {data.notificationsEnabled ? 'Manage alerts' : 'Configure alerts'}
+                </button>
               )}
             </section>
           </div>
