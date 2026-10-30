@@ -7,7 +7,7 @@ use crate::{
 };
 use aes_gcm::{
     Aes256Gcm, Nonce,
-    aead::{Aead, AeadCore, KeyInit, OsRng, Payload},
+    aead::{Aead, Generate, KeyInit, Payload},
 };
 use axum::{Json, extract::State, http::StatusCode};
 use base64::{Engine, engine::general_purpose::STANDARD};
@@ -73,7 +73,7 @@ fn cipher(key: &str) -> Result<Aes256Gcm, CryptoError> {
 }
 pub fn encrypt(name: &str, value: &str, key: &str) -> Result<Value, CryptoError> {
     let cipher = cipher(key)?;
-    let iv = Aes256Gcm::generate_nonce(&mut OsRng);
+    let iv = Nonce::generate();
     let aad = format!("StillUp secret v1:{name}");
     let mut bytes = cipher
         .encrypt(
@@ -108,7 +108,7 @@ pub fn decrypt(name: &str, value: &Value, key: &str) -> Result<String, CryptoErr
     let aad = format!("StillUp secret v1:{name}");
     let bytes = cipher(key)?
         .decrypt(
-            Nonce::from_slice(&iv),
+            &Nonce::try_from(iv.as_slice()).map_err(|_| CryptoError)?,
             Payload {
                 msg: &encrypted,
                 aad: aad.as_bytes(),

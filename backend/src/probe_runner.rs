@@ -1,4 +1,4 @@
-use aes_gcm::aead::{OsRng, rand_core::RngCore};
+use aes_gcm::aead::Generate;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -172,10 +172,8 @@ pub async fn load_identity(options: &Options) -> Result<Identity, String> {
                 .enrollment_token
                 .clone()
                 .ok_or("Set STILLUP_ENROLLMENT_TOKEN for first enrollment")?;
-            let mut bytes = [0u8; 32];
-            OsRng.fill_bytes(&mut bytes);
             let identity = Identity {
-                token: hex::encode(bytes),
+                token: hex::encode(<[u8; 32]>::generate()),
                 enrollment_token: Some(enrollment),
                 location_id: None,
                 origin: options.origin.origin().ascii_serialization(),

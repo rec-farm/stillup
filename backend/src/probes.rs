@@ -5,7 +5,7 @@ use crate::{
     json::ApiJson,
     server::{AppState, timestamp},
 };
-use aes_gcm::aead::{OsRng, rand_core::RngCore};
+use aes_gcm::aead::Generate;
 use axum::{Json, extract::State, http::StatusCode};
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde_json::{Value, json};
@@ -13,9 +13,7 @@ use sha2::{Digest, Sha256};
 use sqlx::{Row, postgres::PgRow};
 use uuid::Uuid;
 fn token() -> String {
-    let mut bytes = [0u8; 32];
-    OsRng.fill_bytes(&mut bytes);
-    hex::encode(bytes)
+    hex::encode(<[u8; 32]>::generate())
 }
 pub(crate) fn hash(value: &str) -> String {
     hex::encode(Sha256::digest(value.as_bytes()))
