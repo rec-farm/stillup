@@ -13,28 +13,28 @@ default-run = "stillup-api"
 [dependencies]
 axum = "0.8"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal", "fs", "io-util"] }
-tower-http = { version = "0.6", features = ["fs", "compression-gzip"] }
+tower-http = { version = "0.7", features = ["fs", "compression-gzip"] }
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 serde = { version = "1", features = ["derive"] }
 url = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 dotenvy = "0.15"
-hmac = "0.12"
-sha2 = "0.10"
+hmac = "0.13"
+sha2 = "0.11"
 subtle = "2"
 hex = "0.4"
-aes-gcm = "0.10"
-base64 = "0.22"
+aes-gcm = "0.11"
+base64 = "0.23"
 openidconnect = { version = "4", default-features = false, features = ["reqwest", "rustls-tls"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "postgres", "json", "chrono", "uuid"] }
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["serde", "v4"] }
-icu_collator = "2.2.1"
+icu_collator = "2.4.0"
 ryu-js = "1.0.3"
-jsonwebtoken = { version = "10", default-features = false, features = ["rust_crypto"] }
+jsonwebtoken = { version = "11", default-features = false, features = ["rust_crypto"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["process"] }
@@ -42,4 +42,4 @@ tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 tempfile = "3"
 rsa = { version = "0.9", features = ["sha2"] }
-ed25519-dalek = { version = "2", features = ["pkcs8"] }
+ed25519-dalek = { version = "3", features = ["alloc", "pkcs8"] }

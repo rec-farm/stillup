@@ -37,8 +37,8 @@
     "test:package": "node scripts/test-package.mjs"
   },
   "dependencies": {
-    "tsx": "4.23.13",
-    "zod": "4.6.2"
+    "tsx": "4.23.15",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@stillup/sdk": "workspace:*"

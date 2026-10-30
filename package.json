@@ -32,10 +32,10 @@
     "dev:worker": "cargo run --manifest-path backend/Cargo.toml --bin stillup-api -- worker"
   },
   "devDependencies": {
-    "typescript": "^6.0.2",
-    "tsx": "^4.20.0",
-    "vitest": "^4.1.0",
-    "@types/node": "^24.0.0",
-    "prettier": "^3.8.0"
+    "@types/node": "^24.19.2",
+    "prettier": "^3.9.10",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.5"
   }
 }

@@ -749,9 +749,9 @@ async fn oidc_pkce_signed_tokens_callback_and_logout() {
     use rsa::{
         pkcs1v15::SigningKey,
         pkcs8::DecodePrivateKey,
+        sha2::{Digest, Sha256},
         signature::{SignatureEncoding, Signer},
     };
-    use sha2::{Digest, Sha256};
     use std::{
         collections::HashMap,
         sync::{Arc, Mutex},
@@ -4386,9 +4386,9 @@ async fn api_keys_and_trusted_github_workflows_are_scoped_and_revocable() {
     use rsa::{
         pkcs1v15::SigningKey,
         pkcs8::DecodePrivateKey,
+        sha2::Sha256,
         signature::{SignatureEncoding, Signer},
     };
-    use sha2::Sha256;
     fn sign(claims: &Value, tamper: bool) -> String {
         let header = URL_SAFE_NO_PAD.encode(
             serde_json::to_vec(&json!({"alg":"RS256","kid":"fixture","typ":"JWT"})).unwrap(),
